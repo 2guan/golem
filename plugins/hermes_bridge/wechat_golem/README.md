@@ -114,6 +114,7 @@ hermes -p wechat gateway install   # systemd user 服务
 | `/hermes disable` | 移出白名单 |
 | `/hermes image <url>` | 诊断直发图片 |
 | `/hermes video <url>` | 诊断直发视频 |
+| `/hermes voice <url>` | 诊断直发语音（需 ffmpeg/ffprobe） |
 | `/hermes help` | 帮助 |
 
 Host 层限制：仅主人可跑 `/` 命令；**未注册的 `/xxx` 会回「未知命令」且不会进 Hermes**。

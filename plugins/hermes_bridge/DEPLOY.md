@@ -123,7 +123,7 @@ approval_tokens      = []      # 默认 yes/no/是/否/同意/拒绝… 共 16 �
 | `/hermes status` | token 掩码、SSE 订阅数、门闩、捷径词、媒体工具、白名单数量、管理台地址 |
 | `/hermes enable [名称]` | 当前会话入白名单 |
 | `/hermes disable` | 移出白名单 |
-| `/hermes image\|video\|emoji <url>` | 诊断：下载并直发 |
+| `/hermes image\|video\|voice\|emoji <url>` | 诊断：下载并直发 |
 | `/hermes help` | 帮助 |
 
 > Host 会吞掉**所有未注册**的 `/` 命令并回「未知命令」，不会转发给 Hermes。

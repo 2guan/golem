@@ -113,7 +113,7 @@ emoji_burst_cooldown_minutes = 5
   - 门闩热更新（即时生效并 `saveConfig`）
   - **入站旁路**（`/admin/inbound/recent` + SSE stream：pushed/dropped/context_only/scheduled/cancelled）
   - **本地 session 态**（`/admin/sessions`：去抖 pending、未推缓冲、冒泡/斗图冷却；非 Hermes gateway session）
-  - **诊断试发**（`POST /admin/diagnose`：image/video/emoji，等价 `/hermes image|…`）
+  - **诊断试发**（`POST /admin/diagnose`：image/video/voice/emoji，等价 `/hermes image|…`）
   - **Hermes 只读**（需 `hermes_ops_url`：gateway/工具/sessions/日志；**表情库**与**群友档案**浏览；档案可轻写；源码 `hermes_ops/`，运维见其 README）
 - 发现钩子：`GET /admin/meta`（无鉴权，无敏感字段）→ `{name,version,ui,admin_listen,auth}`，以后 Golem 总控可外链跳转
 - **UI 开发**：页面由 `embed.go` 编译期嵌入（`//go:embed ui/*`）——改 `ui/` 下源码后**必须重编译**才生效：
@@ -136,6 +136,7 @@ emoji_burst_cooldown_minutes = 5
 | `/hermes disable` | 移出白名单 |
 | `/hermes image <url>` | 诊断：宿主机下载并直发图片 |
 | `/hermes video <url>` | 诊断：宿主机下载并直发视频 |
+| `/hermes voice <url>` | 诊断：宿主机下载并直发语音（必要时转码，需 ffmpeg/ffprobe） |
 | `/hermes emoji <url>` | 诊断：宿主机下载并直发表情（TypeEmoji，过大自动压缩：GIF 保动画、静图 PNG 优先 / JPEG 兜底） |
 
 > 音乐卡片没有 `/hermes` 诊断命令（业务下沉在 Hermes 侧）。

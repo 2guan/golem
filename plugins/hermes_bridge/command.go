@@ -39,6 +39,12 @@ type hermesVideoCommand struct {
 	Command *plugin.Command
 }
 
+type hermesVoiceCommand struct {
+	_       struct{} `cmd:"hermes voice" help:"诊断：下载 URL 并直发语音" usage:"/hermes voice <url>" example:"/hermes voice https://example.com/a.mp3"`
+	URL     string   `arg:"url" help:"音频 http/https 地址" required:"true" variadic:"true"`
+	Command *plugin.Command
+}
+
 type hermesEmojiCommand struct {
 	_       struct{} `cmd:"hermes emoji" help:"诊断：下载 URL 并直发表情（TypeEmoji）" usage:"/hermes emoji <url>" example:"/hermes emoji https://example.com/a.png"`
 	URL     string   `arg:"url" help:"表情图 http/https 地址" required:"true" variadic:"true"`
@@ -56,6 +62,7 @@ func registerCommands(p *BridgePlugin) error {
 		func() error { return plugin.RegisterCommand(p.handleDisable) },
 		func() error { return plugin.RegisterCommand(p.handleImage) },
 		func() error { return plugin.RegisterCommand(p.handleVideo) },
+		func() error { return plugin.RegisterCommand(p.handleVoice) },
 		func() error { return plugin.RegisterCommand(p.handleEmoji) },
 		func() error { return plugin.RegisterCommand(p.handleHelp) },
 	}
@@ -95,6 +102,7 @@ func (p *BridgePlugin) handleHelp(hermesHelpCommand) (string, error) {
 		"/hermes disable — 当前会话移出白名单",
 		"/hermes image <url> — 诊断直发图片",
 		"/hermes video <url> — 诊断直发视频",
+		"/hermes voice <url> — 诊断直发语音（需要 ffmpeg/ffprobe）",
 		"/hermes emoji <url|md5> — 诊断直发表情（URL下载压缩 / md5引用原图不压）",
 		"/hermes help — 本说明",
 		"",
@@ -202,6 +210,28 @@ func (p *BridgePlugin) handleVideo(cmd hermesVideoCommand) (string, error) {
 		return fmt.Sprintf("发送失败(outcome=%d)：%v", outcome, err), nil
 	}
 	return fmt.Sprintf("已直发视频（%d 字节）", len(data)), nil
+}
+
+func (p *BridgePlugin) handleVoice(cmd hermesVoiceCommand) (string, error) {
+	url := strings.TrimSpace(cmd.URL)
+	if url == "" {
+		return "", fmt.Errorf("用法：/hermes voice <音频URL>")
+	}
+	sender := cmd.Command.GetSender()
+	if sender == nil {
+		return "", fmt.Errorf("无法识别当前会话")
+	}
+	if p.message == nil {
+		return "", fmt.Errorf("消息能力未注入")
+	}
+	data, err := p.downloadBytes(url, maxVoiceBytes)
+	if err != nil {
+		return "下载失败：" + err.Error(), nil
+	}
+	if err := p.sendVoiceBytes(sender.GetUsername(), data); err != nil {
+		return "发送失败：" + err.Error(), nil
+	}
+	return fmt.Sprintf("已直发语音（%d 字节）", len(data)), nil
 }
 
 func (p *BridgePlugin) handleEmoji(cmd hermesEmojiCommand) (string, error) {

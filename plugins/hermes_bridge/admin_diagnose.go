@@ -9,7 +9,7 @@ import (
 )
 
 // adminDiagnose POST /admin/diagnose
-// body: { "kind": "image"|"video"|"emoji", "chat_id": "...", "url": "..." }
+// body: { "kind": "image"|"video"|"voice"|"emoji", "chat_id": "...", "url": "..." }
 // emoji 也支持 md5 字段（32 位 hex）代替 url。
 func (p *BridgePlugin) adminDiagnose(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -34,8 +34,8 @@ func (p *BridgePlugin) adminDiagnose(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "chat_id 必填"})
 		return
 	}
-	if kind != "image" && kind != "video" && kind != "emoji" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "kind 须为 image / video / emoji"})
+	if kind != "image" && kind != "video" && kind != "voice" && kind != "emoji" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "kind 须为 image / video / voice / emoji"})
 		return
 	}
 	// 诊断也走白名单（与出站一致）；主人私聊放行
@@ -73,6 +73,23 @@ func (p *BridgePlugin) adminDiagnose(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		outcome, err := p.sendVideoMessage(chatID, data)
+		writeDiagnoseResult(w, kind, chatID, len(data), 0, outcome, err)
+
+	case "voice":
+		if url == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "voice 需要 url"})
+			return
+		}
+		data, err := p.downloadBytes(url, maxVoiceBytes)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "下载失败: " + err.Error()})
+			return
+		}
+		err = p.sendVoiceBytes(chatID, data)
+		outcome := uploadOK
+		if err != nil {
+			outcome = uploadFailed
+		}
 		writeDiagnoseResult(w, kind, chatID, len(data), 0, outcome, err)
 
 	case "emoji":
