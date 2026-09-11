@@ -294,7 +294,10 @@ systemd 并跳过服务状态检查，不会让 `/overview` 恒亮红灯。
 
 人格命令是 v0.16+ 固定语法，不走配置词表：桥只负责让主人群聊命令绕过门闩并标记
 `trigger_reason=persona_command`，适配器只执行带该可信标记的主人命令，防止新旧组件混跑时误拦普通消息。
-适配器再校验人格 ID（支持中文等 Unicode 字母和数字，如 `林黛玉.md` / `切换人格 林黛玉`）并写 `$HERMES_HOME/wechat_personas/session_bindings.json`。部署时要把多套 `<id>.md` 和该
+适配器再校验人格 ID（支持中文等 Unicode 字母和数字，如 `林黛玉.md` / `切换人格 林黛玉`）并写 `$HERMES_HOME/wechat_personas/session_bindings.json`。个人测试人格可在本地放到
+`plugins/hermes_bridge/wechat_golem/personas/` 作为部署源；其中 `*.md` 默认被 Git 忽略，不随代码提交。
+按需将 `<id>.md` 复制到运行时 `$HERMES_HOME/wechat_personas/`；不要把运行时生成的
+`session_bindings.json` 或 `.session_bindings.lock` 反向提交到仓库。部署时要把多套 `<id>.md` 和该
 绑定文件随整个 `wechat_personas/` 目录一起备份；文件应只允许 profile 所有者写。损坏或未知
 版本的绑定文件会让读取临时回退 `default`，并冻结微信写命令以免覆盖原配置。写入使用固定锁文件
 `.session_bindings.lock` 做跨进程互斥；该文件是正常持久文件，不要手工删除或纳入临时文件清理。

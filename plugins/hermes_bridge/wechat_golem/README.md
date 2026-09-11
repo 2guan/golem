@@ -113,8 +113,11 @@ session key/session ID，也不 reset 或逐出 agent cache，因此切换前后
 - 损坏或版本不兼容的 `session_bindings.json` 不会被控制命令覆盖；先修复文件再切换。
 - 人格可改变经历、世界观、性格和表达，但不能覆盖名字「火」、主人识别、审批、工具权限与安全规则。
 
-人工维护人格或绑定文件时，先写同目录临时文件再用 `mv` 原子替换。迁移和备份 profile 时要连同
-整个 `wechat_personas/` 目录一起处理。
+人工维护人格或绑定文件时，先写同目录临时文件再用 `mv` 原子替换。个人测试人格可放在
+`wechat_golem/personas/` 作为本机部署源；该目录下的 `*.md` 默认被 Git 忽略，不随代码提交。
+按需将其中的 `<id>.md` 复制到 `$HERMES_HOME/wechat_personas/`，也不要把运行时生成的
+`session_bindings.json` 或 `.session_bindings.lock` 反向提交到仓库。迁移和备份 profile 时要连同
+整个运行时 `wechat_personas/` 目录一起处理。
 
 `config.yaml` 要点：
 
