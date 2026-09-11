@@ -56,11 +56,16 @@ tasks:
         - name: PLUGIN
           enum:
             ref: .PLUGINS
+    env:
+      GOOS: '{{.OS}}'
+      GOARCH: '{{.ARCH}}'
+      CGO_ENABLED: '0'          # 默认禁用 CGO，避免交叉编译问题
     vars:
       CUSTOM_DIR: '{{.DIR | default ""}}'
       PROJECT_DIR: '{{joinPath .TASKFILE_DIR ".."}}'
       OUT_DIR: "{{if .CUSTOM_DIR}}{{joinPath .PROJECT_DIR .CUSTOM_DIR}}{{else}}{{joinPath .TASKFILE_DIR .PLUGIN}}{{end}}"
-      OUT_FILE: '{{joinPath .OUT_DIR (printf "golem_plugin_%s%s" .PLUGIN exeExt)}}'
+      EXE_EXT: '{{if eq .OS "windows"}}.exe{{end}}'
+      OUT_FILE: '{{joinPath .OUT_DIR (printf "golem_plugin_%s%s" .PLUGIN .EXE_EXT)}}'
       PLUGIN_DIR: "{{joinPath .TASKFILE_DIR .PLUGIN}}"
     cmds:
       - cmd: echo "正在拉取插件 {{.PLUGIN}} 的依赖..."
@@ -69,7 +74,7 @@ tasks:
         silent: true
       - cmd: echo "正在构建插件 {{.PLUGIN}}..."
         silent: true
-      - cmd: GOOS={{OS}} GOARCH={{ARCH}} go build -C "{{.PLUGIN_DIR}}" -ldflags "-s -w" -o "{{.OUT_FILE}}" .
+      - cmd: go build -C "{{.PLUGIN_DIR}}" -ldflags "-s -w" -o "{{.OUT_FILE}}" .
         silent: true
       - cmd: echo "插件 {{.PLUGIN}} 构建完成：{{.OUT_FILE}}"
         silent: true
