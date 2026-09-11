@@ -50,7 +50,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextvars
-import errno
 import hashlib
 import html
 import json
@@ -58,11 +57,9 @@ import logging
 import os
 import random
 import re
-import stat
 import tempfile
 import threading
 import time
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
@@ -82,6 +79,25 @@ from gateway.platforms.base import (
     MessageType,
     SendResult,
 )
+try:
+    from .persona_store import (
+        BindingsCorrupt,
+        InvalidPersonaID,
+        InvalidSessionKey,
+        PersonaNotFound,
+        PersonaStore,
+        PersonaStoreError,
+    )
+except ImportError:
+    # Hermes loader 可能把 adapter.py 作为顶层模块导入，兼容同目录绝对导入。
+    from persona_store import (  # type: ignore
+        BindingsCorrupt,
+        InvalidPersonaID,
+        InvalidSessionKey,
+        PersonaNotFound,
+        PersonaStore,
+        PersonaStoreError,
+    )
 
 _PLATFORM_NAME = "wechat_golem"
 _DEFAULT_BASE = "http://127.0.0.1:8643"
@@ -250,529 +266,94 @@ def _hermes_home() -> str:
 
 
 # ---- 当前人格（独立于 SOUL.md；每批入站热加载）----
-_PERSONA_DEFAULT_ID = "default"
-_PERSONA_MAX_BYTES = 64 * 1024
-_PERSONA_BINDINGS_MAX_BYTES = 1024 * 1024
-_PERSONA_ID_RE = re.compile(r"^[^\W_][\w-]{0,63}$", re.UNICODE)
-_PERSONA_SESSION_KEY_RE = re.compile(r"^(?:chatroom|private):[^\x00\r\n]{1,256}$")
-_PERSONA_BINDINGS_VERSION = 1
-_PERSONA_BINDINGS_NAME = "session_bindings.json"
-_PERSONA_BINDINGS_LOCK_NAME = ".session_bindings.lock"
-_PERSONA_BINDINGS_LOCK_TIMEOUT_S = 5.0
-_PERSONA_CACHE_LOCK = threading.Lock()
-_PERSONA_CACHE: Dict[str, tuple] = {}  # persona_id → ((mtime_ns, size), content)
+_PERSONA_STORE = PersonaStore(
+    _hermes_home(), root=os.path.join(_hermes_home(), "wechat_personas")
+)
+_PERSONA_WARNING_LOCK = threading.Lock()
 _PERSONA_WARNING_KEYS: Dict[str, str] = {}
-_PERSONA_BINDINGS_LOCK = threading.RLock()
-_PERSONA_BINDINGS_CACHE: Optional[tuple] = None  # (signature, bindings, error)
 _PERSONA_BINDINGS_WARNING_KEY = ""
 
 
-def _persona_root() -> str:
-    return os.path.abspath(os.path.join(_hermes_home(), "wechat_personas"))
-
-
-def _persona_root_signature(info: os.stat_result) -> tuple:
-    return (info.st_dev, info.st_ino, info.st_ctime_ns, info.st_mtime_ns)
-
-
-def _is_reparse_point(info: os.stat_result) -> bool:
-    attrs = getattr(info, "st_file_attributes", 0)
-    marker = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
-    return bool(attrs & marker)
-
-
-def _checked_persona_root(*, create: bool = False) -> tuple:
-    """返回非链接人格目录及签名；只创建最后一级，不追随 symlink/junction。"""
-    root = _persona_root()
-    if create:
-        try:
-            os.mkdir(root, 0o700)
-        except FileExistsError:
-            pass
-    info = os.lstat(root)
-    if (
-        stat.S_ISLNK(info.st_mode)
-        or _is_reparse_point(info)
-        or not stat.S_ISDIR(info.st_mode)
-    ):
-        raise OSError("wechat_personas 必须是非链接、非 junction 的普通目录")
-    return root, _persona_root_signature(info)
-
-
-@contextmanager
-def _persona_bindings_file_lock(timeout: float = _PERSONA_BINDINGS_LOCK_TIMEOUT_S):
-    """跨进程串行绑定文件的读改写；固定锁文件必须永久保留。"""
-    root, _ = _checked_persona_root(create=True)
-    lock_path = os.path.join(root, _PERSONA_BINDINGS_LOCK_NAME)
-    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0)
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = os.open(lock_path, flags, 0o600)
-    locked = False
-    try:
-        opened = os.fstat(fd)
-        if not stat.S_ISREG(opened.st_mode):
-            raise OSError("人格绑定锁必须是普通文件")
-        if opened.st_size < 1:
-            os.lseek(fd, 0, os.SEEK_SET)
-            os.write(fd, b"\0")
-        deadline = time.monotonic() + max(0.0, timeout)
-        while True:
-            try:
-                os.lseek(fd, 0, os.SEEK_SET)
-                if os.name == "nt":
-                    import msvcrt
-
-                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-
-                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                locked = True
-                break
-            except OSError as e:
-                if e.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
-                    raise
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("人格绑定文件正被其他进程更新，请稍后重试")
-                time.sleep(0.05)
-        yield root
-    finally:
-        if locked:
-            try:
-                os.lseek(fd, 0, os.SEEK_SET)
-                if os.name == "nt":
-                    import msvcrt
-
-                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-                else:
-                    import fcntl
-
-                    fcntl.flock(fd, fcntl.LOCK_UN)
-            except OSError:
-                pass
-        os.close(fd)
-
-
-def _is_valid_persona_id(persona_id: str) -> bool:
-    return bool(_PERSONA_ID_RE.fullmatch(str(persona_id or "")))
-
-
-def _is_stable_persona_session_key(session_key: str) -> bool:
-    return bool(_PERSONA_SESSION_KEY_RE.fullmatch(str(session_key or "").strip()))
-
-
-def _persona_path(persona_id: str) -> str:
-    if not _is_valid_persona_id(persona_id):
-        return ""
-    return os.path.join(_persona_root(), f"{persona_id}.md")
-
-
-def _persona_bindings_path() -> str:
-    return os.path.join(_persona_root(), _PERSONA_BINDINGS_NAME)
-
-
 def _persona_warn_once(persona_id: str, key: str, message: str, *args: Any) -> None:
-    with _PERSONA_CACHE_LOCK:
+    with _PERSONA_WARNING_LOCK:
         if key == _PERSONA_WARNING_KEYS.get(persona_id):
             return
         _PERSONA_WARNING_KEYS[persona_id] = key
     logger.warning(message, *args)
 
 
-def _persona_clear_warning(persona_id: str) -> None:
-    with _PERSONA_CACHE_LOCK:
-        _PERSONA_WARNING_KEYS.pop(persona_id, None)
-
-
 def _load_persona(persona_id: str) -> str:
-    """按 mtime/大小热加载人格；失败时返回空串，让消息走回退链。"""
     persona_id = str(persona_id or "").strip()
-    path = _persona_path(persona_id)
-    if not path:
+    try:
+        content = _PERSONA_STORE.load_persona(persona_id)
+    except PersonaStoreError as e:
         _persona_warn_once(
             persona_id or "-",
-            f"invalid:{persona_id}",
-            "[wechat_golem] 人格 ID 非法 id=%r",
+            f"{type(e).__name__}:{e.signature!r}:{e}",
+            "[wechat_golem] 人格文件不可用 id=%s err=%s",
             persona_id,
-        )
-        return ""
-    try:
-        root, root_signature = _checked_persona_root()
-        path = os.path.join(root, f"{persona_id}.md")
-        lst = os.lstat(path)
-    except OSError as e:
-        _persona_warn_once(
-            persona_id,
-            f"stat:{path}:{e.errno}",
-            "[wechat_golem] 人格文件不可用 id=%s path=%s err=%s",
-            persona_id,
-            path,
             e,
         )
         return ""
-    signature = root_signature + (
-        lst.st_dev,
-        lst.st_ino,
-        lst.st_ctime_ns,
-        lst.st_mtime_ns,
-        lst.st_size,
-    )
-    if stat.S_ISLNK(lst.st_mode) or not stat.S_ISREG(lst.st_mode):
-        _persona_warn_once(
-            persona_id,
-            f"type:{path}:{signature}:{lst.st_mode}",
-            "[wechat_golem] 人格文件必须是非链接普通文件 id=%s path=%s",
-            persona_id,
-            path,
-        )
-        return ""
-    if lst.st_size <= 0 or lst.st_size > _PERSONA_MAX_BYTES:
-        _persona_warn_once(
-            persona_id,
-            f"size:{path}:{signature}",
-            "[wechat_golem] 人格文件大小非法 id=%s path=%s bytes=%s limit=%s",
-            persona_id,
-            path,
-            lst.st_size,
-            _PERSONA_MAX_BYTES,
-        )
-        return ""
-    with _PERSONA_CACHE_LOCK:
-        cached = _PERSONA_CACHE.get(persona_id)
-        if cached and cached[0] == signature:
-            return str(cached[1] or "")
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        fd = os.open(path, flags)
-        try:
-            opened = os.fstat(fd)
-            if not stat.S_ISREG(opened.st_mode):
-                raise OSError("not a regular file")
-            opened_signature = root_signature + (
-                opened.st_dev,
-                opened.st_ino,
-                opened.st_ctime_ns,
-                opened.st_mtime_ns,
-                opened.st_size,
-            )
-            if opened_signature != signature:
-                signature = opened_signature
-            if opened.st_size <= 0 or opened.st_size > _PERSONA_MAX_BYTES:
-                raise ValueError(f"invalid size: {opened.st_size}")
-            raw = b""
-            while len(raw) <= _PERSONA_MAX_BYTES:
-                chunk = os.read(fd, min(64 * 1024, _PERSONA_MAX_BYTES + 1 - len(raw)))
-                if not chunk:
-                    break
-                raw += chunk
-            if len(raw) > _PERSONA_MAX_BYTES:
-                raise ValueError(f"too large: {len(raw)}")
-        finally:
-            os.close(fd)
-        content = raw.decode("utf-8").strip()
-    except Exception as e:
-        _persona_warn_once(
-            persona_id,
-            f"read:{path}:{signature}:{type(e).__name__}",
-            "[wechat_golem] 读取人格失败 id=%s path=%s err=%s",
-            persona_id,
-            path,
-            e,
-        )
-        return ""
-    if not content:
-        _persona_warn_once(
-            persona_id,
-            f"empty:{path}:{signature}",
-            "[wechat_golem] 人格文件为空 id=%s path=%s",
-            persona_id,
-            path,
-        )
-        return ""
-    with _PERSONA_CACHE_LOCK:
-        _PERSONA_CACHE[persona_id] = (signature, content)
-    _persona_clear_warning(persona_id)
+    with _PERSONA_WARNING_LOCK:
+        _PERSONA_WARNING_KEYS.pop(persona_id, None)
     return content
 
 
-def _normalize_persona_bindings(raw: Any) -> Dict[str, Dict[str, str]]:
-    if not isinstance(raw, dict):
-        raise ValueError("顶层必须是对象")
-    if raw.get("version") != _PERSONA_BINDINGS_VERSION:
-        raise ValueError(f"不支持的 version: {raw.get('version')!r}")
-    source = raw.get("bindings")
-    if not isinstance(source, dict):
-        raise ValueError("bindings 必须是对象")
-    out: Dict[str, Dict[str, str]] = {}
-    for session_key, item in source.items():
-        if not isinstance(session_key, str) or not _is_stable_persona_session_key(session_key):
-            raise ValueError(f"非法 session_key: {session_key!r}")
-        if not isinstance(item, dict):
-            raise ValueError(f"绑定项必须是对象: {session_key}")
-        persona_id = item.get("persona_id")
-        updated_at = item.get("updated_at")
-        if not isinstance(persona_id, str) or not _is_valid_persona_id(persona_id):
-            raise ValueError(f"非法 persona_id: {session_key}")
-        if not isinstance(updated_at, str) or not updated_at.strip():
-            raise ValueError(f"updated_at 缺失: {session_key}")
-        out[session_key] = {
-            "persona_id": persona_id,
-            "updated_at": updated_at.strip(),
-        }
-    return out
-
-
-def _persona_bindings_warn_once(signature: Any, message: str) -> None:
+def _persona_bindings_warn_once(message: str) -> None:
     global _PERSONA_BINDINGS_WARNING_KEY
-    key = repr(signature)
-    if key == _PERSONA_BINDINGS_WARNING_KEY:
+    if message == _PERSONA_BINDINGS_WARNING_KEY:
         return
-    _PERSONA_BINDINGS_WARNING_KEY = key
+    _PERSONA_BINDINGS_WARNING_KEY = message
     logger.warning("[wechat_golem] 人格绑定文件不可用：%s", message)
 
 
-def _read_persona_bindings_disk() -> tuple:
-    try:
-        root, root_signature = _checked_persona_root()
-    except FileNotFoundError:
-        return None, {}, ""
-    except OSError as e:
-        return ("root", e.errno, str(e)), {}, str(e)
-    path = os.path.join(root, _PERSONA_BINDINGS_NAME)
-    try:
-        lst = os.lstat(path)
-    except FileNotFoundError:
-        return None, {}, ""
-    except OSError as e:
-        return ("stat", e.errno), {}, str(e)
-    signature = root_signature + (
-        lst.st_dev,
-        lst.st_ino,
-        lst.st_ctime_ns,
-        lst.st_mtime_ns,
-        lst.st_size,
-        lst.st_mode,
-    )
-    if stat.S_ISLNK(lst.st_mode) or not stat.S_ISREG(lst.st_mode):
-        return signature, {}, "绑定文件必须是非链接普通文件"
-    if lst.st_size <= 0 or lst.st_size > _PERSONA_BINDINGS_MAX_BYTES:
-        return signature, {}, f"绑定文件大小非法: {lst.st_size}"
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        fd = os.open(path, flags)
-        try:
-            opened = os.fstat(fd)
-            if not stat.S_ISREG(opened.st_mode):
-                raise OSError("not a regular file")
-            if opened.st_size <= 0 or opened.st_size > _PERSONA_BINDINGS_MAX_BYTES:
-                raise ValueError(f"invalid size: {opened.st_size}")
-            signature = root_signature + (
-                opened.st_dev,
-                opened.st_ino,
-                opened.st_ctime_ns,
-                opened.st_mtime_ns,
-                opened.st_size,
-                opened.st_mode,
-            )
-            chunks: List[bytes] = []
-            total = 0
-            while total <= _PERSONA_BINDINGS_MAX_BYTES:
-                chunk = os.read(fd, min(64 * 1024, _PERSONA_BINDINGS_MAX_BYTES + 1 - total))
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                total += len(chunk)
-            if total > _PERSONA_BINDINGS_MAX_BYTES:
-                raise ValueError(f"too large: {total}")
-        finally:
-            os.close(fd)
-        raw = json.loads(b"".join(chunks).decode("utf-8"))
-        return signature, _normalize_persona_bindings(raw), ""
-    except Exception as e:
-        return signature, {}, str(e)
-
-
 def _load_persona_bindings(*, force: bool = False) -> tuple:
-    """返回 (bindings, error)；损坏时读取侧按空绑定回退，写入侧据 error 拒绝覆盖。"""
-    global _PERSONA_BINDINGS_CACHE, _PERSONA_BINDINGS_WARNING_KEY
-    try:
-        root, root_signature = _checked_persona_root()
-        path = os.path.join(root, _PERSONA_BINDINGS_NAME)
-        info = os.lstat(path)
-        signature: Any = root_signature + (
-            info.st_dev,
-            info.st_ino,
-            info.st_ctime_ns,
-            info.st_mtime_ns,
-            info.st_size,
-            info.st_mode,
-        )
-    except FileNotFoundError:
-        signature = None
-    except OSError as e:
-        signature = ("root", e.errno, str(e))
-    with _PERSONA_BINDINGS_LOCK:
-        cached = _PERSONA_BINDINGS_CACHE
-        if not force and cached is not None and cached[0] == signature:
-            return dict(cached[1]), str(cached[2] or "")
-        signature, bindings, error = _read_persona_bindings_disk()
-        _PERSONA_BINDINGS_CACHE = (signature, dict(bindings), error)
-        if error:
-            _persona_bindings_warn_once(signature, error)
-        else:
-            _PERSONA_BINDINGS_WARNING_KEY = ""
-        return dict(bindings), error
-
-
-def _persona_updated_at() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    global _PERSONA_BINDINGS_WARNING_KEY
+    bindings, error = _PERSONA_STORE.read_bindings(force=force)
+    if error:
+        _persona_bindings_warn_once(error)
+    else:
+        _PERSONA_BINDINGS_WARNING_KEY = ""
+    return bindings, error
 
 
 def _write_persona_binding(session_key: str, persona_id: Optional[str]) -> tuple:
-    """原子更新当前稳定会话绑定；persona_id=None 表示恢复继承 default。"""
-    global _PERSONA_BINDINGS_CACHE, _PERSONA_BINDINGS_WARNING_KEY
-    session_key = str(session_key or "").strip()
-    if not _is_stable_persona_session_key(session_key):
-        return False, "缺少有效的微信稳定会话键"
-    if persona_id is not None:
-        persona_id = str(persona_id or "").strip()
-        if not _is_valid_persona_id(persona_id):
-            return False, "人格 ID 首字符必须是 Unicode 字母或数字，其余只允许 Unicode 字母、数字、下划线和连字符，总长最多 64 字符"
-        if not _load_persona(persona_id):
-            return False, f"人格 {persona_id} 不存在或当前不可用"
-        if persona_id == _PERSONA_DEFAULT_ID:
-            persona_id = None
-    temp_path = ""
-    temp_fd = -1
-    committed = False
     try:
-        with _PERSONA_BINDINGS_LOCK:
-            with _persona_bindings_file_lock() as root:
-                path = os.path.join(root, _PERSONA_BINDINGS_NAME)
-                signature, bindings, error = _read_persona_bindings_disk()
-                if error:
-                    _PERSONA_BINDINGS_CACHE = (signature, {}, error)
-                    _persona_bindings_warn_once(signature, error)
-                    return False, "人格绑定文件损坏或版本不兼容，已拒绝覆盖"
-                updated = dict(bindings)
-                if persona_id is None:
-                    updated.pop(session_key, None)
-                else:
-                    updated[session_key] = {
-                        "persona_id": persona_id,
-                        "updated_at": _persona_updated_at(),
-                    }
-                payload = {"version": _PERSONA_BINDINGS_VERSION, "bindings": updated}
-                encoded = (
-                    json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-                ).encode("utf-8")
-                if len(encoded) > _PERSONA_BINDINGS_MAX_BYTES:
-                    return False, "人格绑定文件更新后超过 1 MiB，已拒绝写入"
-                temp_fd, temp_path = tempfile.mkstemp(
-                    prefix=".session_bindings-", suffix=".tmp", dir=root
-                )
-                with os.fdopen(temp_fd, "wb") as f:
-                    temp_fd = -1
-                    f.write(encoded)
-                    f.flush()
-                    os.fsync(f.fileno())
-                os.replace(temp_path, path)
-                committed = True
-                temp_path = ""
-                try:
-                    if hasattr(os, "O_DIRECTORY"):
-                        dir_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
-                        try:
-                            os.fsync(dir_fd)
-                        finally:
-                            os.close(dir_fd)
-                except OSError:
-                    pass
-                signature, actual_bindings, actual_error = _read_persona_bindings_disk()
-                if actual_error:
-                    _PERSONA_BINDINGS_CACHE = (signature, {}, actual_error)
-                    _persona_bindings_warn_once(signature, actual_error)
-                    return False, f"绑定已经写入，但重新读取失败：{actual_error}"
-                _PERSONA_BINDINGS_CACHE = (signature, actual_bindings, "")
-                _PERSONA_BINDINGS_WARNING_KEY = ""
-                return True, ""
+        _PERSONA_STORE.write_binding(session_key, persona_id)
+        return True, ""
+    except InvalidSessionKey as e:
+        return False, str(e)
+    except InvalidPersonaID as e:
+        return False, str(e)
+    except PersonaNotFound:
+        return False, f"人格 {persona_id} 不存在或当前不可用"
+    except BindingsCorrupt as e:
+        _persona_bindings_warn_once(str(e))
+        return False, "人格绑定文件损坏或版本不兼容，已拒绝覆盖"
+    except PersonaStoreError as e:
+        logger.exception("[wechat_golem] 写入人格绑定失败 session=%s", session_key)
+        return False, str(e)
     except Exception as e:
         logger.exception("[wechat_golem] 写入人格绑定失败 session=%s", session_key)
-        prefix = "绑定可能已经写入，但后续处理失败" if committed else "写入人格绑定失败"
-        return False, f"{prefix}：{e}"
-    finally:
-        if temp_fd >= 0:
-            try:
-                os.close(temp_fd)
-            except OSError:
-                pass
-        if temp_path:
-            try:
-                os.remove(temp_path)
-            except OSError:
-                pass
+        return False, f"写入人格绑定失败：{e}"
 
 
 def _list_available_personas() -> List[str]:
-    try:
-        root, _ = _checked_persona_root()
-        candidates = list(Path(root).iterdir())
-    except OSError:
-        return []
-    out: List[str] = []
-    for path in candidates:
-        if path.suffix != ".md" or not _is_valid_persona_id(path.stem):
-            continue
-        if _load_persona(path.stem):
-            out.append(path.stem)
-    return sorted(set(out))
+    return _PERSONA_STORE.list_persona_ids()
 
 
 def _resolve_persona_state(session_key: str) -> Dict[str, Any]:
-    session_key = str(session_key or "").strip()
-    bindings, bindings_error = _load_persona_bindings()
-    item = bindings.get(session_key) if _is_stable_persona_session_key(session_key) else None
-    configured = str((item or {}).get("persona_id") or "")
-    requested = configured or _PERSONA_DEFAULT_ID
-    content = _load_persona(requested)
-    if content:
-        return {
-            "configured": configured,
-            "effective": requested,
-            "content": content,
-            "status": "ok",
-            "bindings_error": bindings_error,
-            "binding_ignored": bool(bindings_error),
-        }
-    if requested != _PERSONA_DEFAULT_ID:
-        fallback = _load_persona(_PERSONA_DEFAULT_ID)
-        if fallback:
-            return {
-                "configured": configured,
-                "effective": _PERSONA_DEFAULT_ID,
-                "content": fallback,
-                "status": "fallback_default",
-                "bindings_error": bindings_error,
-                "binding_ignored": bool(bindings_error),
-            }
-    return {
-        "configured": configured,
-        "effective": "",
-        "content": "",
-        "status": "soul_only",
-        "bindings_error": bindings_error,
-        "binding_ignored": bool(bindings_error),
-    }
+    state = _PERSONA_STORE.resolve(session_key)
+    error = str(state.get("bindings_error") or "")
+    if error:
+        _persona_bindings_warn_once(error)
+    return state
 
 
 def _resolve_active_persona(session_key: str) -> tuple:
     state = _resolve_persona_state(session_key)
-    return str(state["effective"] or _PERSONA_DEFAULT_ID), str(state["content"] or "")
+    return str(state["effective"] or "default"), str(state["content"] or "")
 
 
 def _parse_persona_command(text: str) -> tuple:

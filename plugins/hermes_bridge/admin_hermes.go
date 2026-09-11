@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,16 +9,32 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var errOpsNotConfigured = fmt.Errorf("未配置 hermes_ops_url")
 
-// hermesOpsDo 桥 → hermes_ops（Hermes 侧只读运维服务）；method 支持 GET/PUT/DELETE。
-func (p *BridgePlugin) hermesOpsDo(method, path string, query url.Values, body io.Reader, contentType string) (int, []byte, string, error) {
+const (
+	opsJSONBodyLimit = 128 << 10
+	opsReadLimit     = 32 << 20
+)
+
+func copyOpsHeader(dst, src http.Header, key string) {
+	if dst == nil || src == nil {
+		return
+	}
+	if v := strings.TrimSpace(src.Get(key)); v != "" {
+		dst.Set(key, v)
+	}
+}
+
+// hermesOpsDo 桥 → hermes_ops；method 支持 GET/POST/PUT/DELETE。
+// extraReq 仅用于转发 If-Match 等受控头；Authorization 始终用桥配置的 ops token。
+func (p *BridgePlugin) hermesOpsDo(method, path string, query url.Values, body io.Reader, contentType string, extraReq http.Header) (int, []byte, http.Header, error) {
 	cfg := p.configSnapshot()
 	base := strings.TrimSpace(cfg.HermesOpsURL)
 	if base == "" {
-		return 0, nil, "", errOpsNotConfigured
+		return 0, nil, nil, errOpsNotConfigured
 	}
 	base = strings.TrimRight(base, "/")
 	if !strings.HasPrefix(path, "/") {
@@ -25,14 +42,14 @@ func (p *BridgePlugin) hermesOpsDo(method, path string, query url.Values, body i
 	}
 	u, err := url.Parse(base + path)
 	if err != nil {
-		return 0, nil, "", err
+		return 0, nil, nil, err
 	}
 	if query != nil {
 		u.RawQuery = query.Encode()
 	}
 	req, err := http.NewRequest(method, u.String(), body)
 	if err != nil {
-		return 0, nil, "", err
+		return 0, nil, nil, err
 	}
 	if tok := strings.TrimSpace(cfg.HermesOpsToken); tok != "" {
 		req.Header.Set("Authorization", "Bearer "+tok)
@@ -40,22 +57,21 @@ func (p *BridgePlugin) hermesOpsDo(method, path string, query url.Values, body i
 	if contentType != "" && body != nil {
 		req.Header.Set("Content-Type", contentType)
 	}
+	copyOpsHeader(req.Header, extraReq, "If-Match")
 	client := p.dlClient
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, nil, "", err
+		return 0, nil, nil, err
 	}
 	defer resp.Body.Close()
-	// 桥侧中转上限 32MB：与 ops 端 16MB 限制配合，留点余量给 JSON/错误体等
-	// 之前 2MB 太小，把 8MB+ 的动图表情直接截掉，前端就拿到"file too large"
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, opsReadLimit))
 	if err != nil {
-		return resp.StatusCode, nil, resp.Header.Get("Content-Type"), err
+		return resp.StatusCode, nil, resp.Header.Clone(), err
 	}
-	return resp.StatusCode, raw, resp.Header.Get("Content-Type"), nil
+	return resp.StatusCode, raw, resp.Header.Clone(), nil
 }
 
 func (p *BridgePlugin) writeOpsError(w http.ResponseWriter, err error) bool {
@@ -74,31 +90,46 @@ func (p *BridgePlugin) writeOpsError(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-func writeOpsResponse(w http.ResponseWriter, code int, body []byte, ct string) {
+func writeOpsResponse(w http.ResponseWriter, code int, body []byte, hdr http.Header) {
+	ct := ""
+	if hdr != nil {
+		ct = hdr.Get("Content-Type")
+	}
 	if ct == "" {
 		ct = "application/json"
 	}
-	// ops 404 且像 JSON：补升级提示（二进制 404 很少见）
-	if code == http.StatusNotFound && strings.Contains(ct, "json") {
-		var ops any
-		if err := json.Unmarshal(body, &ops); err != nil {
-			ops = strings.TrimSpace(string(body))
-		}
-		writeJSON(w, code, map[string]any{
-			"error": "ops 返回 404（请确认 Hermes 侧 hermes_ops.py 已更新到含 stickers 的版本并 restart）",
-			"ops":   ops,
-			"fix":   "cp 仓库 hermes_ops.py → $HERMES_OPS_DIR（默认 ~/.hermes/ops/，不要拷到 systemd 目录）后重启 ops 服务",
-			"check": "curl …/health 应含 version≥0.3；…/stickers 与 …/stickers/<md5>/file 可用",
-		})
-		return
-	}
 	w.Header().Set("Content-Type", ct)
-	// 表情预览等：允许管理台 <img> 缓存一小会儿
+	if hdr != nil {
+		copyOpsHeader(w.Header(), hdr, "ETag")
+		copyOpsHeader(w.Header(), hdr, "Retry-After")
+	}
 	if strings.HasPrefix(ct, "image/") {
 		w.Header().Set("Cache-Control", "private, max-age=3600")
 	}
 	w.WriteHeader(code)
 	_, _ = w.Write(body)
+}
+
+func isAllowedPersonaID(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" || utf8.RuneCountInString(id) > 64 || strings.ContainsAny(id, "/\\") {
+		return false
+	}
+	return utf8.ValidString(id)
+}
+
+func isAllowedBindingID(id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" || len(id) > 512 || strings.ContainsAny(id, "/\\") {
+		return false
+	}
+	for _, r := range id {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // mapAdminHermesPath 把 /admin/hermes/... 映到 ops 路径；ok=false 表示非法。
@@ -127,7 +158,8 @@ func mapAdminHermesPath(rest string) (opsPath string, ok bool) {
 	}
 	switch rest {
 	case "/health", "/overview", "/tools/check", "/sessions", "/logs",
-		"/stickers", "/stickers/facets", "/member_profiles":
+		"/stickers", "/stickers/facets", "/member_profiles",
+		"/personas", "/persona_bindings":
 		return rest, true
 	}
 	if strings.HasPrefix(rest, "/stickers/") {
@@ -135,7 +167,6 @@ func mapAdminHermesPath(rest string) (opsPath string, ok bool) {
 		if tail == "" {
 			return "", false
 		}
-		// /stickers/<md5> 或 /stickers/<md5>/file
 		parts := strings.Split(tail, "/")
 		if len(parts) == 1 {
 			return "/stickers/" + parts[0], true
@@ -152,8 +183,38 @@ func mapAdminHermesPath(rest string) (opsPath string, ok bool) {
 		}
 		return "/member_profiles/" + tail, true
 	}
+	if strings.HasPrefix(rest, "/personas/") {
+		tail := strings.TrimPrefix(rest, "/personas/")
+		if !isAllowedPersonaID(tail) {
+			return "", false
+		}
+		return "/personas/" + url.PathEscape(tail), true
+	}
+	if strings.HasPrefix(rest, "/persona_bindings/") {
+		tail := strings.TrimPrefix(rest, "/persona_bindings/")
+		if !isAllowedBindingID(tail) {
+			return "", false
+		}
+		return "/persona_bindings/" + url.PathEscape(tail), true
+	}
 	return "", false
 }
+
+func limitJSONBody(r *http.Request) (io.Reader, error) {
+	if r.Body == nil {
+		return http.NoBody, nil
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, opsJSONBodyLimit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > opsJSONBodyLimit {
+		return nil, errBodyTooLarge
+	}
+	return bytes.NewReader(raw), nil
+}
+
+var errBodyTooLarge = fmt.Errorf("请求体超过 128 KiB")
 
 func (p *BridgePlugin) adminHermesProxy(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
@@ -161,10 +222,10 @@ func (p *BridgePlugin) adminHermesProxy(w http.ResponseWriter, r *http.Request) 
 	opsPath, ok := mapAdminHermesPath(rest)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]any{
-			"error":      "桥侧不识别该 hermes 路径（请确认已编译并重载 hermes_bridge ≥0.8）",
+			"error":      "桥侧不识别该 hermes 路径（请确认已编译并重载 hermes_bridge ≥0.17）",
 			"path":       path,
 			"rest":       rest,
-			"hint":       "允许：health|overview|tools/check|sessions|logs|stickers|stickers/<md5>[/file]|member_profiles|member_profiles/<wxid>",
+			"hint":       "允许：health|overview|tools/check|sessions|logs|stickers|stickers/<md5>[/file]|member_profiles|member_profiles/<wxid>|personas|personas/<id>|persona_bindings|persona_bindings/<id>",
 			"bridge_ver": p.GetMetadata().GetVersion(),
 		})
 		return
@@ -172,40 +233,100 @@ func (p *BridgePlugin) adminHermesProxy(w http.ResponseWriter, r *http.Request) 
 
 	switch r.Method {
 	case http.MethodGet:
-		code, body, ct, err := p.hermesOpsDo(http.MethodGet, opsPath, r.URL.Query(), nil, "")
+		code, body, hdr, err := p.hermesOpsDo(http.MethodGet, opsPath, r.URL.Query(), nil, "", nil)
 		if p.writeOpsError(w, err) {
 			return
 		}
-		writeOpsResponse(w, code, body, ct)
+		writeOpsResponse(w, code, body, hdr)
+
+	case http.MethodPost:
+		if opsPath != "/personas" {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "仅 /personas 支持 POST"})
+			return
+		}
+		limited, err := limitJSONBody(r)
+		if err != nil {
+			if err == errBodyTooLarge {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		code, body, hdr, err := p.hermesOpsDo(http.MethodPost, opsPath, nil, limited, "application/json", nil)
+		if p.writeOpsError(w, err) {
+			return
+		}
+		writeOpsResponse(w, code, body, hdr)
 
 	case http.MethodPut:
-		if !strings.HasPrefix(opsPath, "/member_profiles/") {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "仅 member_profiles/<wxid> 支持 PUT"})
+		if !strings.HasPrefix(opsPath, "/member_profiles/") && !strings.HasPrefix(opsPath, "/personas/") {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "仅 member_profiles/<wxid> 与 personas/<id> 支持 PUT"})
 			return
 		}
-		code, body, ct, err := p.hermesOpsDo(http.MethodPut, opsPath, nil, r.Body, "application/json")
+		limited, err := limitJSONBody(r)
+		if err != nil {
+			if err == errBodyTooLarge {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		code, body, hdr, err := p.hermesOpsDo(http.MethodPut, opsPath, nil, limited, "application/json", r.Header)
 		if p.writeOpsError(w, err) {
 			return
 		}
-		writeOpsResponse(w, code, body, ct)
+		writeOpsResponse(w, code, body, hdr)
 
 	case http.MethodDelete:
-		if !strings.HasPrefix(opsPath, "/member_profiles/") {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "仅 member_profiles/<wxid> 支持 DELETE"})
+		if !strings.HasPrefix(opsPath, "/member_profiles/") &&
+			!strings.HasPrefix(opsPath, "/personas/") &&
+			!strings.HasPrefix(opsPath, "/persona_bindings/") {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "仅 member_profiles/<wxid>、personas/<id>、persona_bindings/<id> 支持 DELETE"})
 			return
 		}
-		code, body, ct, err := p.hermesOpsDo(http.MethodDelete, opsPath, nil, nil, "")
+		code, body, hdr, err := p.hermesOpsDo(http.MethodDelete, opsPath, nil, nil, "", r.Header)
 		if p.writeOpsError(w, err) {
 			return
 		}
-		writeOpsResponse(w, code, body, ct)
+		writeOpsResponse(w, code, body, hdr)
 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-// adminHermesMeta 告诉 UI 是否配置了 ops，并探活 ops 版本（旧版无 stickers 会 404）。
+func healthHasCapability(health map[string]any, name string) bool {
+	raw, ok := health["capabilities"]
+	if !ok || raw == nil {
+		return false
+	}
+	switch caps := raw.(type) {
+	case map[string]any:
+		v, exists := caps[name]
+		if !exists {
+			return false
+		}
+		switch t := v.(type) {
+		case bool:
+			return t
+		case string:
+			return t == "true" || t == "1"
+		default:
+			return v != nil
+		}
+	case []any:
+		for _, item := range caps {
+			if s, ok := item.(string); ok && s == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// adminHermesMeta 告诉 UI 是否配置了 ops，并探活 ops 能力（不再用 version 字符串比较）。
 func (p *BridgePlugin) adminHermesMeta(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -228,10 +349,14 @@ func (p *BridgePlugin) adminHermesMeta(w http.ResponseWriter, r *http.Request) {
 			"/admin/hermes/stickers/facets",
 			"/admin/hermes/stickers/<md5>/file",
 			"/admin/hermes/member_profiles",
+			"/admin/hermes/personas",
+			"/admin/hermes/personas/<id>",
+			"/admin/hermes/persona_bindings",
+			"/admin/hermes/persona_bindings/<id>",
 		},
 	}
 	if u != "" {
-		code, body, _, err := p.hermesOpsDo(http.MethodGet, "/health", nil, nil, "")
+		code, body, _, err := p.hermesOpsDo(http.MethodGet, "/health", nil, nil, "", nil)
 		if err != nil {
 			out["ops_reachable"] = false
 			out["ops_error"] = err.Error()
@@ -241,14 +366,18 @@ func (p *BridgePlugin) adminHermesMeta(w http.ResponseWriter, r *http.Request) {
 			var health map[string]any
 			if json.Unmarshal(body, &health) == nil {
 				out["ops_health"] = health
-				ver, _ := health["version"].(string)
-				if ver != "" {
+				if ver, _ := health["version"].(string); ver != "" {
 					out["ops_version"] = ver
-					if ver < "0.4" {
-						out["ops_warn"] = "ops version < 0.4：缺 stickers/facets；请更新 hermes_ops.py 后重启 ops 服务"
-					}
+				}
+				if caps, ok := health["capabilities"]; ok {
+					out["ops_capabilities"] = caps
 				} else if code >= 200 && code < 300 {
-					out["ops_warn"] = "ops /health 无 version 字段：多半是旧脚本，表情/档案接口会 404"
+					out["ops_warn"] = "ops /health 未声明 capabilities：人格管理可能不可用，请更新 hermes_ops.py 后重启 ops 服务"
+				}
+				if code >= 200 && code < 300 && !healthHasCapability(health, "personas.read") {
+					if _, ok := health["capabilities"]; ok {
+						out["ops_warn"] = "ops 未开放 personas.read：管理台人格页会降级"
+					}
 				}
 			} else {
 				out["ops_body"] = string(body)

@@ -51,6 +51,7 @@
         <button type="button" data-tab="hermes" title="只读 ops 反代"><span class="nav-ico" aria-hidden="true">⬡</span>运维</button>
         <button type="button" data-tab="stickers" title="先选情绪 · 再加载 · 可试发"><span class="nav-ico" aria-hidden="true">☺</span>表情</button>
         <button type="button" data-tab="profiles" title="群友偏好 · 短词"><span class="nav-ico" aria-hidden="true">👤</span>档案</button>
+        <button type="button" data-tab="personas" title="人格内容与会话绑定"><span class="nav-ico" aria-hidden="true">◇</span>人格</button>
         <div class="nav-label">工具</div>
         <button type="button" data-tab="diagnose" title="媒体试发"><span class="nav-ico" aria-hidden="true">⚡</span>诊断</button>
       </nav>
@@ -245,6 +246,42 @@
                 </div>
               </form>
               <pre id="profile-result" class="code-block" style="margin-top:12px">—</pre>
+            </div>
+          </div>
+        </section>
+
+        <section id="panel-personas" class="panel panel-fill" data-title="人格" data-sub="Markdown 内容 · 会话绑定">
+          <div id="persona-capability" class="alerts"></div>
+          <div class="persona-layout">
+            <div class="persona-library">
+              <div class="toolbar">
+                <input id="persona-q" placeholder="搜索人格 ID…" spellcheck="false" />
+                <button type="button" id="btnPersonas" class="primary">刷新</button>
+                <button type="button" id="btnPersonaNew" class="ghost">新建</button>
+              </div>
+              <div id="persona-list" class="list"></div>
+            </div>
+            <div class="persona-detail">
+              <div class="section-head persona-detail-head">
+                <h3 id="persona-editor-title">选择人格查看详情</h3>
+                <span id="persona-dirty" class="pill warn hidden">未保存</span>
+              </div>
+              <form id="persona-form" class="form persona-form">
+                <label><span class="field-label">人格 ID <span class="field-hint">创建后不可修改</span></span>
+                  <input id="persona-id" maxlength="64" required spellcheck="false" autocomplete="off" />
+                </label>
+                <label class="persona-content-field"><span class="field-label">Markdown <span id="persona-bytes" class="field-hint">0 / 65536 字节</span></span>
+                  <textarea id="persona-content" rows="20" required spellcheck="false" placeholder="输入人格经历、世界观、性格与表达方式…"></textarea>
+                </label>
+                <div class="form-actions">
+                  <button type="submit" id="btnPersonaSave" class="primary">保存</button>
+                  <button type="button" id="btnPersonaReload" class="ghost">放弃草稿</button>
+                  <button type="button" id="btnPersonaDelete" class="ghost danger">删除</button>
+                </div>
+              </form>
+              <div class="section-head"><h3>绑定状态</h3><span id="persona-bindings-count" class="muted"></span></div>
+              <p class="muted persona-bindings-note">绑定由微信主人命令建立。管理台只可单条解除绑定；解绑后下一批消息继承 default，聊天历史和当前 run 不受影响。</p>
+              <div id="persona-bindings" class="list"></div>
             </div>
           </div>
         </section>

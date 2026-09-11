@@ -10,8 +10,9 @@
 两者**可同机也可分机**。同机时桥地址就是 `http://127.0.0.1:8643`；分机时填桥所在机器对
 Hermes 可达的地址。本文不假设任何特定网络拓扑。
 
-可选第三个部件 `hermes_ops`（Hermes 侧只读运维服务），让桥的管理台能看 gateway 状态、
-日志尾、表情库与群友档案。不装则管理台的「Hermes」页不可用，其余功能不受影响。
+可选第三个部件 `hermes_ops`（Hermes 侧运维服务），让桥的管理台能看 gateway 状态、
+日志尾、表情库、群友档案，以及人格 Markdown / 单条解绑。不装则管理台的「Hermes /
+表情 / 档案 / 人格」页不可用，其余功能不受影响。
 
 ---
 
@@ -225,6 +226,7 @@ curl -sS http://<桥地址>/health
 | 表情收藏库 | `$HERMES_HOME/wechat_stickers` | `WECHAT_GOLEM_STICKER_DIR` |
 | 群成员档案 | `$HERMES_HOME/wechat_member_profiles` | `WECHAT_GOLEM_MEMBER_PROFILE_DIR` |
 | 入站媒体缓存（24h 自动清） | `$HERMES_HOME/wechat_inbound_media` | `WECHAT_GOLEM_MEDIA_DIR` |
+| 人格库（多套 `<id>.md` + 绑定） | `$HERMES_HOME/wechat_personas` | 无覆盖变量；固定路径 |
 
 同机跑多个 profile 时保持默认即可天然隔离。想让多个 profile 共享表情库，才把
 `WECHAT_GOLEM_STICKER_DIR` 显式指到公共路径 —— 但注意跨进程写 `index.json` 无锁，
@@ -232,14 +234,16 @@ curl -sS http://<桥地址>/health
 
 ---
 
-## 四、可选：hermes_ops 只读运维服务
+## 四、可选：hermes_ops 运维服务
 
-装在 Hermes 所在机器，让桥的管理台能看 gateway 状态与日志。完整文档见
+装在 Hermes 所在机器，让桥的管理台能看 gateway 状态与日志，并轻写档案 / 人格。完整文档见
 `hermes_ops/README.md`，这里只列部署要点。
 
 ```bash
 mkdir -p ~/.hermes/ops
 cp plugins/hermes_bridge/hermes_ops/hermes_ops.py ~/.hermes/ops/
+# 人格 API 依赖同一份共享存储模块：
+cp plugins/hermes_bridge/wechat_golem/persona_store.py ~/.hermes/ops/
 
 export HERMES_PROFILE=wechat          # 派生 HERMES_HOME 默认值与 gateway 单元名
 export HERMES_OPS_TOKEN='长随机串'     # 非回环监听时必填，否则拒绝启动
@@ -299,8 +303,10 @@ systemd 并跳过服务状态检查，不会让 `/overview` 恒亮红灯。
 按需将 `<id>.md` 复制到运行时 `$HERMES_HOME/wechat_personas/`；不要把运行时生成的
 `session_bindings.json` 或 `.session_bindings.lock` 反向提交到仓库。部署时要把多套 `<id>.md` 和该
 绑定文件随整个 `wechat_personas/` 目录一起备份；文件应只允许 profile 所有者写。损坏或未知
-版本的绑定文件会让读取临时回退 `default`，并冻结微信写命令以免覆盖原配置。写入使用固定锁文件
+版本的绑定文件会让读取临时回退 `default`，并冻结微信写命令与管理台删除/解绑，以免覆盖原配置。写入使用固定锁文件
 `.session_bindings.lock` 做跨进程互斥；该文件是正常持久文件，不要手工删除或纳入临时文件清理。
+管理台人格页（桥 ≥0.17 / ops ≥0.7）只创建/编辑 Markdown 与单条解绑，不创建绑定；绑定仍由微信主人命令建立。
+`default` 不可删除，已绑定人格必须先解绑。发布顺序：先 `persona_store.py + adapter/__init__.py`，再 `persona_store.py + hermes_ops.py`，最后重编译桥/UI。
 
 **为什么必须同步**：桥承担群门闩。只改适配器一侧时，用户在群里发新词 → 桥不认识 →
 不透传、不取消 pending → 消息被门闩吞掉 → 适配器那半边根本没机会执行。表现为

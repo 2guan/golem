@@ -79,7 +79,7 @@ approval_tokens      = []       # 默认 yes/no/是/否/同意/拒绝… 共 16 
 revoke_tokens         = []      # 默认 ["撤回","撤回吧","撤回上一条"]
 revoke_window_seconds = 120     # 微信撤回时限；超窗直接拒绝并说明（0=用默认，负数=不检查）
 
-# Hermes 只读 ops（hermes_ops；管理台「Hermes」页）
+# Hermes 只读 ops（hermes_ops；管理台「Hermes / 表情 / 档案 / 人格」页）
 # hermes_ops_url   = "http://<hermes-host>:8650"   # 同机可用 127.0.0.1
 # hermes_ops_token = "与 HERMES_OPS_TOKEN 一致"
 
@@ -114,7 +114,7 @@ emoji_burst_cooldown_minutes = 5
   - **入站旁路**（`/admin/inbound/recent` + SSE stream：pushed/dropped/context_only/scheduled/cancelled）
   - **本地 session 态**（`/admin/sessions`：去抖 pending、未推缓冲、冒泡/斗图冷却；非 Hermes gateway session）
   - **诊断试发**（`POST /admin/diagnose`：image/video/voice/emoji，等价 `/hermes image|…`）
-  - **Hermes 只读**（需 `hermes_ops_url`：gateway/工具/sessions/日志；**表情库**与**群友档案**浏览；档案可轻写；源码 `hermes_ops/`，运维见其 README）
+  - **Hermes 运维**（需 `hermes_ops_url`：gateway/工具/sessions/日志；**表情库**、**群友档案**轻写、**人格** Markdown 与单条解绑；源码 `hermes_ops/`，运维见其 README）
 - 发现钩子：`GET /admin/meta`（无鉴权，无敏感字段）→ `{name,version,ui,admin_listen,auth}`，以后 Golem 总控可外链跳转
 - **UI 开发**：页面由 `embed.go` 编译期嵌入（`//go:embed ui/*`）——改 `ui/` 下源码后**必须重编译**才生效：
   `cd plugins && task build:hermes_bridge` 再重载 host（浏览器里是 exe 内嵌版，不是磁盘源码）。验证用真实 `admin_token`

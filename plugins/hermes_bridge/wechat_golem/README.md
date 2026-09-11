@@ -60,8 +60,8 @@ profile `wechat` 时 `HERMES_HOME=~/.hermes/profiles/wechat`：
 ```bash
 # ✅ 正确（唯一应保留的副本）
 mkdir -p "$HERMES_HOME/plugins/platforms/wechat_golem"
-cp plugin.yaml adapter.py "$HERMES_HOME/plugins/platforms/wechat_golem/"   # manifest 必须全小写
-# loader 要包名：__init__.py 必须与 adapter.py 同内容
+cp plugin.yaml adapter.py persona_store.py "$HERMES_HOME/plugins/platforms/wechat_golem/"   # manifest 必须全小写
+# loader 要包名：__init__.py 必须与 adapter.py 同内容；persona_store.py 是标准库 only 的运行依赖
 cp "$HERMES_HOME/plugins/platforms/wechat_golem/adapter.py" \
    "$HERMES_HOME/plugins/platforms/wechat_golem/__init__.py"
 
@@ -108,10 +108,11 @@ session key/session ID，也不 reset 或逐出 agent cache，因此切换前后
 可信人格块，并明确提示 agent：当前人格已由主人切换，应立即采用新人格，但保留既有聊天事实与历史。
 
 - 人格 ID 总长最多 64 个字符，首字符必须是 Unicode 字母或数字，其余允许 Unicode 字母、数字、下划线和连字符；因此可直接使用 `林黛玉.md` 并发送 `切换人格 林黛玉`。人格文件必须是非链接普通 UTF-8 文件。
-- 人格和绑定均按文件身份、时间与大小签名热加载，原子替换后下一批生效，无需重启 gateway；绑定写入另有跨进程文件锁，避免滚动重启期间并发覆盖。
+- 人格和绑定均按文件身份、时间与大小签名热加载，原子替换后下一批生效，无需重启 gateway；绑定写入另有跨进程文件锁，避免滚动重启期间并发覆盖。管理台删除/解绑与微信切换共用同一把锁。
 - 绑定目标缺失、为空、超过 64 KiB 或读取失败时临时回退 `default`；`default` 也不可用时只走 `SOUL.md`。
-- 损坏或版本不兼容的 `session_bindings.json` 不会被控制命令覆盖；先修复文件再切换。
+- 损坏或版本不兼容的 `session_bindings.json` 不会被控制命令或管理台删除覆盖；先修复文件再切换。
 - 人格可改变经历、世界观、性格和表达，但不能覆盖名字「火」、主人识别、审批、工具权限与安全规则。
+- 管理台可创建/编辑 Markdown 与单条解绑，不创建绑定；绑定仍由微信主人命令建立。`default` 不可删除。
 
 人工维护人格或绑定文件时，先写同目录临时文件再用 `mv` 原子替换。个人测试人格可放在
 `wechat_golem/personas/` 作为本机部署源；该目录下的 `*.md` 默认被 Git 忽略，不随代码提交。
