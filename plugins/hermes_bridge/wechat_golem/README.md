@@ -83,7 +83,23 @@ HERMES_EXEC_ASK=1
 
 持久数据目录（默认都在 profile 内，迁移/备份要一并搬；完整清单见 `plugin.yaml`）：
 `WECHAT_GOLEM_STICKER_DIR`（表情库）、`WECHAT_GOLEM_MEMBER_PROFILE_DIR`（群友档案）、
-`WECHAT_GOLEM_MEDIA_DIR`（入站媒体缓存）。
+`WECHAT_GOLEM_MEDIA_DIR`（入站媒体缓存），以及固定的 `$HERMES_HOME/wechat_personas/`
+（当前人格库；第一阶段只有 `default.md`）。
+
+### 默认人格
+
+`SOUL.md` 只保存名字「火」、微信公共行为以及身份、审批、安全等固定规则；具体人物经历、
+性格与表达方式放在 `$HERMES_HOME/wechat_personas/default.md`。适配器会在每个合并入站批次
+前注入一次可信 `wechat_golem_active_persona` 块：
+
+- 第一阶段始终选择 `default`；解析入口已经接收桥侧稳定 `session_key`，以后可在同一入口增加
+  `chatroom:<id>` / `private:<id>` 绑定。
+- `default.md` 按 `mtime + size` 热加载，原子替换文件后下一批生效，无需重启 gateway。
+- 文件缺失、为空、超过 64 KiB 或读取失败时，只记录一次告警并退回 `SOUL.md` 基线，不阻断消息。
+- 人格更新不修改 Hermes session key/session ID，不 reset、不逐出 agent cache；新人格仍能看到此前聊天历史。
+- 人格可改变经历、世界观、性格和表达，但不能覆盖名字「火」、主人识别、审批、工具权限与安全规则。
+
+更新人格文件建议先写同目录临时文件，再用 `mv` 原子替换，避免入站恰好读到半份内容。
 
 `config.yaml` 要点：
 

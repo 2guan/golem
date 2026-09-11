@@ -1,10 +1,10 @@
 name: wechat_golem
 label: WeChat (Golem bridge)
 kind: platform
-version: 1.4.0
+version: 1.5.0
 description: >
   Hermes 官方平台适配器：经 Golem hermes_bridge 的 HTTP/SSE 桥接微信。
-  支持群门闩、真 @、图片/视频/语音/表情收发、撤回、表情收藏库与群成员档案。
+  支持群门闩、真 @、图片/视频/语音/表情收发、撤回、表情收藏库、群成员档案与独立默认人格热加载。
   出站媒体对齐官方 MEDIA: 约定：一条回复里的多个标记全部发出，
   类型按「扩展名 → magic bytes」自动分流到图片/视频/语音（VIDEO: 仅作类型提示）。
   出站目标按本轮会话定位（contextvar / session 登记表 / 在途会话），
@@ -38,6 +38,7 @@ optional_env:
     prompt: "Allow all users (true/false)"
     password: false
   # ---- 持久数据目录：决定表情库/群友档案/入站媒体落在哪，迁移与备份需要一并搬 ----
+  # 人格库固定为 $HERMES_HOME/wechat_personas（当前只读 default.md），不需要环境变量。
   - name: WECHAT_GOLEM_STICKER_DIR
     description: "表情收藏库目录，默认 $HERMES_HOME/wechat_stickers；多 profile 想共享才改成公共路径"
     prompt: "Sticker library dir (blank = profile default)"
