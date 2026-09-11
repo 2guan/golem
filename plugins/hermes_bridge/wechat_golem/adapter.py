@@ -3495,11 +3495,13 @@ class WeChatGolemAdapter(BasePlatformAdapter):
             if rest.strip():
                 text_result = await self._send_text_chunks(chat_id, rest, metadata)
             media_result = await self._deliver_media_tags(chat_id, tags, metadata)
+            if text_result is not None and text_result.success:
+                # 正文已确认发送时必须保留正文句柄；媒体即便返回 unknown/fallback_sent，
+                # 也不能覆盖它，否则撤回/记账会拿到空 ID 或降级链接 ID。
+                return text_result
             if media_result is not None:
                 return media_result
             if text_result is not None:
-                # 文字已经发出去了：这里再回失败会让 Hermes 重试整条 send，把文字发第二遍。
-                # 媒体失败已记 warning，桥侧带 url 时还会降级补一条链接文本。
                 return text_result
             return SendResult(success=False, error="媒体发送失败")
 
@@ -3720,6 +3722,43 @@ class WeChatGolemAdapter(BasePlatformAdapter):
         async with aiohttp.ClientSession(timeout=timeout) as session:
             return await _read(session)
 
+    @staticmethod
+    def _media_send_result(result: Dict[str, Any], operation: str) -> SendResult:
+        """统一解释新桥投递状态；旧桥没有 delivery_state 时保持原语义。"""
+        if not result.get("success"):
+            return SendResult(
+                success=False,
+                error=str(result.get("error") or f"{operation} failed"),
+                retryable=True,
+            )
+
+        state = str(result.get("delivery_state") or "").strip()
+        message_id = result.get("message_id")
+        warning = str(result.get("warning") or "").strip()
+        if state == "fallback_sent":
+            logger.warning(
+                "[wechat_golem] %s 媒体失败，桥已降级发送链接 message_id=%s detail=%s",
+                operation,
+                message_id,
+                warning or "fallback_sent",
+            )
+        elif state == "unknown":
+            logger.warning(
+                "[wechat_golem] %s 投递状态未知，按不可重试成功处理 message_id=%s detail=%s",
+                operation,
+                message_id,
+                warning or "unknown",
+            )
+            return SendResult(success=True, message_id=message_id, retryable=False)
+        elif state == "partial":
+            logger.warning(
+                "[wechat_golem] %s 部分成功 message_id=%s detail=%s",
+                operation,
+                message_id,
+                warning or "caption 发送失败",
+            )
+        return SendResult(success=True, message_id=message_id)
+
     async def _send_image_from_url(
         self,
         chat_id: str,
@@ -3747,23 +3786,21 @@ class WeChatGolemAdapter(BasePlatformAdapter):
             "chat_id": chat_id,
             "data_b64": base64.b64encode(raw).decode("ascii"),
         }
+        if not self._url_needs_local_download(image_url):
+            body["url"] = image_url
         if caption and str(caption).strip():
             body["caption"] = str(caption).strip()
 
         result = await self._post_json("send_image", body)
-        if not result.get("success"):
-            return SendResult(
-                success=False,
-                error=str(result.get("error") or "send_image failed"),
-                retryable=True,
+        send_result = self._media_send_result(result, "send_image")
+        if send_result.success:
+            logger.info(
+                "[wechat_golem] outbound image via data_b64 chat=%s bytes=%s caption=%s",
+                chat_id,
+                len(raw),
+                bool(caption and str(caption).strip()),
             )
-        logger.info(
-            "[wechat_golem] outbound image via data_b64 chat=%s bytes=%s caption=%s",
-            chat_id,
-            len(raw),
-            bool(caption and str(caption).strip()),
-        )
-        return SendResult(success=True, message_id=result.get("message_id"))
+        return send_result
 
     async def _send_video_from_url(
         self,
@@ -3796,23 +3833,21 @@ class WeChatGolemAdapter(BasePlatformAdapter):
             "chat_id": chat_id,
             "data_b64": base64.b64encode(raw).decode("ascii"),
         }
+        if not self._url_needs_local_download(video_url):
+            body["url"] = video_url
         if caption and str(caption).strip():
             body["caption"] = str(caption).strip()
 
         result = await self._post_json("send_video", body)
-        if not result.get("success"):
-            return SendResult(
-                success=False,
-                error=str(result.get("error") or "send_video failed"),
-                retryable=True,
+        send_result = self._media_send_result(result, "send_video")
+        if send_result.success:
+            logger.info(
+                "[wechat_golem] outbound video via data_b64 chat=%s bytes=%s caption=%s",
+                chat_id,
+                len(raw),
+                bool(caption and str(caption).strip()),
             )
-        logger.info(
-            "[wechat_golem] outbound video via data_b64 chat=%s bytes=%s caption=%s",
-            chat_id,
-            len(raw),
-            bool(caption and str(caption).strip()),
-        )
-        return SendResult(success=True, message_id=result.get("message_id"))
+        return send_result
 
     async def send_image(
         self,
@@ -4004,6 +4039,11 @@ class WeChatGolemAdapter(BasePlatformAdapter):
             if not prefetched:
                 return SendResult(success=False, error="媒体内容为空")
             body["data_b64"] = base64.b64encode(prefetched).decode("ascii")
+            if (
+                (src.startswith("http://") or src.startswith("https://"))
+                and not self._url_needs_local_download(src)
+            ):
+                body["url"] = src
         # URL：公网交给桥下载；私网/本机 URL 在 VM 本地下载后用 data_b64
         # （Windows 桥经常拉不到 VM 的 192.168.x 临时服务）
         elif src.startswith("http://") or src.startswith("https://"):
@@ -4048,13 +4088,7 @@ class WeChatGolemAdapter(BasePlatformAdapter):
                 body["data_b64"] = base64.b64encode(raw).decode("ascii")
 
         result = await self._post_json(endpoint, body)
-        if not result.get("success"):
-            return SendResult(
-                success=False,
-                error=str(result.get("error") or "media send failed"),
-                retryable=True,
-            )
-        return SendResult(success=True, message_id=result.get("message_id"))
+        return self._media_send_result(result, endpoint)
 
     async def _get_json(self, path: str) -> Dict[str, Any]:
         """GET 桥查询 API（self / group_info / group_members）。"""
@@ -4132,12 +4166,19 @@ class WeChatGolemAdapter(BasePlatformAdapter):
             return body
         return {**body, "session_key": sk}
 
+    @staticmethod
+    def _post_timeout(path: str) -> "aiohttp.ClientTimeout":
+        # 视频单次 message.Send 最长 120s + 30s grace；明确失败后还可能重试一次。
+        # 客户端必须晚于桥侧完整生命周期超时，否则会重放仍在处理的整条视频请求。
+        total = 360 if str(path or "").strip("/") == "send_video" else 180
+        return aiohttp.ClientTimeout(total=total)
+
     async def _post_json(self, path: str, body: Dict[str, Any]) -> Dict[str, Any]:
         body = self._outbound_body(path, body)
         if not self._session or self._session.closed:
             if aiohttp is None:
                 return {"error": "aiohttp not installed"}
-            timeout = aiohttp.ClientTimeout(total=180)
+            timeout = self._post_timeout(path)
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 return await self._post_with_session(session, path, body)
         return await self._post_with_session(self._session, path, body)
@@ -4154,7 +4195,7 @@ class WeChatGolemAdapter(BasePlatformAdapter):
                 url,
                 json=body,
                 headers=self._auth_headers(),
-                timeout=aiohttp.ClientTimeout(total=180),
+                timeout=self._post_timeout(path),
             ) as resp:
                 return await self._read_json_resp(resp)
         except Exception as e:

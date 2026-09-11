@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -582,6 +583,18 @@ func (p *BridgePlugin) sendPlainText(receiver *contact.Contact, content string) 
 	return p.sendPlainTextKind(receiver, content, "text")
 }
 
+// sendPlainTextWithID 返回本次文本发送产生的精确消息 ID。
+func (p *BridgePlugin) sendPlainTextWithID(receiver *contact.Contact, content string) (string, error) {
+	messageID, err := p.sendPlainTextKindResult(receiver, content, "text")
+	if err != nil {
+		return "", err
+	}
+	if messageID == "0" {
+		return "", errors.New("文本已回包但无 NewId（未真正上屏）")
+	}
+	return messageID, nil
+}
+
 // sendPlainTextUntracked 桥自己的系统话术（撤回回执等）：**不**记账。
 // 否则下一次「撤回」会先把这句提示撤掉，用户看着像什么都没发生。
 func (p *BridgePlugin) sendPlainTextUntracked(receiver *contact.Contact, content string) error {
@@ -590,8 +603,13 @@ func (p *BridgePlugin) sendPlainTextUntracked(receiver *contact.Contact, content
 
 // sendPlainTextKind kind 空 = 不记账（见 recordOutbox）。
 func (p *BridgePlugin) sendPlainTextKind(receiver *contact.Contact, content, kind string) error {
+	_, err := p.sendPlainTextKindResult(receiver, content, kind)
+	return err
+}
+
+func (p *BridgePlugin) sendPlainTextKindResult(receiver *contact.Contact, content, kind string) (string, error) {
 	if p.message == nil || receiver == nil || strings.TrimSpace(receiver.GetUsername()) == "" {
-		return fmt.Errorf("消息能力未注入或接收方无效")
+		return "", fmt.Errorf("消息能力未注入或接收方无效")
 	}
 	msg := &message.Message{
 		Type:     message.TypeText,
@@ -600,10 +618,14 @@ func (p *BridgePlugin) sendPlainTextKind(receiver *contact.Contact, content, kin
 		Data:     &message.Message_Text{Text: &message.TextData{Content: content}},
 	}
 	resp, err := p.message.Send(msg)
-	if err == nil {
-		p.recordOutbox(receiver.GetUsername(), kind, content, resp.GetNewId())
+	if err != nil {
+		return "", err
 	}
-	return err
+	if resp == nil {
+		return "", errors.New("文本发送回包为空")
+	}
+	p.recordOutbox(receiver.GetUsername(), kind, content, resp.GetNewId())
+	return fmt.Sprintf("%d", resp.GetNewId()), nil
 }
 
 func (p *BridgePlugin) statusText(chatID string) string {
