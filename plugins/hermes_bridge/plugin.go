@@ -17,8 +17,8 @@ func (p *BridgePlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "hermes_bridge",
 		Author:      "ovo",
-		Version:     "0.15.0",
-		Description: "Hermes 官方平台适配器桥：SSE/出站/群门闩；出站撤回（捷径词 + /revoke）；出站会话归属校验（session_key）；管理台；可迁移配置（外部程序路径、捷径词表）。",
+		Version:     "0.16.0",
+		Description: "Hermes 官方平台适配器桥：SSE/出站/群门闩；主人多人格控制捷径；出站撤回（捷径词 + /revoke）；出站会话归属校验（session_key）；管理台；可迁移配置（外部程序路径、捷径词表）。",
 		Priority:    1<<31 - 2,
 		Next:        false,
 		AlwaysRun:   false,
@@ -123,6 +123,45 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 	}
 	if target != nil && target.Name != "" {
 		chatName = target.Name
+	}
+
+	// 人格控制捷径：仅主人，固定语法立即透传给适配器；不清 pending、不进滚动上下文。
+	if in.SpeakerIsOwner && p.isPersonaCommandText(in.Text) {
+		if p.hub.subscriberCount() == 0 {
+			ct := "private"
+			if in.IsChatroom {
+				ct = "group"
+			}
+			slog.Info("[hermes_bridge] 无 SSE 订阅者，丢弃人格控制捷径", "session", in.SessionKey)
+			p.trace(adminTrace{
+				Kind: "dropped", Reason: "no_subscribers_persona",
+				SessionKey: in.SessionKey, ChatID: in.Receiver.GetUsername(), ChatName: chatName,
+				ChatType: ct, UserName: in.SpeakerName, UserID: in.SpeakerID,
+				Text: singleLine(in.Text), Subscribers: 0,
+			})
+			return false, nil
+		}
+		ev := bridgeEvent{
+			SessionKey:    in.SessionKey,
+			ChatID:        in.Receiver.GetUsername(),
+			ChatName:      chatName,
+			ChatType:      "private",
+			UserID:        in.SpeakerID,
+			UserName:      in.SpeakerName,
+			IsOwner:       true,
+			Text:          strings.TrimSpace(in.Text),
+			MsgID:         in.MsgID,
+			Addressing:    "self",
+			TriggerReason: "persona_command",
+			Timestamp:     timeNowUnix(),
+		}
+		if in.IsChatroom {
+			ev.ChatType = "group"
+		}
+		p.pushImmediate(ev, "", 0)
+		slog.Info("[hermes_bridge] 人格控制捷径已立即推送",
+			"session", in.SessionKey, "chat_type", ev.ChatType, "text", singleLine(in.Text))
+		return false, nil
 	}
 
 	// 审批捷径：立刻透传，不进群去抖（否则卡 yes/no）。

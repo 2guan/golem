@@ -213,6 +213,21 @@ func (p *BridgePlugin) isMemberArchiveText(text string) bool {
 	return matchToken(text, p.archiveTokens())
 }
 
+// isPersonaCommandText 只识别固定命令外形，供主人消息旁路群门闩。
+// 人格 ID 的严格合法性和文件可用性由 Hermes 适配器校验并回执。
+func (p *BridgePlugin) isPersonaCommandText(text string) bool {
+	raw := strings.TrimSpace(text)
+	switch raw {
+	case "人格列表", "当前人格", "恢复默认人格", "人格 列表", "人格 当前", "人格 默认":
+		return true
+	}
+	parts := strings.Fields(raw)
+	if len(parts) == 2 && parts[0] == "切换人格" {
+		return true
+	}
+	return len(parts) == 3 && parts[0] == "人格" && parts[1] == "切换"
+}
+
 // isRevokeText 撤回捷径：主人整句「撤回/撤回吧/撤回上一条」。
 // 与上面几个不同，这条**不透传**给适配器——撤回要抢微信 2 分钟窗口，绕开
 // SSE→LLM→工具一整圈最稳，桥自己撤完就结束（见 outbox.go）。

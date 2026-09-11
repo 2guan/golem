@@ -84,22 +84,37 @@ HERMES_EXEC_ASK=1
 持久数据目录（默认都在 profile 内，迁移/备份要一并搬；完整清单见 `plugin.yaml`）：
 `WECHAT_GOLEM_STICKER_DIR`（表情库）、`WECHAT_GOLEM_MEMBER_PROFILE_DIR`（群友档案）、
 `WECHAT_GOLEM_MEDIA_DIR`（入站媒体缓存），以及固定的 `$HERMES_HOME/wechat_personas/`
-（当前人格库；第一阶段只有 `default.md`）。
+（当前人格库；含多套 `<id>.md` 与 `session_bindings.json`）。
 
-### 默认人格
+### 微信会话多人格
 
 `SOUL.md` 只保存名字「火」、微信公共行为以及身份、审批、安全等固定规则；具体人物经历、
-性格与表达方式放在 `$HERMES_HOME/wechat_personas/default.md`。适配器会在每个合并入站批次
-前注入一次可信 `wechat_golem_active_persona` 块：
+性格与表达方式放在 `$HERMES_HOME/wechat_personas/<id>.md`。`default.md` 是无显式绑定时的
+基线人格，适配器会在每个合并入站批次前注入一次可信 `wechat_golem_active_persona` 块。
 
-- 第一阶段始终选择 `default`；解析入口已经接收桥侧稳定 `session_key`，以后可在同一入口增加
-  `chatroom:<id>` / `private:<id>` 绑定。
-- `default.md` 按 `mtime + size` 热加载，原子替换文件后下一批生效，无需重启 gateway。
-- 文件缺失、为空、超过 64 KiB 或读取失败时，只记录一次告警并退回 `SOUL.md` 基线，不阻断消息。
-- 人格更新不修改 Hermes session key/session ID，不 reset、不逐出 agent cache；新人格仍能看到此前聊天历史。
+会话绑定写入同目录 `session_bindings.json`，键只使用桥提供的稳定微信键：群聊
+`chatroom:<id>`、私聊 `private:<wxid>`。主人可在微信发送以下整句，无需 `/`，群聊也无需 @：
+
+| 命令 | 行为 |
+|---|---|
+| `人格列表` | 列出可用人格及当前会话状态 |
+| `当前人格` | 查看显式绑定、实际生效人格与回退状态 |
+| `切换人格 <id>` | 给当前微信会话绑定人格，从下一批消息生效 |
+| `恢复默认人格` | 删除当前会话绑定，重新继承 `default` |
+
+也支持 `人格 列表`、`人格 当前`、`人格 切换 <id>`、`人格 默认`。命令只接受桥硬校验的主人，
+直接写绑定并经桥回执，不进入 agent 历史。切换不清 pending、不打断当前 run、不修改 Hermes
+session key/session ID，也不 reset 或逐出 agent cache，因此切换前后的聊天历史连续。下一批消息会注入新的
+可信人格块，并明确提示 agent：当前人格已由主人切换，应立即采用新人格，但保留既有聊天事实与历史。
+
+- 人格 ID 首字符必须是字母或数字，其余只允许字母、数字、下划线和连字符，总长最多 64 字符；人格文件必须是非链接普通 UTF-8 文件。
+- 人格和绑定均按文件身份、时间与大小签名热加载，原子替换后下一批生效，无需重启 gateway；绑定写入另有跨进程文件锁，避免滚动重启期间并发覆盖。
+- 绑定目标缺失、为空、超过 64 KiB 或读取失败时临时回退 `default`；`default` 也不可用时只走 `SOUL.md`。
+- 损坏或版本不兼容的 `session_bindings.json` 不会被控制命令覆盖；先修复文件再切换。
 - 人格可改变经历、世界观、性格和表达，但不能覆盖名字「火」、主人识别、审批、工具权限与安全规则。
 
-更新人格文件建议先写同目录临时文件，再用 `mv` 原子替换，避免入站恰好读到半份内容。
+人工维护人格或绑定文件时，先写同目录临时文件再用 `mv` 原子替换。迁移和备份 profile 时要连同
+整个 `wechat_personas/` 目录一起处理。
 
 `config.yaml` 要点：
 
