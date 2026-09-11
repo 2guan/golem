@@ -253,7 +253,7 @@ def _hermes_home() -> str:
 _PERSONA_DEFAULT_ID = "default"
 _PERSONA_MAX_BYTES = 64 * 1024
 _PERSONA_BINDINGS_MAX_BYTES = 1024 * 1024
-_PERSONA_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_PERSONA_ID_RE = re.compile(r"^[^\W_][\w-]{0,63}$", re.UNICODE)
 _PERSONA_SESSION_KEY_RE = re.compile(r"^(?:chatroom|private):[^\x00\r\n]{1,256}$")
 _PERSONA_BINDINGS_VERSION = 1
 _PERSONA_BINDINGS_NAME = "session_bindings.json"
@@ -642,7 +642,7 @@ def _write_persona_binding(session_key: str, persona_id: Optional[str]) -> tuple
     if persona_id is not None:
         persona_id = str(persona_id or "").strip()
         if not _is_valid_persona_id(persona_id):
-            return False, "人格 ID 首字符必须是字母或数字，其余只允许字母、数字、下划线和连字符，总长最多 64 字符"
+            return False, "人格 ID 首字符必须是 Unicode 字母或数字，其余只允许 Unicode 字母、数字、下划线和连字符，总长最多 64 字符"
         if not _load_persona(persona_id):
             return False, f"人格 {persona_id} 不存在或当前不可用"
         if persona_id == _PERSONA_DEFAULT_ID:
