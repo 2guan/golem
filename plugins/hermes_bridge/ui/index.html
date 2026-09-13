@@ -300,7 +300,11 @@
               <input id="diag-chat" list="diag-chats" required spellcheck="false" placeholder="wxid 或 xxx@chatroom" />
               <datalist id="diag-chats"></datalist>
             </label>
-            <label><span class="field-label">url <span class="field-hint">媒体链接</span></span><input id="diag-url" placeholder="https://…" spellcheck="false" /></label>
+            <label><span class="field-label">url <span class="field-hint">媒体链接，与本地文件二选一</span></span><input id="diag-url" placeholder="https://…" spellcheck="false" /></label>
+            <label class="diag-file-field"><span class="field-label">本地文件 <span class="field-hint">选了文件则忽略 url</span></span>
+              <input id="diag-file" type="file" accept="image/*" />
+              <span id="diag-file-name" class="muted">未选择文件</span>
+            </label>
             <label><span class="field-label">emoji md5 <span class="field-hint">表情指纹</span></span><input id="diag-md5" spellcheck="false" placeholder="32 位 hex" /></label>
             <div class="form-actions">
               <button type="submit" class="primary">试发</button>

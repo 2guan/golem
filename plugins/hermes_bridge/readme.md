@@ -113,7 +113,7 @@ emoji_burst_cooldown_minutes = 5
   - 门闩热更新（即时生效并 `saveConfig`）
   - **入站旁路**（`/admin/inbound/recent` + SSE stream：pushed/dropped/context_only/scheduled/cancelled）
   - **本地 session 态**（`/admin/sessions`：去抖 pending、未推缓冲、冒泡/斗图冷却；非 Hermes gateway session）
-  - **诊断试发**（`POST /admin/diagnose`：image/video/voice/emoji，等价 `/hermes image|…`）
+  - **诊断试发**（`POST /admin/diagnose`：image/video/voice/emoji；JSON 给 url/md5，或 `multipart/form-data` 上传本地文件，等价 `/hermes image|…`）
   - **Hermes 运维**（需 `hermes_ops_url`：gateway/工具/sessions/日志；**表情库**、**群友档案**轻写、**人格** Markdown 与单条解绑；源码 `hermes_ops/`，运维见其 README）
 - 发现钩子：`GET /admin/meta`（无鉴权，无敏感字段）→ `{name,version,ui,admin_listen,auth}`，以后 Golem 总控可外链跳转
 - **UI 开发**：页面由 `embed.go` 编译期嵌入（`//go:embed ui/*`）——改 `ui/` 下源码后**必须重编译**才生效：

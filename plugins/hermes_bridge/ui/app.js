@@ -1856,23 +1856,79 @@
     } catch (_) {}
   }
 
+  const DIAG_LIMITS = {
+    image: 45 * 1024 * 1024,
+    video: 45 * 1024 * 1024,
+    voice: 10 * 1024 * 1024,
+    emoji: 45 * 1024 * 1024,
+  };
+  const DIAG_ACCEPT = {
+    image: "image/*",
+    video: "video/*",
+    voice: "audio/*,.amr,.silk,.mp3,.wav,.m4a,.ogg",
+    emoji: "image/gif,image/png,image/webp,image/*",
+  };
+
+  function formatBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function syncDiagFileUI() {
+    const kind = $("diag-kind").value;
+    const input = $("diag-file");
+    const nameEl = $("diag-file-name");
+    if (input) input.accept = DIAG_ACCEPT[kind] || "*/*";
+    const file = input && input.files && input.files[0];
+    if (!nameEl) return;
+    if (!file) {
+      nameEl.textContent = "未选择文件";
+      return;
+    }
+    nameEl.textContent = file.name + " · " + formatBytes(file.size);
+  }
+
+  $("diag-kind").addEventListener("change", syncDiagFileUI);
+  $("diag-file").addEventListener("change", syncDiagFileUI);
+
   $("diag-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     $("diag-result").textContent = "…";
+    const kind = $("diag-kind").value;
+    const chat = $("diag-chat").value.trim();
+    const url = $("diag-url").value.trim();
+    const md5 = $("diag-md5").value.trim();
+    const file = $("diag-file").files && $("diag-file").files[0];
+    if (file) {
+      const limit = DIAG_LIMITS[kind] || DIAG_LIMITS.image;
+      if (file.size > limit) {
+        const msg = kind + " 文件超过 " + (limit >> 20) + "MB 上限";
+        $("diag-result").textContent = msg;
+        toastErr(msg);
+        return;
+      }
+    }
     try {
+      const headers = {
+        Authorization: "Bearer " + getToken(),
+        "X-Admin-Token": getToken(),
+      };
+      let body;
+      if (file) {
+        const fd = new FormData();
+        fd.append("kind", kind);
+        fd.append("chat_id", chat);
+        fd.append("file", file, file.name);
+        body = fd;
+      } else {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify({ kind, chat_id: chat, url, md5 });
+      }
       const res = await fetch("/admin/diagnose", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + getToken(),
-          "X-Admin-Token": getToken(),
-        },
-        body: JSON.stringify({
-          kind: $("diag-kind").value,
-          chat_id: $("diag-chat").value.trim(),
-          url: $("diag-url").value.trim(),
-          md5: $("diag-md5").value.trim(),
-        }),
+        headers,
+        body,
       });
       const data = await res.json();
       $("diag-result").textContent = JSON.stringify(data, null, 2);
