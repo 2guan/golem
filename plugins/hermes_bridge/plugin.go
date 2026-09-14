@@ -17,7 +17,7 @@ func (p *BridgePlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "hermes_bridge",
 		Author:      "ovo",
-		Version:     "0.17.0",
+		Version:     "0.19.0",
 		Description: "Hermes 官方平台适配器桥：SSE/出站/群门闩；主人多人格控制捷径；管理台人格管理（ops 代理）；出站撤回（捷径词 + /revoke）；出站会话归属校验（session_key）；可迁移配置。",
 		Priority:    1<<31 - 2,
 		Next:        false,
@@ -26,7 +26,8 @@ func (p *BridgePlugin) GetMetadata() *plugin.Metadata {
 }
 
 // GetSubscriptions 订阅文本、引用及媒体入站消息。
-// 图片/表情/语音/视频等媒体消息会转成 [图片]/[表情] 等文本标记再推送。
+// 图片/表情/语音/视频/文件转成占位文本再推送。
+// 文件：host 把 appmsg type=6 编成 TypeUnknown，须同时订 Application 与 Unknown。
 // 聊天记录（type=19）已可入站；业务暂不订阅，避免刷 SSE。
 func (p *BridgePlugin) GetSubscriptions() []string {
 	return []string{
@@ -36,6 +37,8 @@ func (p *BridgePlugin) GetSubscriptions() []string {
 		message.TypeEmoji.Topic,
 		message.TypeVoice.Topic,
 		message.TypeVideo.Topic,
+		message.TypeApplication.Topic,
+		message.TypeUnknown.Topic,
 	}
 }
 

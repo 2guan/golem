@@ -235,6 +235,9 @@ func (p *BridgePlugin) handleFetchMedia(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("X-Media-Kind", kind)
+	if _, name := p.inboundKindAndName(ref); name != "" {
+		w.Header().Set("X-Media-Name", name)
+	}
 	_, _ = w.Write(data)
 }
 

@@ -460,8 +460,20 @@ def _inbound_media_dir() -> str:
     return os.path.join(tempfile.gettempdir(), "wechat_golem_media")
 
 
-def _sniff_media_ext(raw: bytes) -> tuple:
-    """按魔数猜入站媒体类型，返回 (中文名, 扩展名)。"""
+def _sniff_media_ext(raw: bytes, *, kind: str = "", name: str = "") -> tuple:
+    """按魔数猜入站媒体类型，返回 (中文名, 扩展名)。
+
+    kind/name 来自桥响应头 X-Media-Kind / X-Media-Name；文件优先用原名后缀。
+    """
+    name = (name or "").strip()
+    kind = (kind or "").strip().lower()
+    if kind == "file":
+        ext = ""
+        if "." in name:
+            ext = "." + name.rsplit(".", 1)[-1].lower()
+            if not ext[1:].isalnum() or len(ext) > 12:
+                ext = ""
+        return "文件", ext or ".bin"
     if raw[:3] == b"\xff\xd8\xff":
         return "图片", ".jpg"
     if raw[:8] == b"\x89PNG\r\n\x1a\n":
@@ -474,6 +486,14 @@ def _sniff_media_ext(raw: bytes) -> tuple:
         return "语音", ".silk"
     if raw[:6] == b"#!AMR\n":
         return "语音", ".amr"
+    if raw[4:8] == b"ftyp":
+        return "视频", ".mp4"
+    if raw[:4] == b"\x1aE\xdf\xa3":
+        return "视频", ".webm"
+    if raw[:5] == b"%PDF-":
+        return "文件", ".pdf"
+    if raw[:2] == b"PK":
+        return "文件", ".zip"
     return "媒体", ".bin"
 
 
@@ -2651,7 +2671,7 @@ class WeChatGolemAdapter(BasePlatformAdapter):
         """普通消息加轻量场景前缀；body 可以是单句或已合并的多句。
 
         带上 chat_id 行，方便模型填 tool 参数，也便于 user_task 文本兜底扫描。
-        media_ref：入站媒体引用，agent 需要看图时才调 wechat_fetch_media 取回（懒下载）。
+        media_ref：入站媒体引用（图/表情/视频/语音/文件），agent 需要时才调 wechat_fetch_media 取回（懒下载）。
         media_data_b64：老桥兼容路径，直接落盘给路径。
         emoji_md5/emoji_desc：入站微信表情的指纹与描述（桥 v0.3.1+），供表情收藏判重。
         msg_id：本条微信 new_id；出站 wechat_send_quote 的 svrid（引用对方本条用这个，不是嵌套 quote_svrid）。
@@ -2719,8 +2739,8 @@ class WeChatGolemAdapter(BasePlatformAdapter):
             )
         if media_ref:
             prefix_lines.append(
-                f"本条含入站图片/表情 media_ref={media_ref}：仅在需要查看或处理该图时"
-                f"调用 wechat_fetch_media 工具（返回本地文件路径），不需要看图就忽略"
+                f"本条含入站媒体 media_ref={media_ref}：仅在需要查看/收听/打开文件时"
+                f"调用 wechat_fetch_media 工具（返回本地文件路径），不需要就忽略"
             )
         elif media_data_b64:
             # 老桥兼容：落盘给路径，不给 base64 预览——预览截断会让 agent 以为图传丢了
@@ -4754,14 +4774,14 @@ class WeChatGolemAdapter(BasePlatformAdapter):
             return {"success": False, "error": "aiohttp not installed"}
         url = urljoin(self.base_url + "/", "media")
         try:
-            timeout = aiohttp.ClientTimeout(total=60)
+            timeout = aiohttp.ClientTimeout(total=90)
             if self._session and not self._session.closed:
-                raw, status, err_text = await self._get_media_bytes(
+                raw, status, err_text, hdr_kind, hdr_name = await self._get_media_bytes(
                     self._session, url, ref, timeout
                 )
             else:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
-                    raw, status, err_text = await self._get_media_bytes(
+                    raw, status, err_text, hdr_kind, hdr_name = await self._get_media_bytes(
                         session, url, ref, timeout
                     )
         except Exception as e:
@@ -4771,7 +4791,7 @@ class WeChatGolemAdapter(BasePlatformAdapter):
                 "success": False,
                 "error": f"桥 /media {status}: {(err_text or 'empty')[:200]}",
             }
-        kind, ext = _sniff_media_ext(raw)
+        kind, ext = _sniff_media_ext(raw, kind=hdr_kind, name=hdr_name)
         path = os.path.join(media_dir, f"{ref}{ext}")
         try:
             with open(path, "wb") as f:
@@ -5087,8 +5107,10 @@ class WeChatGolemAdapter(BasePlatformAdapter):
             timeout=timeout,
         ) as resp:
             if resp.status != 200:
-                return b"", resp.status, await resp.text()
-            return await resp.read(), 200, ""
+                return b"", resp.status, await resp.text(), "", ""
+            kind = str(resp.headers.get("X-Media-Kind") or "")
+            name = str(resp.headers.get("X-Media-Name") or "")
+            return await resp.read(), 200, "", kind, name
 
 
 # ---------------------------------------------------------------------------
@@ -7286,11 +7308,11 @@ def _register_wechat_query_tools(ctx) -> None:
         ),
         (
             "wechat_fetch_media",
-            "按 media_ref 取回入站微信图片/表情到 VM 本地文件，返回 path。"
-            "入站消息标注 media_ref=media_N 时，仅在用户要求查看/描述/处理该图时才调用"
-            "（懒下载，桥此刻才去微信 CDN 取）；拿到 path 后用图像/文件工具查看。"
+            "按 media_ref 取回入站微信图片/表情/视频/语音/文件到 VM 本地文件，返回 path。"
+            "入站消息标注 media_ref=media_N 时，仅在用户要求查看/收听/打开文件/描述/处理时才调用"
+            "（懒下载，桥此刻才去微信 CDN 取）；拿到 path 后用图像/文件/播放工具查看。"
             "同一 ref 重复调用直接复用缓存文件。"
-            "要把这张图（原样或处理后）发回聊天：不必再调发送工具，最终回复正文写 "
+            "要把取回的媒体（原样或处理后）发回聊天：不必再调发送工具，最终回复正文写 "
             "MEDIA:<返回的 path> 即可。"
             "收藏表情：入站标注 emoji_md5 的是微信表情，fetch 后把文件复制进表情收藏库"
             "（以 md5 命名判重），重发走 wechat_send_emoji path+raw。",

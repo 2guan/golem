@@ -79,7 +79,7 @@ type bridgeEvent struct {
 	Addressing       string `json:"addressing,omitempty"`
 	TriggerReason    string `json:"trigger_reason,omitempty"`
 	Timestamp        int64  `json:"timestamp"`
-	// 入站媒体引用；适配器提示 agent 需要时用 wechat_fetch_media 按 ref 取回本地文件
+	// 入站媒体引用；适配器提示 agent 需要时用 wechat_fetch_media 按 ref 取回本地文件（图/表情/视频/语音/文件）
 	MediaRef string `json:"media_ref,omitempty"`
 	// 表情消息：md5 供收藏判重与去重，desc 是微信侧表情描述（发送者可控，不可信）
 	EmojiMd5  string `json:"emoji_md5,omitempty"`
@@ -105,8 +105,9 @@ func (p *BridgePlugin) buildIncoming(msg *message.Message, self *contact.SelfInf
 	var emojiMd5, emojiDesc string
 	var isEmoji bool
 	if msg != nil && msg.GetType() != nil {
-		if tag, ok := mediaTags[msg.GetType().GetCode()]; ok {
-			isEmoji = msg.GetType().GetCode() == message.TypeEmoji.Code
+		code := msg.GetType().GetCode()
+		if tag, ok := mediaTags[code]; ok {
+			isEmoji = code == message.TypeEmoji.Code
 			if emoji := msg.GetEmoji(); emoji != nil {
 				// host 的 buildEmoji 把 Content 填成裸 md5 串，对模型无可读价值：
 				// 文本统一为 [表情]，md5/desc 结构化放独立字段（供收藏判重/打标签）。
@@ -116,11 +117,28 @@ func (p *BridgePlugin) buildIncoming(msg *message.Message, self *contact.SelfInf
 			} else if strings.TrimSpace(text) == "" || strings.Contains(text, "[0 x 0]") {
 				text = tag
 			}
-			// 只登记引用不下载；agent 对话中需要看图时才经 /media 按需取（见 mediaref.go）
 			mediaRef = p.registerInboundMedia(msg)
-			if mediaRef == "" && strings.Contains(text, "[图片]") {
-				// 连引用都建不起来（XML 没解出 CDN 参数且无 ImgBuf），标一下方便 agent 知道
-				text = "[图片(无法获取)]"
+			if mediaRef == "" {
+				switch {
+				case strings.Contains(text, "[图片]"):
+					text = "[图片(无法获取)]"
+				case strings.Contains(text, "[视频]"):
+					text = "[视频(无法获取)]"
+				case strings.Contains(text, "[语音]"):
+					text = "[语音(无法获取)]"
+				}
+			}
+		} else if file := parseFileAttachInfo(rawContentValue(msg.GetRaw())); file.AttachID != "" {
+			// host 把 appmsg type=6 编成 TypeUnknown（49%2d 空格填充），不能信类型码。
+			mediaRef = p.registerInboundMedia(msg)
+			if mediaRef == "" {
+				text = "[文件(无法获取)]"
+			} else {
+				name := file.FileName
+				if name == "" {
+					name = "附件"
+				}
+				text = "[文件] " + name
 			}
 		}
 	}
@@ -255,6 +273,148 @@ func parseImageCDNInfo(rawXML string) imageCDNInfo {
 		ThumbURL:    strings.TrimSpace(attrs.ThumbURL),
 		ThumbAesKey: strings.TrimSpace(attrs.ThumbAesKey),
 	}
+}
+
+// videoCDNInfo 入站视频 XML 里的 CDN 下载参数。
+type videoCDNInfo struct {
+	AesKey   string // aeskey
+	VideoURL string // cdnvideourl：视频 file_id
+}
+
+// parseVideoCDNInfo 解析原始视频 XML（Raw 的 content.value）。
+// 标签名两种都见过：标准微信 <videomsg>，偶发 <video>。
+func parseVideoCDNInfo(rawXML string) videoCDNInfo {
+	rawXML = strings.TrimSpace(rawXML)
+	if rawXML == "" {
+		return videoCDNInfo{}
+	}
+	type videoAttrs struct {
+		AesKey   string `xml:"aeskey,attr"`
+		VideoURL string `xml:"cdnvideourl,attr"`
+	}
+	var temp struct {
+		XMLName xml.Name   `xml:"msg"`
+		Video   videoAttrs `xml:"videomsg"`
+		Video2  videoAttrs `xml:"video"`
+	}
+	if err := xml.Unmarshal([]byte(rawXML), &temp); err != nil {
+		slog.Warn("[hermes_bridge] 解析入站视频 XML 失败", "err", err)
+		return videoCDNInfo{}
+	}
+	attrs := temp.Video
+	if attrs.AesKey == "" && attrs.VideoURL == "" {
+		attrs = temp.Video2
+	}
+	return videoCDNInfo{
+		AesKey:   strings.TrimSpace(attrs.AesKey),
+		VideoURL: strings.TrimSpace(attrs.VideoURL),
+	}
+}
+
+// voiceCDNInfo 入站语音 XML 里的下载参数。
+type voiceCDNInfo struct {
+	AesKey   string // aeskey（core 语音接口不用）
+	VoiceURL string // voiceurl（core 语音接口不用）
+	Size     uint32 // length → core length
+	Duration uint32 // voicelength（毫秒）
+	BufID    uint32 // bufid → core buffer_id；短语音常 0
+}
+
+// parseVoiceCDNInfo 解析原始语音 XML（Raw 的 content.value）。
+func parseVoiceCDNInfo(rawXML string) voiceCDNInfo {
+	rawXML = strings.TrimSpace(rawXML)
+	if rawXML == "" {
+		return voiceCDNInfo{}
+	}
+	type voiceAttrs struct {
+		AesKey   string `xml:"aeskey,attr"`
+		VoiceURL string `xml:"voiceurl,attr"`
+		Size     uint32 `xml:"length,attr"`
+		Duration uint32 `xml:"voicelength,attr"`
+		BufID    uint32 `xml:"bufid,attr"`
+	}
+	var temp struct {
+		XMLName xml.Name   `xml:"msg"`
+		Voice   voiceAttrs `xml:"voicemsg"`
+		Voice2  voiceAttrs `xml:"voice"`
+	}
+	if err := xml.Unmarshal([]byte(rawXML), &temp); err != nil {
+		slog.Warn("[hermes_bridge] 解析入站语音 XML 失败", "err", err)
+		return voiceCDNInfo{}
+	}
+	attrs := temp.Voice
+	if attrs.AesKey == "" && attrs.VoiceURL == "" && attrs.Size == 0 {
+		attrs = temp.Voice2
+	}
+	return voiceCDNInfo{
+		AesKey:   strings.TrimSpace(attrs.AesKey),
+		VoiceURL: strings.TrimSpace(attrs.VoiceURL),
+		Size:     attrs.Size,
+		Duration: attrs.Duration,
+		BufID:    attrs.BufID,
+	}
+}
+
+// fileAttachInfo 入站文件（appmsg type=6）XML 里的下载参数。
+type fileAttachInfo struct {
+	AppID    string
+	AttachID string
+	Size     uint32
+	FileExt  string
+	FileName string
+}
+
+// parseFileAttachInfo 只认 appmsg type=6。host 的 49%2d 会把 6 编成 TypeUnknown。
+func parseFileAttachInfo(rawXML string) fileAttachInfo {
+	rawXML = strings.TrimSpace(rawXML)
+	if rawXML == "" {
+		return fileAttachInfo{}
+	}
+	var temp struct {
+		XMLName xml.Name `xml:"msg"`
+		AppMsg  struct {
+			AppID  string `xml:"appid,attr"`
+			Title  string `xml:"title"`
+			Type   uint32 `xml:"type"`
+			Attach struct {
+				TotalLen uint32 `xml:"totallen"`
+				AttachID string `xml:"attachid"`
+				FileExt  string `xml:"fileext"`
+			} `xml:"appattach"`
+		} `xml:"appmsg"`
+	}
+	if err := xml.Unmarshal([]byte(rawXML), &temp); err != nil {
+		return fileAttachInfo{}
+	}
+	if temp.AppMsg.Type != 6 {
+		return fileAttachInfo{}
+	}
+	name := strings.TrimSpace(temp.AppMsg.Title)
+	ext := strings.TrimSpace(temp.AppMsg.Attach.FileExt)
+	if name == "" && ext != "" {
+		name = "file." + ext
+	}
+	return fileAttachInfo{
+		AppID:    strings.TrimSpace(temp.AppMsg.AppID),
+		AttachID: strings.TrimSpace(temp.AppMsg.Attach.AttachID),
+		Size:     temp.AppMsg.Attach.TotalLen,
+		FileExt:  ext,
+		FileName: name,
+	}
+}
+
+// rawNewID 从 Raw JSON 取 new_id（factory 漏填 Message.Id 时兜底）。
+func rawNewID(raw string) uint64 {
+	if raw == "" {
+		return 0
+	}
+	var data struct {
+		NewID uint64 `json:"new_id"`
+	}
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return 0
+	}
+	return data.NewID
 }
 
 // rawImageBuffer 取 sync NewMessage 自带的 ImgBuf 缩略图。

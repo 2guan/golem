@@ -25,6 +25,10 @@ Hermes 可达的地址。本文不假设任何特定网络拓扑。
   装好后要么进 `PATH`，要么在配置里写 `ffmpeg_path` / `ffprobe_path`。
 - 可选 `silk_v3_encoder`：语音优先编码成微信原生的腾讯变体 SILK（音质与兼容性更好）。
   没有则自动降级 ffmpeg AMR。需自行编译，路径填 `silk_encoder_path`。
+- **入站语音/文件（临时）**：桥 `coreapi.go` 打本机 core HTTP `http://127.0.0.1:8080`
+  （`/api/message/download/voice|file`）。host lib 的 DownloadVoice/File 仍是 stub。
+  因此 Golem 所在机器上 core 的 8080 要开着，且与桥是**同一份微信登录**。
+  host 把这两条接进 lib 之后，只换 `coreapi.go`。
 
 **Hermes 侧（适配器）**
 

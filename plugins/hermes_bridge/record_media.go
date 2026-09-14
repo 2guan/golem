@@ -108,6 +108,9 @@ func (p *BridgePlugin) resolveImageFromMediaRef(chatID, ref, name, avatar, timeS
 		}
 		return recordItem{}, fmt.Errorf("表情 media_ref 无可用 url")
 	}
+	if kind == "video" || kind == "voice" || kind == "file" {
+		return recordItem{}, fmt.Errorf("聊天记录卡片只支持嵌图片，不支持 %s media_ref", kind)
+	}
 
 	var midURL, midKey, bigURL, bigKey, thumbURL, thumbKey string
 	for _, c := range cands {
