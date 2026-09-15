@@ -17,8 +17,8 @@ func (p *BridgePlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "hermes_bridge",
 		Author:      "ovo",
-		Version:     "0.19.0",
-		Description: "Hermes 官方平台适配器桥：SSE/出站/群门闩；主人多人格控制捷径；管理台人格管理（ops 代理）；出站撤回（捷径词 + /revoke）；出站会话归属校验（session_key）；可迁移配置。",
+		Version:     "0.20.0",
+		Description: "Hermes 官方平台适配器桥：SSE/出站/群门闩（可按群覆盖）；主人多人格控制捷径；管理台人格管理（ops 代理）；出站撤回（捷径词 + /revoke）；出站会话归属校验（session_key）；可迁移配置。",
 		Priority:    1<<31 - 2,
 		Next:        false,
 		AlwaysRun:   false,
@@ -429,12 +429,13 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 	}
 
 	// ---- 群聊 ----
-	cfg := p.configSnapshot()
+	gate := p.gateFor(in.Receiver.GetUsername())
 	// 即使本条不触发也先标记收件人：它可能作为上下文随另一条触发消息推送。
 	classifyGroupAddressing(&in)
 
-	// 回滚开关：group_push_all=true 时与改前门闩前行为一致，每条立即推
-	if cfg.GroupPushAll {
+	// 回滚开关：group_push_all=true 时与改前门闩前行为一致，每条立即推。
+	// 未写覆盖的群沿用全局；某群单独 true/false 只影响该群。
+	if gate.GroupPushAll {
 		if p.hub.subscriberCount() == 0 {
 			p.trace(adminTrace{
 				Kind: "dropped", Reason: "no_subscribers_group_push_all",
@@ -470,12 +471,12 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 
 	// 先判本条的触发原因。trigger_names 命中会得到
 	// addressing=self + trigger_reason=trigger_name。
-	triggered := p.classifyGroupTrigger(&in)
+	triggered := p.classifyGroupTrigger(&in, gate)
 
 	// 斗图门闩：每条表情都计数（含已因别的原因触发的）；
 	// 本条未触发且连发达标时以 emoji_burst 送出一批。
 	if in.IsEmoji {
-		if burst := p.recordEmojiAndCheckBurst(in.SessionKey); burst && !triggered {
+		if burst := p.recordEmojiAndCheckBurst(in.SessionKey, gate); burst && !triggered {
 			in.TriggerReason = "emoji_burst"
 			triggered = true
 		}
@@ -501,7 +502,7 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 		MediaRef:      in.MediaRef,
 		EmojiMd5:      in.EmojiMd5,
 		EmojiDesc:     in.EmojiDesc,
-	})
+	}, gate.MaxContextMessages)
 
 	// 未触发：只记不推
 	if !triggered {
@@ -529,14 +530,15 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 
 	// 触发：续命/合并去抖窗口，到期只推未 Flushed 增量
 	p.scheduleGroupFlush(in.SessionKey, flushMeta{
-		ChatID:        in.Receiver.GetUsername(),
-		ChatName:      chatName,
-		ChatType:      "group",
-		UserID:        in.SpeakerID,
-		UserName:      in.SpeakerName,
-		IsOwner:       in.SpeakerIsOwner,
-		Addressing:    in.Addressing,
-		TriggerReason: in.TriggerReason,
+		DebounceSeconds: gate.DebounceSeconds,
+		ChatID:          in.Receiver.GetUsername(),
+		ChatName:        chatName,
+		ChatType:        "group",
+		UserID:          in.SpeakerID,
+		UserName:        in.SpeakerName,
+		IsOwner:         in.SpeakerIsOwner,
+		Addressing:      in.Addressing,
+		TriggerReason:   in.TriggerReason,
 	})
 	p.trace(adminTrace{
 		Kind: "scheduled", Reason: "debounce",
@@ -712,7 +714,7 @@ func (p *BridgePlugin) statusText(chatID string) string {
 		fmt.Sprintf("本地会话 %d | pending 去抖 %d | 未推送缓冲 %d 条", sessN, pendN, bufN),
 		"主人: " + ownerOK,
 		// 白名单只报数量：status 常在群里回，避免摊开 wxid / @chatroom
-		fmt.Sprintf("白名单: %d 个", len(cfg.Targets)),
+		fmt.Sprintf("白名单: %d 个（群门闩覆盖 %d）", len(cfg.Targets), countGateOverrides(cfg.Targets)),
 		adminLine,
 	}
 	return strings.Join(lines, "\n")

@@ -309,7 +309,10 @@
     if (tab !== "inbound") stopTraceLive();
     if (tab === "overview") loadOverview();
     if (tab === "targets") loadTargets();
-    if (tab === "gate") loadGate();
+    if (tab === "gate") {
+      loadGate();
+      loadGateTargets();
+    }
     if (tab === "inbound") loadTraceRecent();
     if (tab === "sessions") loadSessions();
     if (tab === "hermes") loadHermes();
@@ -370,6 +373,7 @@
       "overview-capacity",
       [
         card("白名单数量", o.targets),
+        card("群门闩覆盖", o.gate_overrides || 0),
         card("活跃会话", o.local_sessions),
         card(
           "等待合并",
@@ -536,6 +540,161 @@
   }
 
   // ---- gate ----
+  let selectedTargetID = "";
+  let selectedTarget = null;
+  let gateTargetList = [];
+
+  function optNum(el) {
+    const raw = (el.value || "").trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function fillTargetGate(t) {
+    const form = $("target-gate-form");
+    const status = $("tg-status");
+    const clearBtn = $("btnGateClear");
+    if (!form || !status) return;
+    if (!t || t.kind !== "group") {
+      form.classList.add("hidden");
+      selectedTargetID = "";
+      selectedTarget = null;
+      if (clearBtn) clearBtn.classList.add("hidden");
+      status.textContent = t
+        ? "私聊没有群门闩。"
+        : "未选择群。空白字段沿用上面的全局。";
+      return;
+    }
+    selectedTargetID = t.id;
+    selectedTarget = t;
+    form.classList.remove("hidden");
+    if (clearBtn) clearBtn.classList.toggle("hidden", !t.has_override);
+    status.textContent = t.has_override
+      ? "本群有覆盖 · " + (t.name || t.id)
+      : "本群沿用全局 · " + (t.name || t.id);
+    $("tg-triggers").value = t.trigger_names ? t.trigger_names.join(", ") : "";
+    $("tg-pushall-set").checked = t.group_push_all != null;
+    $("tg-pushall").checked = !!t.group_push_all;
+    $("tg-debounce").value = t.debounce_seconds != null ? t.debounce_seconds : "";
+    $("tg-bubble").value = t.bubble_rate != null ? t.bubble_rate : "";
+    $("tg-bubble-cd").value =
+      t.bubble_cooldown_minutes != null ? t.bubble_cooldown_minutes : "";
+    $("tg-ctx").value =
+      t.max_context_messages != null ? t.max_context_messages : "";
+    $("tg-burst").value = t.emoji_burst_count != null ? t.emoji_burst_count : "";
+    $("tg-burst-win").value =
+      t.emoji_burst_window_seconds != null ? t.emoji_burst_window_seconds : "";
+    $("tg-burst-cd").value =
+      t.emoji_burst_cooldown_minutes != null
+        ? t.emoji_burst_cooldown_minutes
+        : "";
+  }
+
+  async function loadGateTargets() {
+    const sel = $("tg-chat");
+    if (!sel) return;
+    try {
+      const data = await api("/admin/targets");
+      gateTargetList = (data.targets || []).filter((t) => t.kind === "group");
+      const keep = selectedTargetID;
+      sel.innerHTML =
+        `<option value="">选择群…</option>` +
+        gateTargetList
+          .map((t) => {
+            const mark = t.has_override ? " · 已覆盖" : "";
+            return `<option value="${esc(t.id)}">${esc(t.name || t.id)}${mark}</option>`;
+          })
+          .join("");
+      if (keep && gateTargetList.some((t) => t.id === keep)) {
+        sel.value = keep;
+        fillTargetGate(gateTargetList.find((t) => t.id === keep));
+      } else {
+        sel.value = "";
+        fillTargetGate(null);
+      }
+    } catch (e) {
+      toastErr(e.message);
+    }
+  }
+
+  async function saveTargetGate() {
+    if (!selectedTargetID) return toastErr("先选一个群");
+    const namesRaw = $("tg-triggers").value.trim();
+    const body = {
+      debounce_seconds: optNum($("tg-debounce")),
+      bubble_rate: optNum($("tg-bubble")),
+      bubble_cooldown_minutes: optNum($("tg-bubble-cd")),
+      max_context_messages: optNum($("tg-ctx")),
+      emoji_burst_count: optNum($("tg-burst")),
+      emoji_burst_window_seconds: optNum($("tg-burst-win")),
+      emoji_burst_cooldown_minutes: optNum($("tg-burst-cd")),
+      group_push_all: $("tg-pushall-set").checked
+        ? $("tg-pushall").checked
+        : null,
+    };
+    if (namesRaw) {
+      body.trigger_names = namesRaw
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else if (selectedTarget && selectedTarget.trigger_names != null) {
+      body.trigger_names = [];
+    }
+    try {
+      await api("/admin/targets/" + encodeURIComponent(selectedTargetID), {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      toastOk("本群覆盖已保存");
+      loadGate();
+      loadGateTargets();
+    } catch (e) {
+      toastErr(e.message);
+    }
+  }
+
+  if ($("tg-chat")) {
+    $("tg-chat").addEventListener("change", () => {
+      const id = $("tg-chat").value;
+      fillTargetGate(gateTargetList.find((t) => t.id === id) || null);
+    });
+  }
+  if ($("target-gate-form")) {
+    $("target-gate-form").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      saveTargetGate();
+    });
+  }
+  if ($("btnGateClear")) {
+    $("btnGateClear").addEventListener("click", async () => {
+      if (!selectedTargetID) return toastErr("先选一个群");
+      if (!(await askConfirm("清除本群门闩覆盖，改回全局？", "清除覆盖")))
+        return;
+      try {
+        await api("/admin/targets/" + encodeURIComponent(selectedTargetID), {
+          method: "PATCH",
+          body: JSON.stringify({
+            trigger_names: null,
+            bubble_rate: null,
+            bubble_cooldown_minutes: null,
+            debounce_seconds: null,
+            max_context_messages: null,
+            group_push_all: null,
+            emoji_burst_count: null,
+            emoji_burst_window_seconds: null,
+            emoji_burst_cooldown_minutes: null,
+          }),
+        });
+        toastOk("已清除覆盖");
+        loadGate();
+        loadGateTargets();
+      } catch (e) {
+        toastErr(e.message);
+      }
+    });
+  }
+
   async function loadGate() {
     $("gate-preview").textContent = "加载门闩配置…";
     $("btnGateSave").disabled = true;

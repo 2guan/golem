@@ -100,6 +100,12 @@ emoji_burst_count = 3          # 窗口内第 N 条表情推一批，0=关
 emoji_burst_window_seconds = 30
 emoji_burst_cooldown_minutes = 5
 
+# 白名单群可单独覆盖以上字段（省略=沿用全局）。例：某群不要点名词：
+# [[hermes_bridge.config.targets]]
+# id = "xxx@chatroom"
+# name = "老友群"
+# trigger_names = []
+
 # ---- 控制捷径词表：留空=用内置默认集 ----
 # 改这些必须同步改 Hermes 侧同名 env，否则桥的群门闩会先把消息吞掉，
 # 适配器根本收不到（症状：改了 env「完全没反应」）。适配器连上时会比对并告警。

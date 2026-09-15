@@ -180,6 +180,7 @@ func (p *BridgePlugin) adminOverview(w http.ResponseWriter, r *http.Request) {
 		"admin_listen":          cfg.AdminListen,
 		"subscribers":           subs,
 		"targets":               len(cfg.Targets),
+		"gate_overrides":        countGateOverrides(cfg.Targets),
 		"token_masked":          maskToken(cfg.Token),
 		"admin_token_set":       strings.TrimSpace(cfg.AdminToken) != "",
 		"send_rate_per_min":     cfg.SendRatePerMin,
@@ -230,6 +231,9 @@ func gateSummary(cfg Config) string {
 	if len(cfg.TriggerNames) > 0 {
 		parts = append(parts, "点名: "+strings.Join(cfg.TriggerNames, "/"))
 	}
+	if n := countGateOverrides(cfg.Targets); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d 个群有覆盖", n))
+	}
 	return strings.Join(parts, " · ")
 }
 
@@ -245,6 +249,35 @@ type adminTarget struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Kind string `json:"kind"` // group / private
+
+	TriggerNames          *[]string `json:"trigger_names,omitempty"`
+	BubbleRate            *float64  `json:"bubble_rate,omitempty"`
+	BubbleCooldownMin     *int      `json:"bubble_cooldown_minutes,omitempty"`
+	DebounceSeconds       *int      `json:"debounce_seconds,omitempty"`
+	MaxContextMessages    *int      `json:"max_context_messages,omitempty"`
+	GroupPushAll          *bool     `json:"group_push_all,omitempty"`
+	EmojiBurstCount       *int      `json:"emoji_burst_count,omitempty"`
+	EmojiBurstWindowSec   *int      `json:"emoji_burst_window_seconds,omitempty"`
+	EmojiBurstCooldownMin *int      `json:"emoji_burst_cooldown_minutes,omitempty"`
+	HasOverride           bool      `json:"has_override"`
+}
+
+func adminTargetFrom(t Target) adminTarget {
+	return adminTarget{
+		ID:                    t.ID,
+		Name:                  t.Name,
+		Kind:                  targetKind(t.ID),
+		TriggerNames:          t.TriggerNames,
+		BubbleRate:            t.BubbleRate,
+		BubbleCooldownMin:     t.BubbleCooldownMin,
+		DebounceSeconds:       t.DebounceSeconds,
+		MaxContextMessages:    t.MaxContextMessages,
+		GroupPushAll:          t.GroupPushAll,
+		EmojiBurstCount:       t.EmojiBurstCount,
+		EmojiBurstWindowSec:   t.EmojiBurstWindowSec,
+		EmojiBurstCooldownMin: t.EmojiBurstCooldownMin,
+		HasOverride:           t.hasGateOverride(),
+	}
 }
 
 func targetKind(id string) string {
@@ -258,11 +291,7 @@ func (p *BridgePlugin) listAdminTargets() []adminTarget {
 	cfg := p.configSnapshot()
 	out := make([]adminTarget, 0, len(cfg.Targets))
 	for _, t := range cfg.Targets {
-		out = append(out, adminTarget{
-			ID:   t.ID,
-			Name: t.Name,
-			Kind: targetKind(t.ID),
-		})
+		out = append(out, adminTargetFrom(t))
 	}
 	return out
 }
@@ -307,7 +336,7 @@ func (p *BridgePlugin) adminAddTarget(w http.ResponseWriter, r *http.Request) {
 	slog.Info("[hermes_bridge] 管理台加入白名单", "id", id, "name", name)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":     true,
-		"target": adminTarget{ID: id, Name: name, Kind: targetKind(id)},
+		"target": adminTargetFrom(Target{ID: id, Name: name}),
 	})
 }
 
@@ -375,37 +404,149 @@ func (p *BridgePlugin) adminDeleteTarget(w http.ResponseWriter, id string) {
 }
 
 func (p *BridgePlugin) adminPatchTarget(w http.ResponseWriter, r *http.Request, id string) {
-	var req struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json: " + err.Error()})
 		return
 	}
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name 必填"})
+	if len(raw) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "空 body"})
 		return
 	}
+
 	p.cfgMu.Lock()
-	found := false
+	idx := -1
 	for i := range p.Config.Targets {
 		if p.Config.Targets[i].ID == id {
-			p.Config.Targets[i].Name = name
-			found = true
+			idx = i
 			break
 		}
 	}
-	p.cfgMu.Unlock()
-	if !found {
+	if idx < 0 {
+		p.cfgMu.Unlock()
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "不在白名单", "id": id})
 		return
 	}
+	t := &p.Config.Targets[idx]
+	if v, ok := raw["name"]; ok {
+		var name string
+		if err := json.Unmarshal(v, &name); err != nil {
+			p.cfgMu.Unlock()
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name: " + err.Error()})
+			return
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			p.cfgMu.Unlock()
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name 不能为空"})
+			return
+		}
+		t.Name = name
+	}
+	if err := applyTargetGatePatch(t, raw); err != nil {
+		p.cfgMu.Unlock()
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	out := *t
+	p.cfgMu.Unlock()
 	p.saveConfig()
+	slog.Info("[hermes_bridge] 管理台更新白名单项", "id", id, "name", out.Name, "override", out.hasGateOverride())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":     true,
-		"target": adminTarget{ID: id, Name: name, Kind: targetKind(id)},
+		"target": adminTargetFrom(out),
 	})
+}
+
+func applyTargetGatePatch(t *Target, raw map[string]json.RawMessage) error {
+	setFloatPtr := func(key string, dst **float64) error {
+		v, ok := raw[key]
+		if !ok {
+			return nil
+		}
+		if string(v) == "null" {
+			*dst = nil
+			return nil
+		}
+		var f float64
+		if err := json.Unmarshal(v, &f); err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		if key == "bubble_rate" {
+			f = clampBubble(f)
+		}
+		*dst = &f
+		return nil
+	}
+	setIntPtr := func(key string, dst **int) error {
+		v, ok := raw[key]
+		if !ok {
+			return nil
+		}
+		if string(v) == "null" {
+			*dst = nil
+			return nil
+		}
+		var n int
+		if err := json.Unmarshal(v, &n); err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		*dst = &n
+		return nil
+	}
+	setBoolPtr := func(key string, dst **bool) error {
+		v, ok := raw[key]
+		if !ok {
+			return nil
+		}
+		if string(v) == "null" {
+			*dst = nil
+			return nil
+		}
+		var b bool
+		if err := json.Unmarshal(v, &b); err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		*dst = &b
+		return nil
+	}
+	if err := setFloatPtr("bubble_rate", &t.BubbleRate); err != nil {
+		return err
+	}
+	if err := setIntPtr("bubble_cooldown_minutes", &t.BubbleCooldownMin); err != nil {
+		return err
+	}
+	if err := setIntPtr("debounce_seconds", &t.DebounceSeconds); err != nil {
+		return err
+	}
+	if err := setIntPtr("max_context_messages", &t.MaxContextMessages); err != nil {
+		return err
+	}
+	if err := setBoolPtr("group_push_all", &t.GroupPushAll); err != nil {
+		return err
+	}
+	if err := setIntPtr("emoji_burst_count", &t.EmojiBurstCount); err != nil {
+		return err
+	}
+	if err := setIntPtr("emoji_burst_window_seconds", &t.EmojiBurstWindowSec); err != nil {
+		return err
+	}
+	if err := setIntPtr("emoji_burst_cooldown_minutes", &t.EmojiBurstCooldownMin); err != nil {
+		return err
+	}
+	if v, ok := raw["trigger_names"]; ok {
+		if string(v) == "null" {
+			t.TriggerNames = nil
+		} else {
+			var names []string
+			if err := json.Unmarshal(v, &names); err != nil {
+				return fmt.Errorf("trigger_names: %w", err)
+			}
+			clean := cleanTriggerNames(names)
+			t.TriggerNames = &clean
+		}
+	}
+	return nil
 }
 
 // ---- config (gate fields) ----
@@ -582,20 +723,7 @@ func (p *BridgePlugin) adminPatchConfig(w http.ResponseWriter, r *http.Request) 
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "trigger_names: " + err.Error()})
 			return
 		}
-		clean := make([]string, 0, len(names))
-		seen := map[string]struct{}{}
-		for _, n := range names {
-			n = strings.TrimSpace(n)
-			if n == "" {
-				continue
-			}
-			if _, dup := seen[n]; dup {
-				continue
-			}
-			seen[n] = struct{}{}
-			clean = append(clean, n)
-		}
-		p.Config.TriggerNames = clean
+		p.Config.TriggerNames = cleanTriggerNames(names)
 	}
 	// 捷径词表：传空数组 = 回退内置默认集。改这些必须同步适配器侧 env，
 	// 否则桥的群门闩会先把消息吞掉（见 session.go 顶部注释）。
