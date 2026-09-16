@@ -2,6 +2,7 @@
 //
 // 入站：订阅微信消息，经会话白名单后：
 //   - 群聊：本地滚动上下文；仅 @/引用 bot / trigger_names / bubble 才去抖后一批 SSE；
+//     白名单群可单独覆盖这些门闩字段（省略 = 沿用全局，不改默认行为）；
 //   - 私聊：逐条立即 SSE（连发排队见适配器项 2）；
 //   - 审批捷径 yes/no、打断捷径「打断」始终立即透传（打断另作废该会话未推去抖批）。
 //
@@ -27,10 +28,21 @@ import (
 	"github.com/sbgayhub/golem/sdk/plugin"
 )
 
-// Target 会话路由白名单项
+// Target 会话路由白名单项。
+// 群聊可另写门闩覆盖；指针字段 nil = 沿用全局，显式空值只作用于本会话。
 type Target struct {
 	ID   string `toml:"id" comment:"会话 wxid（群聊形如 xxx@chatroom，私聊为对方 wxid）"`
 	Name string `toml:"name" comment:"会话名称，便于识别"`
+
+	TriggerNames          *[]string `toml:"trigger_names,omitempty" comment:"覆盖全局点名词；[]=本群不吃点名词"`
+	BubbleRate            *float64  `toml:"bubble_rate,omitempty" comment:"覆盖全局冒泡概率"`
+	BubbleCooldownMin     *int      `toml:"bubble_cooldown_minutes,omitempty" comment:"覆盖全局冒泡冷却分钟"`
+	DebounceSeconds       *int      `toml:"debounce_seconds,omitempty" comment:"覆盖全局去抖秒数"`
+	MaxContextMessages    *int      `toml:"max_context_messages,omitempty" comment:"覆盖全局上下文条数"`
+	GroupPushAll          *bool     `toml:"group_push_all,omitempty" comment:"覆盖全局：true=本群每条都推"`
+	EmojiBurstCount       *int      `toml:"emoji_burst_count,omitempty" comment:"覆盖全局斗图阈值；0=本群关斗图"`
+	EmojiBurstWindowSec   *int      `toml:"emoji_burst_window_seconds,omitempty" comment:"覆盖全局斗图窗口秒数"`
+	EmojiBurstCooldownMin *int      `toml:"emoji_burst_cooldown_minutes,omitempty" comment:"覆盖全局斗图冷却分钟"`
 }
 
 // Config 插件配置。默认值只在 main 的 Config{...} 里给。

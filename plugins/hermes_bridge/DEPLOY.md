@@ -10,8 +10,9 @@
 两者**可同机也可分机**。同机时桥地址就是 `http://127.0.0.1:8643`；分机时填桥所在机器对
 Hermes 可达的地址。本文不假设任何特定网络拓扑。
 
-可选第三个部件 `hermes_ops`（Hermes 侧只读运维服务），让桥的管理台能看 gateway 状态、
-日志尾、表情库与群友档案。不装则管理台的「Hermes」页不可用，其余功能不受影响。
+可选第三个部件 `hermes_ops`（Hermes 侧运维服务），让桥的管理台能看 gateway 状态、
+日志尾、表情库、群友档案，以及人格 Markdown / 单条解绑。不装则管理台的「Hermes /
+表情 / 档案 / 人格」页不可用，其余功能不受影响。
 
 ---
 
@@ -24,6 +25,10 @@ Hermes 可达的地址。本文不假设任何特定网络拓扑。
   装好后要么进 `PATH`，要么在配置里写 `ffmpeg_path` / `ffprobe_path`。
 - 可选 `silk_v3_encoder`：语音优先编码成微信原生的腾讯变体 SILK（音质与兼容性更好）。
   没有则自动降级 ffmpeg AMR。需自行编译，路径填 `silk_encoder_path`。
+- **入站语音/文件（临时）**：桥 `coreapi.go` 打本机 core HTTP `http://127.0.0.1:8080`
+  （`/api/message/download/voice|file`）。host lib 的 DownloadVoice/File 仍是 stub。
+  因此 Golem 所在机器上 core 的 8080 要开着，且与桥是**同一份微信登录**。
+  host 把这两条接进 lib 之后，只换 `coreapi.go`。
 
 **Hermes 侧（适配器）**
 
@@ -95,6 +100,12 @@ emoji_burst_count = 3          # 窗口内第 N 条表情推一批，0=关
 emoji_burst_window_seconds = 30
 emoji_burst_cooldown_minutes = 5
 
+# 白名单群可单独覆盖以上字段（省略=沿用全局）。例：某群不要点名词：
+# [[hermes_bridge.config.targets]]
+# id = "xxx@chatroom"
+# name = "老友群"
+# trigger_names = []
+
 # ---- 控制捷径词表：留空=用内置默认集 ----
 # 改这些必须同步改 Hermes 侧同名 env，否则桥的群门闩会先把消息吞掉，
 # 适配器根本收不到（症状：改了 env「完全没反应」）。适配器连上时会比对并告警。
@@ -123,7 +134,7 @@ approval_tokens      = []      # 默认 yes/no/是/否/同意/拒绝… 共 16 �
 | `/hermes status` | token 掩码、SSE 订阅数、门闩、捷径词、媒体工具、白名单数量、管理台地址 |
 | `/hermes enable [名称]` | 当前会话入白名单 |
 | `/hermes disable` | 移出白名单 |
-| `/hermes image\|video\|emoji <url>` | 诊断：下载并直发 |
+| `/hermes image\|video\|voice\|emoji <url>` | 诊断：下载并直发 |
 | `/hermes help` | 帮助 |
 
 > Host 会吞掉**所有未注册**的 `/` 命令并回「未知命令」，不会转发给 Hermes。
@@ -225,6 +236,7 @@ curl -sS http://<桥地址>/health
 | 表情收藏库 | `$HERMES_HOME/wechat_stickers` | `WECHAT_GOLEM_STICKER_DIR` |
 | 群成员档案 | `$HERMES_HOME/wechat_member_profiles` | `WECHAT_GOLEM_MEMBER_PROFILE_DIR` |
 | 入站媒体缓存（24h 自动清） | `$HERMES_HOME/wechat_inbound_media` | `WECHAT_GOLEM_MEDIA_DIR` |
+| 人格库（多套 `<id>.md` + 绑定） | `$HERMES_HOME/wechat_personas` | 无覆盖变量；固定路径 |
 
 同机跑多个 profile 时保持默认即可天然隔离。想让多个 profile 共享表情库，才把
 `WECHAT_GOLEM_STICKER_DIR` 显式指到公共路径 —— 但注意跨进程写 `index.json` 无锁，
@@ -232,14 +244,16 @@ curl -sS http://<桥地址>/health
 
 ---
 
-## 四、可选：hermes_ops 只读运维服务
+## 四、可选：hermes_ops 运维服务
 
-装在 Hermes 所在机器，让桥的管理台能看 gateway 状态与日志。完整文档见
+装在 Hermes 所在机器，让桥的管理台能看 gateway 状态与日志，并轻写档案 / 人格。完整文档见
 `hermes_ops/README.md`，这里只列部署要点。
 
 ```bash
 mkdir -p ~/.hermes/ops
 cp plugins/hermes_bridge/hermes_ops/hermes_ops.py ~/.hermes/ops/
+# 人格 API 依赖同一份共享存储模块：
+cp plugins/hermes_bridge/wechat_golem/persona_store.py ~/.hermes/ops/
 
 export HERMES_PROFILE=wechat          # 派生 HERMES_HOME 默认值与 gateway 单元名
 export HERMES_OPS_TOKEN='长随机串'     # 非回环监听时必填，否则拒绝启动
@@ -281,8 +295,9 @@ systemd 并跳过服务状态检查，不会让 `/overview` 恒亮红灯。
 | 新开会话 | `新开会话` / `新对话` | 仅主人 | 就地重置该会话的 gateway 历史；长期记忆与群友档案不受影响 |
 | 归档群友 | `归档` / `归档群友` / `记群友` / … | 仅主人 | 把当前上下文里的群友喜好写入档案 |
 | 审批 | `yes` / `no` / `是` / `否` / `同意` / … | 仅主人 | 回应审批卡（**不要**加 `/`） |
+| 人格 | `人格列表` / `当前人格` / `切换人格 <id>` / `恢复默认人格` | 仅主人 | 管理当前稳定微信会话的人格绑定；不清 pending、不 reset session、不打断当前 run |
 
-这四组词**桥和适配器各存一份**，必须同步：
+前四组可配置词**桥和适配器各存一份**，必须同步：
 
 | 语义 | 桥（`config.toml`） | 适配器（`.env`） |
 |---|---|---|
@@ -290,6 +305,18 @@ systemd 并跳过服务状态检查，不会让 `/overview` 恒亮红灯。
 | 新开会话 | `session_reset_tokens` | `WECHAT_GOLEM_RESET_TOKENS` |
 | 归档 | `archive_tokens` | `WECHAT_GOLEM_ARCHIVE_TOKENS` |
 | 审批 | `approval_tokens` | （无 env，仅桥侧可配） |
+
+人格命令是 v0.16+ 固定语法，不走配置词表：桥只负责让主人群聊命令绕过门闩并标记
+`trigger_reason=persona_command`，适配器只执行带该可信标记的主人命令，防止新旧组件混跑时误拦普通消息。
+适配器再校验人格 ID（支持中文等 Unicode 字母和数字，如 `林黛玉.md` / `切换人格 林黛玉`）并写 `$HERMES_HOME/wechat_personas/session_bindings.json`。个人测试人格可在本地放到
+`plugins/hermes_bridge/wechat_golem/personas/` 作为部署源；其中 `*.md` 默认被 Git 忽略，不随代码提交。
+按需将 `<id>.md` 复制到运行时 `$HERMES_HOME/wechat_personas/`；不要把运行时生成的
+`session_bindings.json` 或 `.session_bindings.lock` 反向提交到仓库。部署时要把多套 `<id>.md` 和该
+绑定文件随整个 `wechat_personas/` 目录一起备份；文件应只允许 profile 所有者写。损坏或未知
+版本的绑定文件会让读取临时回退 `default`，并冻结微信写命令与管理台删除/解绑，以免覆盖原配置。写入使用固定锁文件
+`.session_bindings.lock` 做跨进程互斥；该文件是正常持久文件，不要手工删除或纳入临时文件清理。
+管理台人格页（桥 ≥0.17 / ops ≥0.7）只创建/编辑 Markdown 与单条解绑，不创建绑定；绑定仍由微信主人命令建立。
+`default` 不可删除，已绑定人格必须先解绑。发布顺序：先 `persona_store.py + adapter/__init__.py`，再 `persona_store.py + hermes_ops.py`，最后重编译桥/UI。
 
 **为什么必须同步**：桥承担群门闩。只改适配器一侧时，用户在群里发新词 → 桥不认识 →
 不透传、不取消 pending → 消息被门闩吞掉 → 适配器那半边根本没机会执行。表现为

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -16,8 +17,8 @@ func (p *BridgePlugin) GetMetadata() *plugin.Metadata {
 	return &plugin.Metadata{
 		Name:        "hermes_bridge",
 		Author:      "ovo",
-		Version:     "0.15.0",
-		Description: "Hermes 官方平台适配器桥：SSE/出站/群门闩；出站撤回（捷径词 + /revoke）；出站会话归属校验（session_key）；管理台；可迁移配置（外部程序路径、捷径词表）。",
+		Version:     "0.20.0",
+		Description: "Hermes 官方平台适配器桥：SSE/出站/群门闩（可按群覆盖）；主人多人格控制捷径；管理台人格管理（ops 代理）；出站撤回（捷径词 + /revoke）；出站会话归属校验（session_key）；可迁移配置。",
 		Priority:    1<<31 - 2,
 		Next:        false,
 		AlwaysRun:   false,
@@ -25,7 +26,8 @@ func (p *BridgePlugin) GetMetadata() *plugin.Metadata {
 }
 
 // GetSubscriptions 订阅文本、引用及媒体入站消息。
-// 图片/表情/语音/视频等媒体消息会转成 [图片]/[表情] 等文本标记再推送。
+// 图片/表情/语音/视频/文件转成占位文本再推送。
+// 文件：host 把 appmsg type=6 编成 TypeUnknown，须同时订 Application 与 Unknown。
 // 聊天记录（type=19）已可入站；业务暂不订阅，避免刷 SSE。
 func (p *BridgePlugin) GetSubscriptions() []string {
 	return []string{
@@ -35,6 +37,8 @@ func (p *BridgePlugin) GetSubscriptions() []string {
 		message.TypeEmoji.Topic,
 		message.TypeVoice.Topic,
 		message.TypeVideo.Topic,
+		message.TypeApplication.Topic,
+		message.TypeUnknown.Topic,
 	}
 }
 
@@ -122,6 +126,45 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 	}
 	if target != nil && target.Name != "" {
 		chatName = target.Name
+	}
+
+	// 人格控制捷径：仅主人，固定语法立即透传给适配器；不清 pending、不进滚动上下文。
+	if in.SpeakerIsOwner && p.isPersonaCommandText(in.Text) {
+		if p.hub.subscriberCount() == 0 {
+			ct := "private"
+			if in.IsChatroom {
+				ct = "group"
+			}
+			slog.Info("[hermes_bridge] 无 SSE 订阅者，丢弃人格控制捷径", "session", in.SessionKey)
+			p.trace(adminTrace{
+				Kind: "dropped", Reason: "no_subscribers_persona",
+				SessionKey: in.SessionKey, ChatID: in.Receiver.GetUsername(), ChatName: chatName,
+				ChatType: ct, UserName: in.SpeakerName, UserID: in.SpeakerID,
+				Text: singleLine(in.Text), Subscribers: 0,
+			})
+			return false, nil
+		}
+		ev := bridgeEvent{
+			SessionKey:    in.SessionKey,
+			ChatID:        in.Receiver.GetUsername(),
+			ChatName:      chatName,
+			ChatType:      "private",
+			UserID:        in.SpeakerID,
+			UserName:      in.SpeakerName,
+			IsOwner:       true,
+			Text:          strings.TrimSpace(in.Text),
+			MsgID:         in.MsgID,
+			Addressing:    "self",
+			TriggerReason: "persona_command",
+			Timestamp:     timeNowUnix(),
+		}
+		if in.IsChatroom {
+			ev.ChatType = "group"
+		}
+		p.pushImmediate(ev, "", 0)
+		slog.Info("[hermes_bridge] 人格控制捷径已立即推送",
+			"session", in.SessionKey, "chat_type", ev.ChatType, "text", singleLine(in.Text))
+		return false, nil
 	}
 
 	// 审批捷径：立刻透传，不进群去抖（否则卡 yes/no）。
@@ -386,12 +429,13 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 	}
 
 	// ---- 群聊 ----
-	cfg := p.configSnapshot()
+	gate := p.gateFor(in.Receiver.GetUsername())
 	// 即使本条不触发也先标记收件人：它可能作为上下文随另一条触发消息推送。
 	classifyGroupAddressing(&in)
 
-	// 回滚开关：group_push_all=true 时与改前门闩前行为一致，每条立即推
-	if cfg.GroupPushAll {
+	// 回滚开关：group_push_all=true 时与改前门闩前行为一致，每条立即推。
+	// 未写覆盖的群沿用全局；某群单独 true/false 只影响该群。
+	if gate.GroupPushAll {
 		if p.hub.subscriberCount() == 0 {
 			p.trace(adminTrace{
 				Kind: "dropped", Reason: "no_subscribers_group_push_all",
@@ -427,12 +471,12 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 
 	// 先判本条的触发原因。trigger_names 命中会得到
 	// addressing=self + trigger_reason=trigger_name。
-	triggered := p.classifyGroupTrigger(&in)
+	triggered := p.classifyGroupTrigger(&in, gate)
 
 	// 斗图门闩：每条表情都计数（含已因别的原因触发的）；
 	// 本条未触发且连发达标时以 emoji_burst 送出一批。
 	if in.IsEmoji {
-		if burst := p.recordEmojiAndCheckBurst(in.SessionKey); burst && !triggered {
+		if burst := p.recordEmojiAndCheckBurst(in.SessionKey, gate); burst && !triggered {
 			in.TriggerReason = "emoji_burst"
 			triggered = true
 		}
@@ -458,7 +502,7 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 		MediaRef:      in.MediaRef,
 		EmojiMd5:      in.EmojiMd5,
 		EmojiDesc:     in.EmojiDesc,
-	})
+	}, gate.MaxContextMessages)
 
 	// 未触发：只记不推
 	if !triggered {
@@ -486,14 +530,15 @@ func (p *BridgePlugin) OnEvent(event *plugin.Event) (bool, error) {
 
 	// 触发：续命/合并去抖窗口，到期只推未 Flushed 增量
 	p.scheduleGroupFlush(in.SessionKey, flushMeta{
-		ChatID:        in.Receiver.GetUsername(),
-		ChatName:      chatName,
-		ChatType:      "group",
-		UserID:        in.SpeakerID,
-		UserName:      in.SpeakerName,
-		IsOwner:       in.SpeakerIsOwner,
-		Addressing:    in.Addressing,
-		TriggerReason: in.TriggerReason,
+		DebounceSeconds: gate.DebounceSeconds,
+		ChatID:          in.Receiver.GetUsername(),
+		ChatName:        chatName,
+		ChatType:        "group",
+		UserID:          in.SpeakerID,
+		UserName:        in.SpeakerName,
+		IsOwner:         in.SpeakerIsOwner,
+		Addressing:      in.Addressing,
+		TriggerReason:   in.TriggerReason,
 	})
 	p.trace(adminTrace{
 		Kind: "scheduled", Reason: "debounce",
@@ -582,6 +627,18 @@ func (p *BridgePlugin) sendPlainText(receiver *contact.Contact, content string) 
 	return p.sendPlainTextKind(receiver, content, "text")
 }
 
+// sendPlainTextWithID 返回本次文本发送产生的精确消息 ID。
+func (p *BridgePlugin) sendPlainTextWithID(receiver *contact.Contact, content string) (string, error) {
+	messageID, err := p.sendPlainTextKindResult(receiver, content, "text")
+	if err != nil {
+		return "", err
+	}
+	if messageID == "0" {
+		return "", errors.New("文本已回包但无 NewId（未真正上屏）")
+	}
+	return messageID, nil
+}
+
 // sendPlainTextUntracked 桥自己的系统话术（撤回回执等）：**不**记账。
 // 否则下一次「撤回」会先把这句提示撤掉，用户看着像什么都没发生。
 func (p *BridgePlugin) sendPlainTextUntracked(receiver *contact.Contact, content string) error {
@@ -590,8 +647,13 @@ func (p *BridgePlugin) sendPlainTextUntracked(receiver *contact.Contact, content
 
 // sendPlainTextKind kind 空 = 不记账（见 recordOutbox）。
 func (p *BridgePlugin) sendPlainTextKind(receiver *contact.Contact, content, kind string) error {
+	_, err := p.sendPlainTextKindResult(receiver, content, kind)
+	return err
+}
+
+func (p *BridgePlugin) sendPlainTextKindResult(receiver *contact.Contact, content, kind string) (string, error) {
 	if p.message == nil || receiver == nil || strings.TrimSpace(receiver.GetUsername()) == "" {
-		return fmt.Errorf("消息能力未注入或接收方无效")
+		return "", fmt.Errorf("消息能力未注入或接收方无效")
 	}
 	msg := &message.Message{
 		Type:     message.TypeText,
@@ -600,10 +662,14 @@ func (p *BridgePlugin) sendPlainTextKind(receiver *contact.Contact, content, kin
 		Data:     &message.Message_Text{Text: &message.TextData{Content: content}},
 	}
 	resp, err := p.message.Send(msg)
-	if err == nil {
-		p.recordOutbox(receiver.GetUsername(), kind, content, resp.GetNewId())
+	if err != nil {
+		return "", err
 	}
-	return err
+	if resp == nil {
+		return "", errors.New("文本发送回包为空")
+	}
+	p.recordOutbox(receiver.GetUsername(), kind, content, resp.GetNewId())
+	return fmt.Sprintf("%d", resp.GetNewId()), nil
 }
 
 func (p *BridgePlugin) statusText(chatID string) string {
@@ -648,7 +714,7 @@ func (p *BridgePlugin) statusText(chatID string) string {
 		fmt.Sprintf("本地会话 %d | pending 去抖 %d | 未推送缓冲 %d 条", sessN, pendN, bufN),
 		"主人: " + ownerOK,
 		// 白名单只报数量：status 常在群里回，避免摊开 wxid / @chatroom
-		fmt.Sprintf("白名单: %d 个", len(cfg.Targets)),
+		fmt.Sprintf("白名单: %d 个（群门闩覆盖 %d）", len(cfg.Targets), countGateOverrides(cfg.Targets)),
 		adminLine,
 	}
 	return strings.Join(lines, "\n")

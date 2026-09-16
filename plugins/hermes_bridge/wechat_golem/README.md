@@ -15,13 +15,14 @@
               ├ POST /send_image|video|voice|emoji
               ├ POST /send_app | /send_record | /send_quote
               ├ GET  /self | /group_info | /group_members
+              ├ GET  /media?ref=     按需取入站图/表情/视频/语音/文件
               ├ POST /group_member_detail
               └ GET  /health   探活 + 生效捷径词表 + 外部工具状态
                     ↕ 同机 loopback 或跨机 LAN
 Hermes gateway + $HERMES_HOME/plugins/platforms/wechat_golem
 ```
 
-**真 @**：可靠路径是最终回复正文写 `@显示名` / `@wxid` / `[[mentions:wxid]]`，适配器解析后 POST 桥 `mentions`（`metadata.mentions` 可选但文本路径通常带不上）。模型应先 `wechat_group_members` 查 wxid（对用户勿念 wxid）。**查询/发送 tool**：`wechat_self_info` / `wechat_group_info` / `wechat_group_members` / `wechat_group_member_detail` / `wechat_send_emoji` / `wechat_send_music` / `wechat_send_record` / `wechat_send_quote` / `wechat_send_voice` / `wechat_revoke`（named schema + session-map 兜底 `chat_id`）。斗图必须 `wechat_send_emoji`（TypeEmoji），勿用发图冒充。长列表/嵌图用 `wechat_send_record`（聊天记录卡片 type=19；图片 `type=image`+`url`/`media_ref`，勿 data_b64）。引用气泡用 `wechat_send_quote`（type=57；`svrid`=入站 `msg_id`）。agent 验收勿 curl 桥。
+**真 @**：可靠路径是最终回复正文写 `@显示名` / `@wxid` / `[[mentions:wxid]]`，适配器解析后 POST 桥 `mentions`（`metadata.mentions` 可选但文本路径通常带不上）。模型应先 `wechat_group_members` 查 wxid（对用户勿念 wxid）。**查询/发送 tool**：`wechat_self_info` / `wechat_group_info` / `wechat_group_members` / `wechat_group_member_detail` / `wechat_send_emoji` / `wechat_send_music` / `wechat_send_record` / `wechat_send_quote` / `wechat_send_voice` / `wechat_fetch_media` / `wechat_revoke`（named schema + session-map 兜底 `chat_id`）。入站图/表情/视频/语音/文件走 `media_ref` + `wechat_fetch_media` 按需取。斗图必须 `wechat_send_emoji`（TypeEmoji），勿用发图冒充。长列表/嵌图用 `wechat_send_record`（聊天记录卡片 type=19；图片 `type=image`+`url`/`media_ref`，勿 data_b64）。引用气泡用 `wechat_send_quote`（type=57；`svrid`=入站 `msg_id`）。agent 验收勿 curl 桥。
 
 ## 安装
 
@@ -60,8 +61,8 @@ profile `wechat` 时 `HERMES_HOME=~/.hermes/profiles/wechat`：
 ```bash
 # ✅ 正确（唯一应保留的副本）
 mkdir -p "$HERMES_HOME/plugins/platforms/wechat_golem"
-cp plugin.yaml adapter.py "$HERMES_HOME/plugins/platforms/wechat_golem/"   # manifest 必须全小写
-# loader 要包名：__init__.py 必须与 adapter.py 同内容
+cp plugin.yaml adapter.py persona_store.py "$HERMES_HOME/plugins/platforms/wechat_golem/"   # manifest 必须全小写
+# loader 要包名：__init__.py 必须与 adapter.py 同内容；persona_store.py 是标准库 only 的运行依赖
 cp "$HERMES_HOME/plugins/platforms/wechat_golem/adapter.py" \
    "$HERMES_HOME/plugins/platforms/wechat_golem/__init__.py"
 
@@ -83,7 +84,42 @@ HERMES_EXEC_ASK=1
 
 持久数据目录（默认都在 profile 内，迁移/备份要一并搬；完整清单见 `plugin.yaml`）：
 `WECHAT_GOLEM_STICKER_DIR`（表情库）、`WECHAT_GOLEM_MEMBER_PROFILE_DIR`（群友档案）、
-`WECHAT_GOLEM_MEDIA_DIR`（入站媒体缓存）。
+`WECHAT_GOLEM_MEDIA_DIR`（入站媒体缓存），以及固定的 `$HERMES_HOME/wechat_personas/`
+（当前人格库；含多套 `<id>.md` 与 `session_bindings.json`）。
+
+### 微信会话多人格
+
+`SOUL.md` 只保存名字「火」、微信公共行为以及身份、审批、安全等固定规则；具体人物经历、
+性格与表达方式放在 `$HERMES_HOME/wechat_personas/<id>.md`。`default.md` 是无显式绑定时的
+基线人格，适配器会在每个合并入站批次前注入一次可信 `wechat_golem_active_persona` 块。
+
+会话绑定写入同目录 `session_bindings.json`，键只使用桥提供的稳定微信键：群聊
+`chatroom:<id>`、私聊 `private:<wxid>`。主人可在微信发送以下整句，无需 `/`，群聊也无需 @：
+
+| 命令 | 行为 |
+|---|---|
+| `人格列表` | 列出可用人格及当前会话状态 |
+| `当前人格` | 查看显式绑定、实际生效人格与回退状态 |
+| `切换人格 <id>` | 给当前微信会话绑定人格，从下一批消息生效 |
+| `恢复默认人格` | 删除当前会话绑定，重新继承 `default` |
+
+也支持 `人格 列表`、`人格 当前`、`人格 切换 <id>`、`人格 默认`。命令只接受桥硬校验的主人，
+直接写绑定并经桥回执，不进入 agent 历史。切换不清 pending、不打断当前 run、不修改 Hermes
+session key/session ID，也不 reset 或逐出 agent cache，因此切换前后的聊天历史连续。下一批消息会注入新的
+可信人格块，并明确提示 agent：当前人格已由主人切换，应立即采用新人格，但保留既有聊天事实与历史。
+
+- 人格 ID 总长最多 64 个字符，首字符必须是 Unicode 字母或数字，其余允许 Unicode 字母、数字、下划线和连字符；因此可直接使用 `林黛玉.md` 并发送 `切换人格 林黛玉`。人格文件必须是非链接普通 UTF-8 文件。
+- 人格和绑定均按文件身份、时间与大小签名热加载，原子替换后下一批生效，无需重启 gateway；绑定写入另有跨进程文件锁，避免滚动重启期间并发覆盖。管理台删除/解绑与微信切换共用同一把锁。
+- 绑定目标缺失、为空、超过 64 KiB 或读取失败时临时回退 `default`；`default` 也不可用时只走 `SOUL.md`。
+- 损坏或版本不兼容的 `session_bindings.json` 不会被控制命令或管理台删除覆盖；先修复文件再切换。
+- 人格可改变经历、世界观、性格和表达，但不能覆盖名字「火」、主人识别、审批、工具权限与安全规则。
+- 管理台可创建/编辑 Markdown 与单条解绑，不创建绑定；绑定仍由微信主人命令建立。`default` 不可删除。
+
+人工维护人格或绑定文件时，先写同目录临时文件再用 `mv` 原子替换。个人测试人格可放在
+`wechat_golem/personas/` 作为本机部署源；该目录下的 `*.md` 默认被 Git 忽略，不随代码提交。
+按需将其中的 `<id>.md` 复制到 `$HERMES_HOME/wechat_personas/`，也不要把运行时生成的
+`session_bindings.json` 或 `.session_bindings.lock` 反向提交到仓库。迁移和备份 profile 时要连同
+整个运行时 `wechat_personas/` 目录一起处理。
 
 `config.yaml` 要点：
 
@@ -114,6 +150,7 @@ hermes -p wechat gateway install   # systemd user 服务
 | `/hermes disable` | 移出白名单 |
 | `/hermes image <url>` | 诊断直发图片 |
 | `/hermes video <url>` | 诊断直发视频 |
+| `/hermes voice <url>` | 诊断直发语音（需 ffmpeg/ffprobe） |
 | `/hermes help` | 帮助 |
 
 Host 层限制：仅主人可跑 `/` 命令；**未注册的 `/xxx` 会回「未知命令」且不会进 Hermes**。
@@ -147,6 +184,7 @@ running_agents 的 key 均含 chat_id，命中才算忙；chat_id 空时退回�
 - 投递失败（handle_message 抛异常）整批回队、退避重试（5s 起、上限 60s），不丢消息。
 - 出站：字面 `\n` → 真换行。
 - 细节与验收：`../DEPLOY.md`。
+- 入站媒体：`wechat_fetch_media` 按 `media_ref` 懒下载。图/表情/视频走桥 CDN；语音/文件临时打本机 core `127.0.0.1:8080`（见桥 `coreapi.go`）。文件正文为 `[文件] 文件名`。
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|

@@ -4,6 +4,16 @@
   const toastEl = $("toast");
   let stickerPage = 1;
   let stickerPageSize = 20;
+  const PERSONA_MAX_BYTES = 64 * 1024;
+  let personaSelectedID = "";
+  let personaETag = "";
+  let personaBaseline = "";
+  let personaBaselineID = "";
+  let personaCreating = false;
+  let personaCapabilities = null;
+  let personaListCache = [];
+  let personaBindingsCache = [];
+  let personaBindingCount = 0;
 
   function toast(msg, opts) {
     opts = typeof opts === "boolean" ? { err: opts } : opts || {};
@@ -138,16 +148,15 @@
     return v == null || v === "" || v === "none" || v === "unknown" ? null : v;
   }
 
-  async function api(path, opts = {}) {
+  async function apiResponse(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
     const token = getToken();
     if (token) {
       headers["Authorization"] = "Bearer " + token;
       headers["X-Admin-Token"] = token;
     }
-    if (opts.body && !headers["Content-Type"]) {
+    if (opts.body && !headers["Content-Type"])
       headers["Content-Type"] = "application/json";
-    }
     const res = await fetch(path, Object.assign({}, opts, { headers }));
     let data = null;
     const ct = res.headers.get("content-type") || "";
@@ -159,7 +168,11 @@
       e.data = data;
       throw e;
     }
-    return data;
+    return { data, headers: res.headers, status: res.status };
+  }
+
+  async function api(path, opts = {}) {
+    return (await apiResponse(path, opts)).data;
   }
 
   // ---- auth gate ----
@@ -264,10 +277,16 @@
     sessions: () => [refreshBtn(loadSessions)],
     hermes: () => [refreshBtn(loadHermes)],
     profiles: () => [refreshBtn(loadProfiles)],
+    personas: () => [refreshBtn(loadPersonas)],
     diagnose: () => [refreshBtn(loadDiagChats)],
   };
 
-  function setPage(tab) {
+  async function setPage(tab) {
+    if (tab !== "personas" && personaIsDirty()) {
+      if (!(await askConfirm("当前人格草稿尚未保存，仍要离开吗？", "放弃未保存内容")))
+        return;
+      personaSetBaseline($("persona-content").value, personaSelectedID);
+    }
     document.querySelectorAll("#nav button").forEach((b) => {
       const on = b.dataset.tab === tab;
       b.classList.toggle("active", on);
@@ -290,7 +309,10 @@
     if (tab !== "inbound") stopTraceLive();
     if (tab === "overview") loadOverview();
     if (tab === "targets") loadTargets();
-    if (tab === "gate") loadGate();
+    if (tab === "gate") {
+      loadGate();
+      loadGateTargets();
+    }
     if (tab === "inbound") loadTraceRecent();
     if (tab === "sessions") loadSessions();
     if (tab === "hermes") loadHermes();
@@ -300,6 +322,7 @@
       loadStickerFacets();
     }
     if (tab === "profiles") loadProfiles();
+    if (tab === "personas") loadPersonas();
     if (tab === "diagnose") loadDiagChats();
   }
 
@@ -350,6 +373,7 @@
       "overview-capacity",
       [
         card("白名单数量", o.targets),
+        card("群门闩覆盖", o.gate_overrides || 0),
         card("活跃会话", o.local_sessions),
         card(
           "等待合并",
@@ -516,6 +540,161 @@
   }
 
   // ---- gate ----
+  let selectedTargetID = "";
+  let selectedTarget = null;
+  let gateTargetList = [];
+
+  function optNum(el) {
+    const raw = (el.value || "").trim();
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function fillTargetGate(t) {
+    const form = $("target-gate-form");
+    const status = $("tg-status");
+    const clearBtn = $("btnGateClear");
+    if (!form || !status) return;
+    if (!t || t.kind !== "group") {
+      form.classList.add("hidden");
+      selectedTargetID = "";
+      selectedTarget = null;
+      if (clearBtn) clearBtn.classList.add("hidden");
+      status.textContent = t
+        ? "私聊没有群门闩。"
+        : "未选择群。空白字段沿用上面的全局。";
+      return;
+    }
+    selectedTargetID = t.id;
+    selectedTarget = t;
+    form.classList.remove("hidden");
+    if (clearBtn) clearBtn.classList.toggle("hidden", !t.has_override);
+    status.textContent = t.has_override
+      ? "本群有覆盖 · " + (t.name || t.id)
+      : "本群沿用全局 · " + (t.name || t.id);
+    $("tg-triggers").value = t.trigger_names ? t.trigger_names.join(", ") : "";
+    $("tg-pushall-set").checked = t.group_push_all != null;
+    $("tg-pushall").checked = !!t.group_push_all;
+    $("tg-debounce").value = t.debounce_seconds != null ? t.debounce_seconds : "";
+    $("tg-bubble").value = t.bubble_rate != null ? t.bubble_rate : "";
+    $("tg-bubble-cd").value =
+      t.bubble_cooldown_minutes != null ? t.bubble_cooldown_minutes : "";
+    $("tg-ctx").value =
+      t.max_context_messages != null ? t.max_context_messages : "";
+    $("tg-burst").value = t.emoji_burst_count != null ? t.emoji_burst_count : "";
+    $("tg-burst-win").value =
+      t.emoji_burst_window_seconds != null ? t.emoji_burst_window_seconds : "";
+    $("tg-burst-cd").value =
+      t.emoji_burst_cooldown_minutes != null
+        ? t.emoji_burst_cooldown_minutes
+        : "";
+  }
+
+  async function loadGateTargets() {
+    const sel = $("tg-chat");
+    if (!sel) return;
+    try {
+      const data = await api("/admin/targets");
+      gateTargetList = (data.targets || []).filter((t) => t.kind === "group");
+      const keep = selectedTargetID;
+      sel.innerHTML =
+        `<option value="">选择群…</option>` +
+        gateTargetList
+          .map((t) => {
+            const mark = t.has_override ? " · 已覆盖" : "";
+            return `<option value="${esc(t.id)}">${esc(t.name || t.id)}${mark}</option>`;
+          })
+          .join("");
+      if (keep && gateTargetList.some((t) => t.id === keep)) {
+        sel.value = keep;
+        fillTargetGate(gateTargetList.find((t) => t.id === keep));
+      } else {
+        sel.value = "";
+        fillTargetGate(null);
+      }
+    } catch (e) {
+      toastErr(e.message);
+    }
+  }
+
+  async function saveTargetGate() {
+    if (!selectedTargetID) return toastErr("先选一个群");
+    const namesRaw = $("tg-triggers").value.trim();
+    const body = {
+      debounce_seconds: optNum($("tg-debounce")),
+      bubble_rate: optNum($("tg-bubble")),
+      bubble_cooldown_minutes: optNum($("tg-bubble-cd")),
+      max_context_messages: optNum($("tg-ctx")),
+      emoji_burst_count: optNum($("tg-burst")),
+      emoji_burst_window_seconds: optNum($("tg-burst-win")),
+      emoji_burst_cooldown_minutes: optNum($("tg-burst-cd")),
+      group_push_all: $("tg-pushall-set").checked
+        ? $("tg-pushall").checked
+        : null,
+    };
+    if (namesRaw) {
+      body.trigger_names = namesRaw
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else if (selectedTarget && selectedTarget.trigger_names != null) {
+      body.trigger_names = [];
+    }
+    try {
+      await api("/admin/targets/" + encodeURIComponent(selectedTargetID), {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      toastOk("本群覆盖已保存");
+      loadGate();
+      loadGateTargets();
+    } catch (e) {
+      toastErr(e.message);
+    }
+  }
+
+  if ($("tg-chat")) {
+    $("tg-chat").addEventListener("change", () => {
+      const id = $("tg-chat").value;
+      fillTargetGate(gateTargetList.find((t) => t.id === id) || null);
+    });
+  }
+  if ($("target-gate-form")) {
+    $("target-gate-form").addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      saveTargetGate();
+    });
+  }
+  if ($("btnGateClear")) {
+    $("btnGateClear").addEventListener("click", async () => {
+      if (!selectedTargetID) return toastErr("先选一个群");
+      if (!(await askConfirm("清除本群门闩覆盖，改回全局？", "清除覆盖")))
+        return;
+      try {
+        await api("/admin/targets/" + encodeURIComponent(selectedTargetID), {
+          method: "PATCH",
+          body: JSON.stringify({
+            trigger_names: null,
+            bubble_rate: null,
+            bubble_cooldown_minutes: null,
+            debounce_seconds: null,
+            max_context_messages: null,
+            group_push_all: null,
+            emoji_burst_count: null,
+            emoji_burst_window_seconds: null,
+            emoji_burst_cooldown_minutes: null,
+          }),
+        });
+        toastOk("已清除覆盖");
+        loadGate();
+        loadGateTargets();
+      } catch (e) {
+        toastErr(e.message);
+      }
+    });
+  }
+
   async function loadGate() {
     $("gate-preview").textContent = "加载门闩配置…";
     $("btnGateSave").disabled = true;
@@ -1483,6 +1662,347 @@
     }
   });
 
+  // ---- personas ----
+  function personaBytes(value) {
+    if (window.TextEncoder) return new TextEncoder().encode(value || "").length;
+    return unescape(encodeURIComponent(value || "")).length;
+  }
+
+  function personaIsDirty() {
+    const content = $("persona-content");
+    const id = $("persona-id");
+    return !!content &&
+      (content.value !== personaBaseline || (personaCreating && id.value !== personaBaselineID));
+  }
+
+  function personaSetBaseline(value, id) {
+    personaBaseline = value || "";
+    personaBaselineID = id == null ? personaBaselineID : id;
+    const dirty = $("persona-dirty");
+    if (dirty) dirty.classList.add("hidden");
+  }
+
+  function updatePersonaBytes() {
+    const input = $("persona-content");
+    if (!input) return;
+    const size = personaBytes(input.value);
+    const counter = $("persona-bytes");
+    counter.textContent = `${size} / ${PERSONA_MAX_BYTES} 字节`;
+    counter.classList.toggle("over-limit", size > PERSONA_MAX_BYTES);
+    $("persona-dirty").classList.toggle("hidden", !personaIsDirty());
+    const canSave = personaCreating
+      ? personaCapabilities && personaCapabilities.create
+      : personaCapabilities && personaCapabilities.write;
+    $("btnPersonaSave").disabled = !canSave || size > PERSONA_MAX_BYTES;
+  }
+
+  function personaCapability(raw, names, fallback) {
+    if (!raw) return fallback;
+    if (Array.isArray(raw)) return names.some((name) => raw.includes(name));
+    for (const name of names) {
+      if (Object.prototype.hasOwnProperty.call(raw, name)) return !!raw[name];
+    }
+    return fallback;
+  }
+
+  function applyPersonaCapabilities(raw) {
+    personaCapabilities = {
+      read: personaCapability(raw, ["personas.read", "read", "personas_read"], false),
+      write: personaCapability(raw, ["personas.write", "write", "personas_write", "update"], false),
+      create: personaCapability(raw, ["personas.write", "create", "personas_create"], false),
+      bindings: personaCapability(raw, ["persona_bindings.read", "bindings", "bindings_read"], false),
+      unbind: personaCapability(raw, ["persona_bindings.unbind", "unbind", "bindings_unbind"], false),
+    };
+    const notes = [];
+    if (!personaCapabilities.read) notes.push("ops 尚未提供人格读取能力");
+    if (personaCapabilities.read && !personaCapabilities.write)
+      notes.push("后端未开放人格编辑，当前降级为只读");
+    if (personaCapabilities.read && !personaCapabilities.create)
+      notes.push("后端未开放人格新建");
+    if (!personaCapabilities.bindings) notes.push("后端未提供会话绑定读取");
+    if (personaCapabilities.bindings && !personaCapabilities.unbind)
+      notes.push("后端未开放解除绑定");
+    const box = $("persona-capability");
+    box.innerHTML = notes.length
+      ? `<ul>${notes.map((note) => `<li>${esc(note)}</li>`).join("")}</ul>`
+      : "";
+    $("btnPersonaNew").disabled = !personaCapabilities.create;
+    updatePersonaBytes();
+  }
+
+  function personaUpdatedAt(ns) {
+    const value = Number(ns || 0);
+    if (!value) return "";
+    const millis = value > 1e15 ? Math.floor(value / 1e6) : value * 1000;
+    return new Date(millis).toLocaleString();
+  }
+
+  function renderPersonaList() {
+    const q = $("persona-q").value.trim().toLowerCase();
+    const list = personaListCache.filter((item) =>
+      String(item.persona_id || item.id || "").toLowerCase().includes(q),
+    );
+    $("persona-list").innerHTML = list.length
+      ? list.map((item) => {
+          const id = item.persona_id || item.id || "";
+          const size = Number(item.size_bytes || 0);
+          const bindings = Number(item.binding_count || 0);
+          const badges = [
+            item.is_default ? '<span class="tag ok">默认</span>' : "",
+            item.available === false ? '<span class="tag bad">不可用</span>' : "",
+          ].join("");
+          return `<button type="button" class="item persona-item${id === personaSelectedID ? " selected" : ""}" data-persona-id="${esc(id)}">
+            <div class="grow"><strong>${esc(id)}</strong>
+              <div class="muted">${size} 字节 · ${bindings} 个绑定</div>
+              <div class="muted">${esc(personaUpdatedAt(item.updated_at_ns))}</div>
+            </div>${badges}</button>`;
+        }).join("")
+      : '<div class="empty">没有匹配的人格</div>';
+    $("persona-list").querySelectorAll(".persona-item").forEach((item) => {
+      item.addEventListener("click", () => selectPersona(item.dataset.personaId));
+    });
+  }
+
+  async function selectPersona(id, force) {
+    if (!id) return;
+    if (!force && personaIsDirty()) {
+      if (!(await askConfirm("当前草稿尚未保存，仍要切换人格吗？", "放弃未保存内容")))
+        return;
+    }
+    showLoading("persona-bindings", "加载绑定…");
+    try {
+      const detail = await apiResponse(
+        "/admin/hermes/personas/" + encodeURIComponent(id),
+      );
+      const p = detail.data.persona || detail.data;
+      personaSelectedID = p.persona_id || p.id || id;
+      personaBindingCount = Number(p.binding_count || 0);
+      personaCreating = false;
+      personaETag = detail.headers.get("etag") || p.etag || p.revision || "";
+      $("persona-id").value = personaSelectedID;
+      $("persona-id").readOnly = true;
+      $("persona-content").value = p.content || p.markdown || "";
+      $("persona-editor-title").textContent = "编辑 " + personaSelectedID;
+      $("btnPersonaDelete").disabled =
+        personaSelectedID === "default" ||
+        personaBindingCount > 0 ||
+        !personaCapabilities.write;
+      personaSetBaseline($("persona-content").value, personaSelectedID);
+      updatePersonaBytes();
+      renderPersonaList();
+      renderPersonaBindings(personaSelectedID);
+    } catch (e) {
+      showError("persona-bindings", e.message);
+      toastErr(e.message);
+    }
+  }
+
+  function renderPersonaBindings(id) {
+    if (!personaCapabilities.bindings) {
+      $("persona-bindings-count").textContent = "";
+      showEmpty("persona-bindings", "当前后端不支持绑定状态读取");
+      return;
+    }
+    const list = personaBindingsCache.filter(
+      (item) => String(item.persona_id || "") === id,
+    );
+    $("persona-bindings-count").textContent = list.length + " 个";
+    $("persona-bindings").innerHTML = list.length
+      ? list.map((item) => `<div class="item persona-binding-item">
+          <span class="tag">${personaCapabilities.unbind ? "显式" : "只读"}</span><div class="grow">
+            <strong>${esc(item.session_key || "")}</strong>
+            <div class="muted">更新 ${esc(item.updated_at || "—")}</div>
+          </div><button type="button" class="ghost danger btn-persona-unbind" data-binding-id="${esc(item.binding_id || "")}" data-session-key="${esc(item.session_key || "")}"${personaCapabilities.unbind && item.binding_id ? "" : " disabled"}>解除绑定</button>
+        </div>`).join("")
+      : '<div class="empty">没有显式绑定；会话将继承 default</div>';
+    $("persona-bindings").querySelectorAll(".btn-persona-unbind").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!btn.dataset.bindingId || !personaCapabilities.unbind) return;
+        if (!(await askConfirm(
+          `解除 ${btn.dataset.sessionKey} 的显式绑定？\n下一批消息将继承 default；聊天历史和当前 run 不受影响。`,
+          "解除人格绑定",
+        ))) return;
+        try {
+          await api(
+            "/admin/hermes/persona_bindings/" +
+              encodeURIComponent(btn.dataset.bindingId),
+            { method: "DELETE" },
+          );
+          toastOk("已解除绑定，从下一批消息生效");
+          await loadPersonas();
+          if (personaSelectedID) await selectPersona(personaSelectedID, true);
+        } catch (e) {
+          toastErr(e.message);
+        }
+      });
+    });
+  }
+
+  async function loadPersonas() {
+    showSkeleton("persona-list", 4);
+    try {
+      const listData = await api("/admin/hermes/personas");
+      const capabilityData = listData.capabilities || null;
+      applyPersonaCapabilities(capabilityData);
+      // 列表接口已通，至少具备读取；capabilities 字段可后补。
+      if (!capabilityData) personaCapabilities.read = true;
+      if (!personaCapabilities.read) {
+        personaListCache = [];
+        personaBindingsCache = [];
+        showEmpty("persona-list", "ops 尚未支持人格管理，请先更新 Hermes 侧服务");
+        showEmpty("persona-bindings", "无可用的人格绑定接口");
+        return;
+      }
+      personaListCache = listData.personas || listData.items || [];
+      renderPersonaList();
+      if (personaCapabilities.bindings) {
+        try {
+          const bindingData = await api("/admin/hermes/persona_bindings");
+          personaBindingsCache = bindingData.bindings || bindingData.items || [];
+          if (bindingData.capabilities)
+            applyPersonaCapabilities(Object.assign({}, capabilityData, bindingData.capabilities));
+          if (bindingData.bindings_error) {
+            const box = $("persona-capability");
+            const extra = `<li>${esc("绑定文件异常：" + bindingData.bindings_error)}</li>`;
+            if ((box.innerHTML || "").includes("</ul>"))
+              box.innerHTML = box.innerHTML.replace("</ul>", extra + "</ul>");
+            else box.innerHTML = `<ul>${extra}</ul>`;
+          }
+        } catch (e) {
+          if (e.status === 404 || e.status === 405 || e.status === 501) {
+            personaCapabilities.bindings = false;
+            personaCapabilities.unbind = false;
+          } else throw e;
+        }
+      }
+      if (personaSelectedID && !personaCreating)
+        renderPersonaBindings(personaSelectedID);
+      else if (!personaSelectedID && personaListCache.length)
+        await selectPersona(
+          personaListCache[0].persona_id || personaListCache[0].id,
+          true,
+        );
+      else if (!personaListCache.length && !personaCreating) newPersonaDraft();
+    } catch (e) {
+      applyPersonaCapabilities({ write: false, create: false, bindings: false, unbind: false });
+      if (e.status === 404 || e.status === 405 || e.status === 501) {
+        showEmpty("persona-list", "ops 尚未支持人格管理，请先更新 Hermes 侧服务");
+        showEmpty("persona-bindings", "无可用的人格绑定接口");
+        return;
+      }
+      showError("persona-list", e.message);
+      toastErr(e.message);
+    }
+  }
+
+  async function newPersonaDraft() {
+    if (personaIsDirty()) {
+      if (!(await askConfirm("当前草稿尚未保存，仍要新建人格吗？", "放弃未保存内容")))
+        return;
+    }
+    personaSelectedID = "";
+    personaBindingCount = 0;
+    personaETag = "";
+    personaCreating = true;
+    $("persona-id").value = "";
+    $("persona-id").readOnly = false;
+    $("persona-content").value = "";
+    $("persona-editor-title").textContent = "新建人格";
+    $("btnPersonaDelete").disabled = true;
+    $("persona-bindings-count").textContent = "";
+    showEmpty("persona-bindings", "新建人格尚无绑定");
+    personaSetBaseline("", "");
+    updatePersonaBytes();
+    renderPersonaList();
+    $("persona-id").focus();
+  }
+
+  $("btnPersonas").addEventListener("click", loadPersonas);
+  $("persona-q").addEventListener("input", renderPersonaList);
+  $("btnPersonaNew").addEventListener("click", newPersonaDraft);
+  $("persona-content").addEventListener("input", updatePersonaBytes);
+  $("persona-id").addEventListener("input", updatePersonaBytes);
+  $("btnPersonaReload").addEventListener("click", async () => {
+    if (!personaIsDirty()) return;
+    if (!(await askConfirm("放弃当前未保存草稿？", "放弃草稿"))) return;
+    if (personaCreating) newPersonaDraft();
+    else selectPersona(personaSelectedID, true);
+  });
+
+  $("persona-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const id = $("persona-id").value.trim();
+    const content = $("persona-content").value;
+    const size = personaBytes(content);
+    if (!id) return toastErr("人格 ID 必填");
+    if (!content.trim()) return toastErr("Markdown 内容不能为空");
+    if (size > PERSONA_MAX_BYTES) return toastErr("内容超过 64 KiB UTF-8 上限");
+    const headers = {};
+    if (!personaCreating) {
+      if (!personaETag) return toastErr("缺少版本标识，请刷新详情后再保存");
+      headers["If-Match"] = personaETag;
+    }
+    $("btnPersonaSave").disabled = true;
+    try {
+      const result = await apiResponse(
+        personaCreating
+          ? "/admin/hermes/personas"
+          : "/admin/hermes/personas/" + encodeURIComponent(personaSelectedID),
+        {
+          method: personaCreating ? "POST" : "PUT",
+          headers,
+          body: JSON.stringify({ id, persona_id: id, content }),
+        },
+      );
+      const p = result.data.persona || result.data;
+      personaSelectedID = p.persona_id || p.id || id;
+      personaCreating = false;
+      personaETag = result.headers.get("etag") || p.etag || p.revision || personaETag;
+      personaSetBaseline(content);
+      toastOk("人格已保存");
+      await loadPersonas();
+      await selectPersona(personaSelectedID, true);
+    } catch (e) {
+      if (e.status === 412) {
+        toastWarn("人格已被其他操作更新；草稿仍保留，请复制后刷新对比");
+        $("persona-dirty").classList.remove("hidden");
+      } else toastErr(e.message);
+    } finally {
+      updatePersonaBytes();
+    }
+  });
+
+  $("btnPersonaDelete").addEventListener("click", async () => {
+    if (!personaSelectedID || personaSelectedID === "default") return;
+    if (personaBindingCount > 0)
+      return toastWarn("该人格仍有显式绑定，请先逐条解除绑定");
+    if (!(await askConfirm(
+      `删除人格 ${personaSelectedID}？\n此操作不可撤销。`,
+      "删除人格",
+    ))) return;
+    try {
+      await api(
+        "/admin/hermes/personas/" + encodeURIComponent(personaSelectedID),
+        { method: "DELETE" },
+      );
+      toastOk("人格已删除");
+      personaSelectedID = "";
+      personaBindingCount = 0;
+      personaETag = "";
+      personaCreating = false;
+      personaSetBaseline("", "");
+      await loadPersonas();
+    } catch (e) {
+      toastErr(e.message);
+    }
+  });
+
+  window.addEventListener("beforeunload", (ev) => {
+    if (!personaIsDirty()) return;
+    ev.preventDefault();
+    ev.returnValue = "";
+  });
+
   // ---- diagnose ----
   async function loadDiagChats() {
     try {
@@ -1495,23 +2015,79 @@
     } catch (_) {}
   }
 
+  const DIAG_LIMITS = {
+    image: 45 * 1024 * 1024,
+    video: 45 * 1024 * 1024,
+    voice: 10 * 1024 * 1024,
+    emoji: 45 * 1024 * 1024,
+  };
+  const DIAG_ACCEPT = {
+    image: "image/*",
+    video: "video/*",
+    voice: "audio/*,.amr,.silk,.mp3,.wav,.m4a,.ogg",
+    emoji: "image/gif,image/png,image/webp,image/*",
+  };
+
+  function formatBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function syncDiagFileUI() {
+    const kind = $("diag-kind").value;
+    const input = $("diag-file");
+    const nameEl = $("diag-file-name");
+    if (input) input.accept = DIAG_ACCEPT[kind] || "*/*";
+    const file = input && input.files && input.files[0];
+    if (!nameEl) return;
+    if (!file) {
+      nameEl.textContent = "未选择文件";
+      return;
+    }
+    nameEl.textContent = file.name + " · " + formatBytes(file.size);
+  }
+
+  $("diag-kind").addEventListener("change", syncDiagFileUI);
+  $("diag-file").addEventListener("change", syncDiagFileUI);
+
   $("diag-form").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     $("diag-result").textContent = "…";
+    const kind = $("diag-kind").value;
+    const chat = $("diag-chat").value.trim();
+    const url = $("diag-url").value.trim();
+    const md5 = $("diag-md5").value.trim();
+    const file = $("diag-file").files && $("diag-file").files[0];
+    if (file) {
+      const limit = DIAG_LIMITS[kind] || DIAG_LIMITS.image;
+      if (file.size > limit) {
+        const msg = kind + " 文件超过 " + (limit >> 20) + "MB 上限";
+        $("diag-result").textContent = msg;
+        toastErr(msg);
+        return;
+      }
+    }
     try {
+      const headers = {
+        Authorization: "Bearer " + getToken(),
+        "X-Admin-Token": getToken(),
+      };
+      let body;
+      if (file) {
+        const fd = new FormData();
+        fd.append("kind", kind);
+        fd.append("chat_id", chat);
+        fd.append("file", file, file.name);
+        body = fd;
+      } else {
+        headers["Content-Type"] = "application/json";
+        body = JSON.stringify({ kind, chat_id: chat, url, md5 });
+      }
       const res = await fetch("/admin/diagnose", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + getToken(),
-          "X-Admin-Token": getToken(),
-        },
-        body: JSON.stringify({
-          kind: $("diag-kind").value,
-          chat_id: $("diag-chat").value.trim(),
-          url: $("diag-url").value.trim(),
-          md5: $("diag-md5").value.trim(),
-        }),
+        headers,
+        body,
       });
       const data = await res.json();
       $("diag-result").textContent = JSON.stringify(data, null, 2);
@@ -1533,6 +2109,7 @@
     { tab: "hermes", title: "运维", hint: "Hermes ops" },
     { tab: "stickers", title: "表情", hint: "情绪库" },
     { tab: "profiles", title: "档案", hint: "群友偏好" },
+    { tab: "personas", title: "人格", hint: "Markdown 与绑定状态" },
     { tab: "diagnose", title: "诊断", hint: "媒体试发" },
   ];
   let cmdkIndex = 0;
@@ -1674,6 +2251,7 @@
       h: "hermes",
       e: "stickers",
       p: "profiles",
+      r: "personas",
       d: "diagnose",
     };
     if (map[ev.key] && !$("app-shell").classList.contains("hidden"))

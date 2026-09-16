@@ -51,6 +51,13 @@ const (
 	uploadTimeout // 超时且 grace 内也未确认；不排除已达微信但回包很慢
 )
 
+// errImageMetadataMissing 图片主体已有 NewId，但回包缺少记录嵌图所需的 CDN 字段。
+// 主体不能重发；HTTP 发图按 NewId 视为成功，记录嵌图调用方仍收到该错误。
+var errImageMetadataMissing = errors.New("SendImage 回包缺少 file_id/aes_key")
+
+// errMediaNoNewID 图片/视频 Send 有回包但 NewId=0：无法确认媒体主体已上屏。
+var errMediaNoNewID = errors.New("媒体已回包但无 NewId（未确认上屏）")
+
 // errEmojiNoNewID 表情 Send 有回包但 NewId=0：微信服务端收下却未上屏（实测 2MB 大表情必现，
 // 自定义表情上传上限约 1MB）。重发同样字节无意义，callSendWithRetry 对此不重试。
 var errEmojiNoNewID = errors.New("表情已回包但无 NewId（微信未上屏，通常是体积超限）")
@@ -81,7 +88,7 @@ func (p *BridgePlugin) callSendWithRetry(perCallTimeout time.Duration, do func()
 			return uploadTimeout, lastErr
 		}
 		// NewId=0：服务端拒收/未上屏，重发同样内容通常无意义
-		if errors.Is(err, errEmojiNoNewID) || errors.Is(err, errAppMsgNoNewID) {
+		if errors.Is(err, errImageMetadataMissing) || errors.Is(err, errMediaNoNewID) || errors.Is(err, errEmojiNoNewID) || errors.Is(err, errAppMsgNoNewID) {
 			return uploadFailed, lastErr
 		}
 		slog.Warn("[hermes_bridge] 发送失败", "attempt", attempt+1, "err", err,
@@ -197,8 +204,16 @@ func (p *BridgePlugin) sendAppMessage(receiver string, subType uint32, xml strin
 }
 
 func (p *BridgePlugin) sendImageMessage(receiver string, data []byte) (uploadOutcome, error) {
-	_, outcome, err := p.sendImageMessageWithMeta(receiver, data)
+	_, outcome, err := p.sendImageMessageWithID(receiver, data)
 	return outcome, err
+}
+
+func (p *BridgePlugin) sendImageMessageWithID(receiver string, data []byte) (string, uploadOutcome, error) {
+	meta, outcome, err := p.sendImageMessageWithMeta(receiver, data)
+	if meta.NewMsgID != 0 {
+		return strconv.FormatUint(meta.NewMsgID, 10), uploadOK, nil
+	}
+	return "", outcome, err
 }
 
 // sendImageMessageWithMeta 对 receiver 发图并返回 CDN 字段（FileId→Media.Url, AesKey→Media.Key）。
@@ -234,15 +249,23 @@ func (p *BridgePlugin) sendImageMessageWithMeta(receiver string, data []byte) (c
 			meta.FileMD5 = strings.TrimSpace(m.GetMd5())
 		}
 		if meta.FileID == "" || meta.AesKey == "" {
-			return fmt.Errorf("SendImage 回包缺少 file_id/aes_key (NewId=%d)", meta.NewMsgID)
+			return fmt.Errorf("%w (NewId=%d)", errImageMetadataMissing, meta.NewMsgID)
 		}
 		if meta.NewMsgID == 0 {
-			slog.Warn("[hermes_bridge] SendImage 无 NewId（可能未上屏）",
+			slog.Warn("[hermes_bridge] SendImage 无 NewId（未确认上屏）",
 				"receiver", receiver, "file_id_len", len(meta.FileID))
+			return errMediaNoNewID
 		}
 		return nil
 	})
 	if outcome != uploadOK {
+		// Send 已返回 NewId 时主体已经确认上屏；缺 CDN 元数据只影响记录嵌图，
+		// HTTP 发图不能因此重发同一图片。仅在闭包已明确返回该错误时读取 meta，
+		// uploadTimeout 时 in-flight goroutine 仍可能写 meta，不能在返回路径并发读取。
+		if errors.Is(err, errImageMetadataMissing) && meta.NewMsgID != 0 {
+			p.recordOutbox(receiver, "image", "[图片]", meta.NewMsgID)
+			return meta, uploadFailed, err
+		}
 		return zero, outcome, err
 	}
 	if meta.FileMD5 == "" {
@@ -259,8 +282,13 @@ func (p *BridgePlugin) sendImageMessageWithMeta(receiver string, data []byte) (c
 // 调用方应先 ensureEmojiBytes；防叠发与图片同用 callSendWithRetry（超时不重开 Send）。
 // host SendEmoji(receiver, md5, data) 需要 Media.Md5；空 md5 时部分路径回 OK 但客户端不渲染。
 func (p *BridgePlugin) sendEmojiMessage(receiver string, data []byte) (uploadOutcome, error) {
+	_, outcome, err := p.sendEmojiMessageWithID(receiver, data)
+	return outcome, err
+}
+
+func (p *BridgePlugin) sendEmojiMessageWithID(receiver string, data []byte) (string, uploadOutcome, error) {
 	if p.message == nil {
-		return uploadFailed, errors.New("消息能力未注入")
+		return "", uploadFailed, errors.New("消息能力未注入")
 	}
 	sum := md5.Sum(data)
 	md5hex := hex.EncodeToString(sum[:])
@@ -276,7 +304,8 @@ func (p *BridgePlugin) sendEmojiMessage(receiver string, data []byte) (uploadOut
 			},
 		}},
 	}
-	return p.callSendWithRetry(uploadImageTimeout, func() error {
+	var messageID string
+	outcome, err := p.callSendWithRetry(uploadImageTimeout, func() error {
 		resp, err := p.message.Send(msg)
 		if err != nil {
 			return err
@@ -288,21 +317,34 @@ func (p *BridgePlugin) sendEmojiMessage(receiver string, data []byte) (uploadOut
 				"bytes", len(data), "md5", md5hex)
 			return errEmojiNoNewID
 		}
+		if resp == nil {
+			return errors.New("表情发送回包为空")
+		}
+		messageID = strconv.FormatUint(resp.GetNewId(), 10)
 		p.recordOutbox(receiver, "emoji", "[表情]", resp.GetNewId())
 		return nil
 	})
+	if outcome != uploadOK {
+		return "", outcome, err
+	}
+	return messageID, outcome, nil
 }
 
 // sendEmojiByMd5 仅通过 md5 引用发送已收藏的表情（不传数据字节）。
 // 适用场景：微信群里已流通过的表情（CDN 上有原文件），Hermes 侧只需记 md5，
 // 发送时传 md5 即可——微信直接用 CDN 原文件上屏，保原图画质与动画。
 func (p *BridgePlugin) sendEmojiByMd5(receiver string, md5hex string) (uploadOutcome, error) {
+	_, outcome, err := p.sendEmojiByMd5WithID(receiver, md5hex)
+	return outcome, err
+}
+
+func (p *BridgePlugin) sendEmojiByMd5WithID(receiver string, md5hex string) (string, uploadOutcome, error) {
 	if p.message == nil {
-		return uploadFailed, errors.New("消息能力未注入")
+		return "", uploadFailed, errors.New("消息能力未注入")
 	}
 	md5hex = strings.TrimSpace(md5hex)
 	if md5hex == "" {
-		return uploadFailed, errors.New("md5 为空")
+		return "", uploadFailed, errors.New("md5 为空")
 	}
 	msg := &message.Message{
 		Type:     message.TypeEmoji,
@@ -312,7 +354,8 @@ func (p *BridgePlugin) sendEmojiByMd5(receiver string, md5hex string) (uploadOut
 			Media: &message.Media{Md5: md5hex},
 		}},
 	}
-	return p.callSendWithRetry(uploadImageTimeout, func() error {
+	var messageID string
+	outcome, err := p.callSendWithRetry(uploadImageTimeout, func() error {
 		resp, err := p.message.Send(msg)
 		if err != nil {
 			return err
@@ -323,9 +366,17 @@ func (p *BridgePlugin) sendEmojiByMd5(receiver string, md5hex string) (uploadOut
 				"md5", md5hex)
 			return errEmojiNoNewID
 		}
+		if resp == nil {
+			return errors.New("表情发送回包为空")
+		}
+		messageID = strconv.FormatUint(resp.GetNewId(), 10)
 		p.recordOutbox(receiver, "emoji", "[表情]", resp.GetNewId())
 		return nil
 	})
+	if outcome != uploadOK {
+		return "", outcome, err
+	}
+	return messageID, outcome, nil
 }
 
 // ensureEmojiBytes 把表情控在「体积 + 边长」可展示范围。
@@ -918,12 +969,17 @@ func (p *BridgePlugin) sendVoiceBytes(targetID string, srcData []byte) error {
 // sendVideoMessage 经 message.Send 发视频（Duration + Thumb + 本体），返回 outcome 供诊断/降级。
 // host 需要 Thumb + Duration + Media.Data；早期只塞视频字节、不抽封面时会失败。
 func (p *BridgePlugin) sendVideoMessage(targetID string, videoData []byte) (uploadOutcome, error) {
+	_, outcome, err := p.sendVideoMessageWithID(targetID, videoData)
+	return outcome, err
+}
+
+func (p *BridgePlugin) sendVideoMessageWithID(targetID string, videoData []byte) (string, uploadOutcome, error) {
 	if p.message == nil {
-		return uploadFailed, errors.New("消息能力未注入")
+		return "", uploadFailed, errors.New("消息能力未注入")
 	}
 	videoPath, err := writeTemp("hermes-bridge-video-*.mp4", videoData)
 	if err != nil {
-		return uploadFailed, err
+		return "", uploadFailed, err
 	}
 	defer func() { _ = os.Remove(videoPath) }()
 
@@ -931,13 +987,13 @@ func (p *BridgePlugin) sendVideoMessage(targetID string, videoData []byte) (uplo
 	// 曾经缺 ffmpeg 时只 Warn 并填 duration=10 / thumb=nil，表现为「视频发送失败」
 	// 而错误里根本不提 ffmpeg，查起来极费时间。现在缺工具直接报清楚。
 	if _, err := p.ffmpegPath(); err != nil {
-		return uploadFailed, fmt.Errorf("发送视频需要 ffmpeg 抽封面: %w", err)
+		return "", uploadFailed, fmt.Errorf("发送视频需要 ffmpeg 抽封面: %w", err)
 	}
 
 	durationSec, err := p.mediaDurationSec(videoPath)
 	if err != nil {
 		if _, probeErr := p.ffprobePath(); probeErr != nil {
-			return uploadFailed, fmt.Errorf("发送视频需要 ffprobe 取时长: %w", probeErr)
+			return "", uploadFailed, fmt.Errorf("发送视频需要 ffprobe 取时长: %w", probeErr)
 		}
 		slog.Warn("[hermes_bridge] 获取视频时长失败，使用默认值", "err", err)
 		durationSec = 10
@@ -965,40 +1021,43 @@ func (p *BridgePlugin) sendVideoMessage(targetID string, videoData []byte) (uplo
 			Thumb:    thumbData,
 		}},
 	}
-	return p.callSendWithRetry(uploadVideoTimeout, func() error {
+	var messageID string
+	outcome, err := p.callSendWithRetry(uploadVideoTimeout, func() error {
 		resp, err := p.message.Send(msg)
 		if err != nil {
 			return err
 		}
+		if resp == nil {
+			return errors.New("视频发送回包为空")
+		}
+		if resp.GetNewId() == 0 {
+			slog.Warn("[hermes_bridge] 视频 Send 无 NewId（未确认上屏）", "target", targetID)
+			return errMediaNoNewID
+		}
+		messageID = strconv.FormatUint(resp.GetNewId(), 10)
 		p.recordOutbox(targetID, "video", "[视频]", resp.GetNewId())
 		return nil
 	})
+	if outcome != uploadOK {
+		return "", outcome, err
+	}
+	return messageID, outcome, nil
 }
 
-// sendVideoBytes HTTP 出站用：失败且有 URL 时降级发链接（含超时未确认，由调用方保留该策略）。
-func (p *BridgePlugin) sendVideoBytes(targetID string, videoData []byte, fallbackURL string) error {
-	// 视频与图片一样走 message.Send（host 底层 messageapi.SendVideo）。
-	// 历史：cdn.Upload* 在部分环境偶发 RST，旧 hermes 实测 message.Send 更稳。
-	outcome, upErr := p.sendVideoMessage(targetID, videoData)
-	if outcome == uploadOK {
-		return nil
-	}
-	slog.Error("[hermes_bridge] 视频发送最终失败",
-		"target", targetID, "outcome", outcome, "bytes", len(videoData), "err", upErr)
-	if fallbackURL != "" {
-		p.fallbackLink(targetID, "视频", fallbackURL, upErr)
-		return nil
-	}
-	return upErr
-}
-
-func (p *BridgePlugin) fallbackLink(targetID, kind, rawURL string, cause error) {
+func (p *BridgePlugin) fallbackLink(targetID, kind, rawURL string, cause error) (string, error) {
 	if p.message == nil {
-		return
+		err := errors.New("消息能力未注入")
+		slog.Warn("[hermes_bridge] 媒体链接降级失败", "kind", kind, "target", targetID, "err", err)
+		return "", err
 	}
-	slog.Info("[hermes_bridge] 媒体上传降级发链接", "kind", kind, "target", targetID, "url", rawURL, "cause", cause)
+	slog.Info("[hermes_bridge] 媒体上传降级发链接", "kind", kind, "target", targetID, "cause", cause)
 	txt := fmt.Sprintf("（%s发送失败，看链接吧：%s）", kind, rawURL)
-	_ = p.sendPlainText(p.resolveReceiver(targetID), txt)
+	messageID, err := p.sendPlainTextWithID(p.resolveReceiver(targetID), txt)
+	if err != nil {
+		slog.Warn("[hermes_bridge] 媒体链接降级失败", "kind", kind, "target", targetID, "err", err)
+		return "", err
+	}
+	return messageID, nil
 }
 
 func (p *BridgePlugin) sendPlainTextWithReminds(targetID, content string, reminds []string) error {

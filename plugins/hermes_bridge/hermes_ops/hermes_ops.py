@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-# hermes_ops — Hermes gateway 只读运维小服务（跑在 Hermes 所在主机）
+# hermes_ops — Hermes gateway 运维小服务（跑在 Hermes 所在主机）
 #
 # 设计：
-#   - 只读：健康 / 服务状态 / 工具注册自检 / sessions 列表 / 日志尾
+#   - 只读为主：健康 / 服务状态 / 工具注册自检 / sessions 列表 / 日志尾
+#   - 受控轻写：群友档案、人格 Markdown、单条解绑
 #   - 禁止任意 shell；命令与路径白名单
 #   - 默认只绑 127.0.0.1；要给别的主机（如桥所在机器）访问必须显式设 token + 监听地址
 #   - Bearer 与桥 hermes_ops_token 对齐（环境变量 HERMES_OPS_TOKEN）
@@ -29,7 +30,7 @@ import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 # profile 名统一派生 HERMES_HOME 默认值、systemd 单元名与 CLI -p 参数，
 # 免得换 profile 要改三处。三者仍可各自用自己的 env 覆盖。
@@ -84,6 +85,58 @@ MEMBER_DIR = Path(
         or str(HERMES_HOME / "wechat_member_profiles")
     )
 ).resolve()
+# 人格库固定在 profile 内，不提供任意路径环境变量。
+PERSONA_DIR = (HERMES_HOME / "wechat_personas").resolve()
+
+_OPS_DIR = Path(__file__).resolve().parent
+# 部署后与 hermes_ops.py 同目录；仓库内开发则回落到 wechat_golem/。
+for _cand in (_OPS_DIR, _OPS_DIR.parent / "wechat_golem"):
+    _s = str(_cand)
+    if _s not in sys.path:
+        sys.path.append(_s)
+
+_PERSONA_STORE_IMPORT_ERROR = ""
+try:
+    from persona_store import (
+        PERSONA_STORE_PROTOCOL,
+        BindingsCorrupt,
+        InvalidPersonaID,
+        InvalidSessionKey,
+        PersonaAlreadyExists,
+        PersonaConflict,
+        PersonaDeleteForbidden,
+        PersonaNotFound,
+        PersonaStore,
+        PersonaStoreError,
+        PersonaUnavailable,
+        StoreLimitError,
+        StoreLockTimeout,
+        StoreTypeError,
+        decode_binding_id,
+        encode_binding_id,
+    )
+except ImportError as e:
+    PERSONA_STORE_PROTOCOL = 0
+    BindingsCorrupt = InvalidPersonaID = InvalidSessionKey = Exception  # type: ignore
+    PersonaAlreadyExists = PersonaConflict = PersonaDeleteForbidden = Exception  # type: ignore
+    PersonaNotFound = PersonaStoreError = PersonaUnavailable = Exception  # type: ignore
+    StoreLimitError = StoreLockTimeout = StoreTypeError = Exception  # type: ignore
+    PersonaStore = None  # type: ignore
+    decode_binding_id = encode_binding_id = None  # type: ignore
+    _PERSONA_STORE_IMPORT_ERROR = str(e)
+
+PERSONA_STORE = (
+    PersonaStore(str(HERMES_HOME), root=str(PERSONA_DIR))
+    if PersonaStore is not None
+    else None
+)
+PERSONA_JSON_MAX = 128 * 1024
+PERSONA_CAPABILITIES = {
+    "personas.read": PERSONA_STORE is not None,
+    "personas.write": PERSONA_STORE is not None,
+    "persona_bindings.read": PERSONA_STORE is not None,
+    "persona_bindings.unbind": PERSONA_STORE is not None,
+}
 
 # 工具自检关键词
 TOOL_OK_PAT = re.compile(
@@ -795,6 +848,192 @@ def delete_member_profile(wxid: str) -> dict:
     return {"ok": True, "deleted": False, "wxid": seg, "note": "文件本不存在"}
 
 
+def _persona_unavailable() -> dict:
+    return {
+        "error": "人格存储模块不可用，请将 persona_store.py 与 hermes_ops.py 一并拷到 ~/.hermes/ops/",
+        "detail": _PERSONA_STORE_IMPORT_ERROR,
+        "capabilities": dict(PERSONA_CAPABILITIES),
+    }
+
+
+def _persona_http_error(exc: Exception) -> tuple[int, dict, dict]:
+    headers: dict[str, str] = {}
+    if isinstance(exc, InvalidPersonaID) or isinstance(exc, InvalidSessionKey):
+        return 400, {"error": str(exc)}, headers
+    if isinstance(exc, PersonaNotFound):
+        return 404, {"error": str(exc)}, headers
+    if isinstance(exc, PersonaAlreadyExists):
+        return 409, {"error": str(exc)}, headers
+    if isinstance(exc, PersonaConflict):
+        code = 428 if "必须提供 If-Match" in str(exc) else 412
+        return code, {"error": str(exc)}, headers
+    if isinstance(exc, PersonaDeleteForbidden) or isinstance(exc, BindingsCorrupt):
+        return 409, {"error": str(exc)}, headers
+    if isinstance(exc, StoreLockTimeout):
+        return 423, {"error": str(exc)}, {"Retry-After": "2"}
+    if isinstance(exc, StoreLimitError):
+        return 413, {"error": str(exc)}, headers
+    if isinstance(exc, (PersonaUnavailable, StoreTypeError, PersonaStoreError)):
+        return 409, {"error": str(exc)}, headers
+    return 500, {"error": "人格存储失败"}, headers
+
+
+def _persona_public_error(exc: Exception) -> str:
+    # 路径等文件系统细节只记服务端。
+    print(f"[hermes_ops] persona store: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return str(exc)
+
+
+def _persona_summary_item(item) -> dict:
+    return {
+        "id": item.persona_id,
+        "persona_id": item.persona_id,
+        "etag": item.etag,
+        "revision": item.revision,
+        "size_bytes": item.size_bytes,
+        "updated_at_ns": item.updated_at_ns,
+        "binding_count": item.binding_count,
+        "is_default": item.is_default,
+        "available": item.available,
+    }
+
+
+def _persona_record_item(record, binding_count: int = 0) -> dict:
+    return {
+        "id": record.persona_id,
+        "persona_id": record.persona_id,
+        "content": record.content,
+        "etag": record.etag,
+        "revision": record.revision,
+        "size_bytes": record.size_bytes,
+        "updated_at_ns": record.updated_at_ns,
+        "binding_count": binding_count,
+        "is_default": record.persona_id == "default",
+        "available": True,
+    }
+
+
+def list_personas_api() -> dict:
+    if PERSONA_STORE is None:
+        return _persona_unavailable()
+    items = PERSONA_STORE.list_personas(include_unavailable=True)
+    bindings, bindings_error = PERSONA_STORE.read_bindings()
+    return {
+        "ok": True,
+        "personas": [_persona_summary_item(item) for item in items],
+        "returned": len(items),
+        "bindings_error": bindings_error or "",
+        "bindings_ok": not bindings_error,
+        "explicit_bindings": len(bindings),
+        "capabilities": dict(PERSONA_CAPABILITIES),
+        "persona_store_protocol": PERSONA_STORE_PROTOCOL,
+    }
+
+
+def get_persona_api(persona_id: str) -> tuple[int, dict, dict]:
+    if PERSONA_STORE is None:
+        return 503, _persona_unavailable(), {}
+    try:
+        record = PERSONA_STORE.read_persona(persona_id)
+        bindings, _ = PERSONA_STORE.read_bindings()
+        count = sum(1 for item in bindings.values() if item["persona_id"] == record.persona_id)
+        body = {"ok": True, "persona": _persona_record_item(record, count)}
+        return 200, body, {"ETag": record.etag}
+    except Exception as exc:
+        code, body, headers = _persona_http_error(exc)
+        _persona_public_error(exc)
+        return code, body, headers
+
+
+def create_persona_api(body: dict) -> tuple[int, dict, dict]:
+    if PERSONA_STORE is None:
+        return 503, _persona_unavailable(), {}
+    persona_id = str((body or {}).get("id") or (body or {}).get("persona_id") or "").strip()
+    content = str((body or {}).get("content") or "")
+    try:
+        record = PERSONA_STORE.create_persona(persona_id, content)
+        body_out = {"ok": True, "persona": _persona_record_item(record, 0)}
+        return 201, body_out, {"ETag": record.etag}
+    except Exception as exc:
+        code, err, headers = _persona_http_error(exc)
+        _persona_public_error(exc)
+        return code, err, headers
+
+
+def update_persona_api(persona_id: str, body: dict, if_match: str) -> tuple[int, dict, dict]:
+    if PERSONA_STORE is None:
+        return 503, _persona_unavailable(), {}
+    if not str(if_match or "").strip():
+        return 428, {"error": "更新人格必须提供 If-Match"}, {}
+    content = str((body or {}).get("content") or "")
+    try:
+        record = PERSONA_STORE.update_persona(persona_id, content, if_match=if_match)
+        bindings, _ = PERSONA_STORE.read_bindings()
+        count = sum(1 for item in bindings.values() if item["persona_id"] == record.persona_id)
+        body_out = {"ok": True, "persona": _persona_record_item(record, count)}
+        return 200, body_out, {"ETag": record.etag}
+    except Exception as exc:
+        code, err, headers = _persona_http_error(exc)
+        _persona_public_error(exc)
+        return code, err, headers
+
+
+def remove_persona_api(persona_id: str, if_match: str = "") -> tuple[int, dict, dict]:
+    if PERSONA_STORE is None:
+        return 503, _persona_unavailable(), {}
+    try:
+        PERSONA_STORE.delete_persona(persona_id, if_match=if_match or None)
+        return 200, {"ok": True, "deleted": True, "persona_id": persona_id}, {}
+    except Exception as exc:
+        code, err, headers = _persona_http_error(exc)
+        _persona_public_error(exc)
+        return code, err, headers
+
+
+def list_persona_bindings_api() -> dict:
+    if PERSONA_STORE is None:
+        return _persona_unavailable()
+    bindings, error = PERSONA_STORE.read_bindings()
+    available = {item.persona_id for item in PERSONA_STORE.list_personas()}
+    items = []
+    for session_key, item in sorted(bindings.items()):
+        persona_id = item["persona_id"]
+        items.append(
+            {
+                "binding_id": encode_binding_id(session_key),
+                "session_key": session_key,
+                "persona_id": persona_id,
+                "updated_at": item["updated_at"],
+                "persona_available": persona_id in available,
+            }
+        )
+    return {
+        "ok": not bool(error),
+        "bindings": items,
+        "returned": len(items),
+        "bindings_error": error or "",
+        "capabilities": dict(PERSONA_CAPABILITIES),
+        "persona_store_protocol": PERSONA_STORE_PROTOCOL,
+    }
+
+
+def unbind_persona_api(binding_id: str) -> tuple[int, dict, dict]:
+    if PERSONA_STORE is None:
+        return 503, _persona_unavailable(), {}
+    try:
+        session_key = decode_binding_id(binding_id)
+        existed = PERSONA_STORE.unbind(session_key)
+        return 200, {
+            "ok": True,
+            "unbound": existed,
+            "binding_id": binding_id,
+            "session_key": session_key,
+        }, {}
+    except Exception as exc:
+        code, err, headers = _persona_http_error(exc)
+        _persona_public_error(exc)
+        return code, err, headers
+
 
 def overview() -> dict:
     st = systemd_status()
@@ -824,13 +1063,13 @@ def overview() -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "hermes_ops/0.6"
+    server_version = "hermes_ops/0.7"
 
     def log_message(self, fmt: str, *args) -> None:
         # 简洁 stdout
         print(f"[hermes_ops] {self.address_string()} {fmt % args}", file=sys.stderr)
 
-    def _auth_ok(self) -> bool:
+    def _auth_ok(self, *, allow_query_token: bool = True) -> bool:
         if not TOKEN:
             # 无 token 只在回环监听时放行（启动校验已拒绝「非回环 + 无 token」）。
             # 双重保险：即使监听地址判断有偏差，也不把接口敞给非本机来源。
@@ -845,16 +1084,20 @@ class Handler(BaseHTTPRequestHandler):
             got = got[7:].strip()
         if not got:
             got = (self.headers.get("X-Ops-Token") or "").strip()
-        if not got:
+        if not got and allow_query_token:
             qs = parse_qs(urlparse(self.path).query)
             got = (qs.get("token") or [""])[0].strip()
         return got == TOKEN
 
-    def _json(self, code: int, obj: dict) -> None:
+    def _json(self, code: int, obj: dict, extra_headers: dict | None = None) -> None:
         raw = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(raw)))
+        if extra_headers:
+            for key, value in extra_headers.items():
+                if value:
+                    self.send_header(key, str(value))
         self.end_headers()
         self.wfile.write(raw)
 
@@ -872,12 +1115,15 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "status": "ok",
                     "service": "hermes_ops",
-                    "version": "0.6",
+                    "version": "0.7",
                     "profile": PROFILE,
                     "hermes_home": str(HERMES_HOME),
                     "log_dir": str(LOG_DIR),
                     "sticker_dir": str(STICKER_DIR),
                     "member_dir": str(MEMBER_DIR),
+                    "persona_dir": str(PERSONA_DIR),
+                    "persona_store_protocol": PERSONA_STORE_PROTOCOL,
+                    "capabilities": dict(PERSONA_CAPABILITIES),
                     "service_manager": _SERVICE_MANAGER_RESOLVED,
                     "auth": "token" if TOKEN else "loopback-only",
                     "ts": int(time.time()),
@@ -945,8 +1191,6 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         if path.startswith("/stickers/"):
-            from urllib.parse import unquote
-
             rest = unquote(path[len("/stickers/") :]).strip("/")
             parts = [p for p in rest.split("/") if p]
             if len(parts) == 1:
@@ -999,11 +1243,22 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, list_member_profiles(q=(q.get("q") or [""])[0]))
             return
         if path.startswith("/member_profiles/"):
-            from urllib.parse import unquote
-
             wxid = unquote(path[len("/member_profiles/") :])
             res = get_member_profile(wxid)
             self._json(200 if res.get("ok") else 404, res)
+            return
+        if path == "/personas":
+            data = list_personas_api()
+            self._json(503 if PERSONA_STORE is None else 200, data)
+            return
+        if path.startswith("/personas/"):
+            persona_id = unquote(path[len("/personas/") :])
+            code, body, headers = get_persona_api(persona_id)
+            self._json(code, body, headers)
+            return
+        if path == "/persona_bindings":
+            data = list_persona_bindings_api()
+            self._json(503 if PERSONA_STORE is None else 200, data)
             return
 
         self._json(
@@ -1022,18 +1277,24 @@ class Handler(BaseHTTPRequestHandler):
                     "/member_profiles?q=",
                     "/member_profiles/<wxid>",
                     "PUT/DELETE /member_profiles/<wxid>",
+                    "/personas",
+                    "/personas/<id>",
+                    "POST /personas",
+                    "PUT/DELETE /personas/<id>",
+                    "/persona_bindings",
+                    "DELETE /persona_bindings/<binding_id>",
                 ],
             },
         )
 
-    def _read_json_body(self):
+    def _read_json_body(self, max_bytes: int = 1 << 20):
         try:
             length = int(self.headers.get("Content-Length") or "0")
         except ValueError:
             length = 0
         if length <= 0:
             return {}, None
-        if length > 1 << 20:
+        if length > max_bytes:
             return None, "body too large"
         raw = self.rfile.read(length)
         try:
@@ -1044,39 +1305,75 @@ class Handler(BaseHTTPRequestHandler):
             return None, "body 须为对象"
         return data, None
 
-    def do_PUT(self) -> None:  # noqa: N802
-        if not self._auth_ok():
+    def do_POST(self) -> None:  # noqa: N802
+        if not self._auth_ok(allow_query_token=False):
             self._json(401, {"error": "unauthorized"})
             return
         u = urlparse(self.path)
         path = u.path.rstrip("/") or "/"
-        if not path.startswith("/member_profiles/"):
-            self._json(405, {"error": "仅 member_profiles/<wxid> 支持 PUT"})
+        if path != "/personas":
+            self._json(405, {"error": "仅 POST /personas 支持创建人格"})
             return
-        from urllib.parse import unquote
-
-        wxid = unquote(path[len("/member_profiles/") :])
-        body, err = self._read_json_body()
+        body, err = self._read_json_body(PERSONA_JSON_MAX)
         if err:
             self._json(400, {"error": err})
             return
-        res = put_member_profile(wxid, body or {})
-        self._json(200 if res.get("ok") else 400, res)
+        code, payload, headers = create_persona_api(body or {})
+        self._json(code, payload, headers)
 
-    def do_DELETE(self) -> None:  # noqa: N802
-        if not self._auth_ok():
+    def do_PUT(self) -> None:  # noqa: N802
+        if not self._auth_ok(allow_query_token=False):
             self._json(401, {"error": "unauthorized"})
             return
         u = urlparse(self.path)
         path = u.path.rstrip("/") or "/"
-        if not path.startswith("/member_profiles/"):
-            self._json(405, {"error": "仅 member_profiles/<wxid> 支持 DELETE"})
+        if path.startswith("/member_profiles/"):
+            wxid = unquote(path[len("/member_profiles/") :])
+            body, err = self._read_json_body()
+            if err:
+                self._json(400, {"error": err})
+                return
+            res = put_member_profile(wxid, body or {})
+            self._json(200 if res.get("ok") else 400, res)
             return
-        from urllib.parse import unquote
+        if path.startswith("/personas/"):
+            persona_id = unquote(path[len("/personas/") :])
+            body, err = self._read_json_body(PERSONA_JSON_MAX)
+            if err:
+                self._json(400, {"error": err})
+                return
+            if_match = (self.headers.get("If-Match") or "").strip()
+            code, payload, headers = update_persona_api(persona_id, body or {}, if_match)
+            self._json(code, payload, headers)
+            return
+        self._json(405, {"error": "仅 member_profiles/<wxid> 与 personas/<id> 支持 PUT"})
 
-        wxid = unquote(path[len("/member_profiles/") :])
-        res = delete_member_profile(wxid)
-        self._json(200 if res.get("ok") else 400, res)
+    def do_DELETE(self) -> None:  # noqa: N802
+        if not self._auth_ok(allow_query_token=False):
+            self._json(401, {"error": "unauthorized"})
+            return
+        u = urlparse(self.path)
+        path = u.path.rstrip("/") or "/"
+        if path.startswith("/member_profiles/"):
+            wxid = unquote(path[len("/member_profiles/") :])
+            res = delete_member_profile(wxid)
+            self._json(200 if res.get("ok") else 400, res)
+            return
+        if path.startswith("/personas/"):
+            persona_id = unquote(path[len("/personas/") :])
+            if_match = (self.headers.get("If-Match") or "").strip()
+            code, payload, headers = remove_persona_api(persona_id, if_match)
+            self._json(code, payload, headers)
+            return
+        if path.startswith("/persona_bindings/"):
+            binding_id = unquote(path[len("/persona_bindings/") :])
+            code, payload, headers = unbind_persona_api(binding_id)
+            self._json(code, payload, headers)
+            return
+        self._json(
+            405,
+            {"error": "仅 member_profiles/<wxid>、personas/<id>、persona_bindings/<id> 支持 DELETE"},
+        )
 
 
 
@@ -1109,7 +1406,8 @@ def main() -> None:
     print(
         f"[hermes_ops] listen={host}:{port} profile={PROFILE} HERMES_HOME={HERMES_HOME} "
         f"unit={UNIT} service_manager={_SERVICE_MANAGER_RESOLVED} "
-        f"stickers={STICKER_DIR} members={MEMBER_DIR}",
+        f"stickers={STICKER_DIR} members={MEMBER_DIR} personas={PERSONA_DIR} "
+        f"persona_store_protocol={PERSONA_STORE_PROTOCOL}",
         flush=True,
     )
     if _SERVICE_MANAGER_RESOLVED == "none":

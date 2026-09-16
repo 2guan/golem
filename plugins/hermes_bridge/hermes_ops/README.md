@@ -1,11 +1,12 @@
 # hermes_ops
 
-跑在 **Hermes gateway 所在机器**的 **只读为主** 运维 HTTP 小服务，给 Golem
-`hermes_bridge` 管理台「Hermes」页用。
+跑在 **Hermes gateway 所在机器**的 **只读为主、受控轻写** 运维 HTTP 小服务，给 Golem
+`hermes_bridge` 管理台「Hermes / 表情 / 档案 / 人格」页用。
 
 桥通过 `hermes_ops_url` 反代，浏览器只打桥的本机管理台，不直连 ops。
 
 源码目录：`plugins/hermes_bridge/hermes_ops/`（随仓库；部署时拷到 `~/.hermes/ops/`）。
+人格 API 还依赖同目录的 `persona_store.py`（源码在 `wechat_golem/`，两处运行目录都要复制同一份）。
 
 ---
 
@@ -16,7 +17,8 @@
                             │
                             │ hermes_ops_token
                             ▼
-                     ops :8650（默认仅回环）──只读──► 日志文件 / state.db / 服务状态
+                     ops :8650（默认仅回环）──只读──► 日志 / state.db / 服务状态
+                                           ──轻写──► 群友档案 / 人格 Markdown / 单条解绑
 ```
 
 | Token | 用途 | 配置位置 |
@@ -49,7 +51,7 @@
 
 | 路径 | 说明 |
 |------|------|
-| `GET /health` | 探活；报 profile、各目录、`service_manager`、`auth` 模式 |
+| `GET /health` | 探活；报 profile、各目录、`capabilities`、`persona_store_protocol`、`auth` 模式 |
 | `GET /overview` | 服务状态 + 工具注册粗检 + 红灯 `alerts`（非 systemd 环境不计入红灯） |
 | `GET /tools/check` | 扫 `agent.log`/`errors.log` 尾：`tool registered` / `registration crashed` |
 | `GET /sessions?n=40` | 只读 `state.db`（若有）或回落 `hermes -p <profile> sessions list` |
@@ -57,13 +59,23 @@
 | `GET /stickers/facets` | 情绪/题材计数（UI 先选再加载） |
 | `GET /stickers?n=100&mood=&tag=&q=` | 表情库列表（建议带 mood/tag/q，勿一次全库） |
 | `GET /stickers/<md5>` | 单条表情元数据 |
-| `GET /stickers/<md5>/file` | 表情原文件（image/*，≤2MB；管理台缩略图） |
+| `GET /stickers/<md5>/file` | 表情原文件（image/*，≤16MB；管理台缩略图） |
 | `GET /member_profiles?q=` | 群友档案列表 |
 | `GET /member_profiles/<wxid>` | 单份档案 JSON |
 | `PUT /member_profiles/<wxid>` | **轻写**：合并/覆盖档案字段（body JSON） |
 | `DELETE /member_profiles/<wxid>` | 删除档案（幂等） |
+| `GET /personas` | 人格摘要列表（不含正文） |
+| `POST /personas` | 创建 `{id, content}`；同名 409 |
+| `GET /personas/<id>` | Markdown 详情 + `ETag` |
+| `PUT /personas/<id>` | 条件更新，必须 `If-Match`（缺 428、冲突 412） |
+| `DELETE /personas/<id>` | 删除非 default、无绑定人格；否则 409 |
+| `GET /persona_bindings` | 显式会话绑定；损坏时 `bindings_error` 不为空 |
+| `DELETE /persona_bindings/<binding_id>` | 单条幂等解绑；`binding_id` 为 session key 的无填充 base64url |
 
-**故意没有：** gateway restart、sessions prune、任意 shell、改 `config.yaml`。写操作请 SSH，避免 UI 重启风暴。
+JSON 写接口（POST/PUT/DELETE）只接受 header token，不允许 query `?token=`。
+`/health.capabilities` 声明 `personas.read/write` 与 `persona_bindings.read/unbind`。
+锁超时返回 423 + `Retry-After`。绑定文件损坏时读回退、写/删除冻结。
+不提供创建绑定、force/cascade 删除、gateway restart、sessions prune、任意 shell。
 
 ---
 
@@ -106,15 +118,17 @@
 mkdir -p ~/.hermes/ops
 # 从仓库 plugins/hermes_bridge/hermes_ops/ 拷入：
 #   hermes_ops.py
+#   persona_store.py（从 wechat_golem/ 拷同一份）
 #   hermes-ops.service.example（可选）
 cp /path/to/hermes_ops.py ~/.hermes/ops/
+cp /path/to/persona_store.py ~/.hermes/ops/
 ```
 
 > **路径别搞混（实踩）**  
 > - **脚本**必须在：`~/.hermes/ops/hermes_ops.py`（与 unit 里 `ExecStart=… %h/.hermes/ops/hermes_ops.py` 一致）  
 > - **unit 文件**才在：`~/.config/systemd/user/hermes-ops.service`  
 > 若把 `hermes_ops.py` 误拷进 `~/.config/systemd/user/`，systemd 仍跑旧的 `~/.hermes/ops/` 副本 → 界面一直 404、你以为「已经更新了」。  
-> 更新后验：`wc -c -l ~/.hermes/ops/hermes_ops.py` + `curl …/health` 看 `version`。
+> 更新后验：`wc -c -l ~/.hermes/ops/hermes_ops.py ~/.hermes/ops/persona_store.py` + `curl …/health` 看 `version` 与 `capabilities`。
 
 ### 4.2 先手动跑通（必做一次）
 
@@ -409,7 +423,8 @@ inode 后它会继续往已删除的文件写——磁盘空间不释放（`du` 
 - **默认只绑 `127.0.0.1`**；无 token 时只接受本机请求，非回环监听且无 token 直接拒绝启动
 - 跨机访问优先 SSH 隧道 `ssh -L 8650:127.0.0.1:8650 <user>@<hermes-host>`，桥填
   `http://127.0.0.1:8650`；要直连则先设 `HERMES_OPS_TOKEN` 再放开 `HERMES_OPS_LISTEN`
-- `PUT/DELETE member_profiles` 为有意轻写；表情字节与 gateway 控制面仍不开放
+- `PUT/DELETE member_profiles` 与人格 Markdown / 单条解绑为有意轻写；表情字节与 gateway 控制面仍不开放
+- 人格写与微信切换共用 `.session_bindings.lock`；`default` 不可删，已绑定须先解绑
 
 ---
 
@@ -427,5 +442,9 @@ inode 后它会继续往已删除的文件写——磁盘空间不释放（`du` 
 | `GET /admin/hermes/logs?…` | `/logs?…` |
 | `GET /admin/hermes/stickers…` | `/stickers…` |
 | `GET|PUT|DELETE /admin/hermes/member_profiles…` | 同名 |
+| `GET|POST /admin/hermes/personas` | 同名 |
+| `GET|PUT|DELETE /admin/hermes/personas/<id>` | 同名 |
+| `GET /admin/hermes/persona_bindings` | 同名 |
+| `DELETE /admin/hermes/persona_bindings/<id>` | 同名 |
 
 产品说明：`plugins/hermes_bridge/readme.md`；部署总册：`plugins/hermes_bridge/DEPLOY.md`。

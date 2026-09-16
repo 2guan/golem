@@ -34,14 +34,15 @@ type contextMsg struct {
 
 // flushMeta 一次去抖 flush 时沿用的会话与触发元信息（给 bridgeEvent 用）
 type flushMeta struct {
-	ChatID        string
-	ChatName      string
-	ChatType      string // group / private
-	UserID        string
-	UserName      string
-	IsOwner       bool
-	Addressing    string
-	TriggerReason string
+	ChatID          string
+	ChatName        string
+	ChatType        string // group / private
+	UserID          string
+	UserName        string
+	IsOwner         bool
+	Addressing      string
+	TriggerReason   string
+	DebounceSeconds int
 }
 
 // sessionState 单会话：滚动上下文 + 最多一个 pending 去抖 timer
@@ -58,11 +59,10 @@ type sessionState struct {
 
 // ---- 上下文缓冲 ----
 
-func (p *BridgePlugin) appendContext(key string, msg contextMsg) contextMsg {
+func (p *BridgePlugin) appendContext(key string, msg contextMsg, limit int) contextMsg {
 	if key == "" || strings.TrimSpace(msg.Text) == "" {
 		return msg
 	}
-	limit := p.configSnapshot().MaxContextMessages
 	if limit <= 0 {
 		limit = 40
 	}
@@ -213,6 +213,21 @@ func (p *BridgePlugin) isMemberArchiveText(text string) bool {
 	return matchToken(text, p.archiveTokens())
 }
 
+// isPersonaCommandText 只识别固定命令外形，供主人消息旁路群门闩。
+// 人格 ID 的严格合法性和文件可用性由 Hermes 适配器校验并回执。
+func (p *BridgePlugin) isPersonaCommandText(text string) bool {
+	raw := strings.TrimSpace(text)
+	switch raw {
+	case "人格列表", "当前人格", "恢复默认人格", "人格 列表", "人格 当前", "人格 默认":
+		return true
+	}
+	parts := strings.Fields(raw)
+	if len(parts) == 2 && parts[0] == "切换人格" {
+		return true
+	}
+	return len(parts) == 3 && parts[0] == "人格" && parts[1] == "切换"
+}
+
 // isRevokeText 撤回捷径：主人整句「撤回/撤回吧/撤回上一条」。
 // 与上面几个不同，这条**不透传**给适配器——撤回要抢微信 2 分钟窗口，绕开
 // SSE→LLM→工具一整圈最稳，桥自己撤完就结束（见 outbox.go）。
@@ -266,7 +281,7 @@ func classifyGroupAddressing(in *incomingMessage) {
 // addressing 与 trigger_reason 分开：例如 trigger_names 命中是明确点名火，
 // 因而 addressing=self、trigger_reason=trigger_name；冒泡只说明被动推送，
 // 不会把一条 @ 别人的话伪装成发给火。
-func (p *BridgePlugin) classifyGroupTrigger(in *incomingMessage) bool {
+func (p *BridgePlugin) classifyGroupTrigger(in *incomingMessage, gate groupGate) bool {
 	if in == nil {
 		return false
 	}
@@ -282,9 +297,8 @@ func (p *BridgePlugin) classifyGroupTrigger(in *incomingMessage) bool {
 		return true
 	}
 
-	cfg := p.configSnapshot()
 	lower := strings.ToLower(in.Text)
-	for _, name := range cfg.TriggerNames {
+	for _, name := range gate.TriggerNames {
 		name = strings.ToLower(strings.TrimSpace(name))
 		if name != "" && strings.Contains(lower, name) {
 			// 与真实 @ 一样，trigger_names 是现有配置定义的「点名火」。
@@ -296,8 +310,8 @@ func (p *BridgePlugin) classifyGroupTrigger(in *incomingMessage) bool {
 
 	// 冒泡：未点名时低概率触发，是否说话由 agent 决定。
 	// 保留 other_participants/none，不能因冒泡而变成 addressing=self。
-	if cfg.BubbleRate > 0 && rand.Float64() < cfg.BubbleRate {
-		cooldown := time.Duration(cfg.BubbleCooldownMin) * time.Minute
+	if gate.BubbleRate > 0 && rand.Float64() < gate.BubbleRate {
+		cooldown := time.Duration(gate.BubbleCooldownMin) * time.Minute
 		if cooldown <= 0 {
 			cooldown = 10 * time.Minute
 		}
@@ -316,17 +330,16 @@ func (p *BridgePlugin) classifyGroupTrigger(in *incomingMessage) bool {
 // recordEmojiAndCheckBurst 斗图门闩：记录一条群表情，滑动窗口内达到阈值且过冷却则触发。
 // 每条表情都要记（含因其他原因已触发的批次里的），触发后清零计数、记冷却。
 // 与冒泡同语义：只解释「为何送达」，addressing 不因此变 self。
-func (p *BridgePlugin) recordEmojiAndCheckBurst(key string) bool {
-	cfg := p.configSnapshot()
-	n := cfg.EmojiBurstCount
+func (p *BridgePlugin) recordEmojiAndCheckBurst(key string, gate groupGate) bool {
+	n := gate.EmojiBurstCount
 	if n <= 0 || key == "" {
 		return false
 	}
-	window := time.Duration(cfg.EmojiBurstWindowSec) * time.Second
+	window := time.Duration(gate.EmojiBurstWindowSec) * time.Second
 	if window <= 0 {
 		window = 30 * time.Second
 	}
-	cooldown := time.Duration(cfg.EmojiBurstCooldownMin) * time.Minute
+	cooldown := time.Duration(gate.EmojiBurstCooldownMin) * time.Minute
 	if cooldown <= 0 {
 		cooldown = 5 * time.Minute
 	}
@@ -391,8 +404,7 @@ func (p *BridgePlugin) scheduleGroupFlush(key string, meta flushMeta) {
 	if key == "" {
 		return
 	}
-	cfg := p.configSnapshot()
-	d := time.Duration(cfg.DebounceSeconds) * time.Second
+	d := time.Duration(meta.DebounceSeconds) * time.Second
 	if d < 0 {
 		d = 0
 	}

@@ -521,6 +521,26 @@ main {
   font-size: 13px;
 }
 .form-actions { grid-column: 1 / -1; margin: 8px 0 0; }
+.form label.diag-file-field { grid-column: 1 / -1; }
+input[type="file"] {
+  padding: 8px 10px;
+}
+input[type="file"]::file-selector-button {
+  font: inherit;
+  font-weight: 600;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin-right: 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+input[type="file"]::file-selector-button:hover {
+  border-color: var(--line-glow);
+  background: var(--card-hover);
+}
 .form-compact { grid-template-columns: 1fr 1fr 1fr; }
 .form-compact .form-actions {
   position: sticky;
@@ -1308,6 +1328,47 @@ main {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+
+/* ---- 人格管理 ---- */
+.persona-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, .72fr) minmax(420px, 1.28fr);
+  gap: 18px;
+  min-height: 0;
+  flex: 1;
+  height: 100%;
+}
+.persona-library, .persona-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: rgba(255, 255, 255, .72);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 16px;
+}
+.persona-item {
+  width: 100%;
+  text-align: left;
+  border-radius: var(--r);
+  white-space: normal;
+}
+.persona-detail-head { justify-content: space-between; }
+.persona-form { grid-template-columns: 1fr; box-shadow: none; background: transparent; }
+.persona-form > label, .persona-content-field { grid-column: 1 / -1; }
+.persona-content-field textarea {
+  width: 100%;
+  min-height: 360px;
+  resize: vertical;
+  font-family: var(--mono);
+  line-height: 1.65;
+  tab-size: 2;
+}
+.persona-bindings-note { margin: -6px 0 12px 14px; }
+.persona-binding-item strong { font-family: var(--mono); }
+.field-hint.over-limit { color: var(--bad); font-weight: 800; }
+
 @media (max-width: 960px) {
   :root { --sidebar-w: 220px; }
   main { padding: 14px 20px 40px; }
@@ -1331,7 +1392,7 @@ main {
   .nav { flex-direction: row; flex-wrap: wrap; gap: 4px; }
   .nav button { width: auto; padding: 8px 12px; font-size: 12px; }
   .nav-label { display: none; }
-  .sticker-layout, .split-layout { grid-template-columns: 1fr; }
+  .sticker-layout, .split-layout, .persona-layout { grid-template-columns: 1fr; }
   .mood-pane { position: relative; top: 0; max-height: 200px; }
   .panel.panel-fill.active { height: auto; }
   .form, .form-compact { grid-template-columns: 1fr; }

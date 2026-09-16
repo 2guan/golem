@@ -26,12 +26,12 @@ Hermes gateway + $HERMES_HOME/plugins/platforms/wechat_golem
 且 `listen` 可收紧为 `127.0.0.1:8643`；分机时填桥所在机器对 Hermes 可达的地址。
 
 - **入站**：白名单会话（主人私聊始终放行）→ SSE `event: message`；无适配器订阅时直接丢弃。
-- **入站图片/表情（懒下载）**：OnEvent 只登记 `media_ref`（内存表，TTL 2h/上限 128，见 `mediaref.go`），SSE 事件带 `media_ref=media_N`，**不预下载、不内嵌 base64**。agent 需要看图时适配器调 `GET /media?ref=` 取回，桥此刻才下载：图片按 中图→原图→缩略图 走 `cdn.DownloadImage(fileID, aesKey)`（fileID 从 Raw 的 `content.value` 自解 XML 拿 `cdnmidimgurl` 等；host 的 `Media.Url` 恒空、md5 不能当 file_id；本后端标签是 `imgmsg` 非 `img`），全失败用 Raw 里 sync 自带的 `image_buffer.data`（ImgBuf 缩略图）兜底；表情走 `Media.Url` 真 HTTP 直链。首次取回后桥缓存字节，重复取零开销。语音/视频暂无可用下载参数，不登记。
+- **入站媒体（懒下载）**：OnEvent 只登记 `media_ref`（内存表，TTL 2h/上限 128，见 `mediaref.go`），SSE 事件带 `media_ref=media_N`，**不预下载、不内嵌 base64**。agent 需要时适配器调 `GET /media?ref=` 取回，桥此刻才下载：图片按 中图→原图→缩略图 走 `cdn.DownloadImage`；表情走 HTTP 直链；视频走 `cdn.DownloadVideo`。**语音/文件（临时）**走本机 core HTTP `http://127.0.0.1:8080`（`coreapi.go`）：语音 `POST /api/message/download/voice`（`id`/`new_id`/`length`/`buffer_id`=XML `bufid`/`chatroom_id` 私聊空）；文件 `POST /api/message/download/file`（`attach_id`/`username`/`size`/`offset`/`chunk_size`，按 64KB 分片）。host `buildApp` 把 appmsg type=6 编成 TypeUnknown，桥同时订 Application 与 Unknown、用 XML `<type>6` 判断。core 接好 DownloadVoice/File 后只换 `coreapi.go`。前提：桥与 8080 是**同一份微信登录**。
 - **入站表情结构化**（v0.3.1+）：host 把表情消息 Content 填成裸 md5，桥统一改写为 `[表情]`，并在事件/群批次信封带 `emoji_md5`（全局指纹，收藏判重用）与 `emoji_desc`（发送者侧描述，不可信）。配合 `/media` 取字节，Hermes 侧 `wechat_golem` 维护表情收藏库（**`moods` 情绪 / `tags` 题材标记** 分列；工具 save/list/send/delete；自主应景用 mood，点名标记用 tag——详见 `wechat_golem/README.md` §表情库约定）。
-- **群门闩**：闲聊只记本地滚动上下文；`@` / 引用机器人 / `trigger_names` / 冒泡 才去抖合并后一批推送；已推送消息标水位，不重复推。去抖为 trailing：同会话只一个 timer，再次触发会重置满额倒计时（无最长窗口封顶）。
+- **群门闩**：闲聊只记本地滚动上下文；`@` / 引用机器人 / `trigger_names` / 冒泡 才去抖合并后一批推送；已推送消息标水位，不重复推。去抖为 trailing：同会话只一个 timer，再次触发会重置满额倒计时（无最长窗口封顶）。**这是全局默认**；白名单里每个群可单独覆盖同名字段（省略=沿用全局，例如某群 `trigger_names = []` 就不吃点名词）。管理台「门闩」页下方按群覆盖。
 - **斗图门闩**（v0.3.2+）：滑动窗口内第 N 条群表情（默认 30s 内第 3 条）也触发一批推送，`trigger_reason=emoji_burst`、addressing 保持 none（同冒泡语义，只解释送达原因）；同会话默认 5 分钟最多一次，`emoji_burst_count = 0` 关闭。这是 agent 参与斗图与自动收藏的主要入口。
 - **群聊身份信封**：每条批次消息都附桥生成的 `verified`、发送者、`sender_role`、`addressing`、`trigger_reason`；`trigger_names` 命中时为 `addressing=self` / `trigger_reason=trigger_name`。真 @/引用别人保持 `other_participants`，即使因冒泡送达也不得被当成发给本机器人；详见部署笔记 §五。
-- **控制捷径**（立即 SSE、不去抖、不包群上下文）：审批 `yes/no/...`（**仅主人**；适配器还会核对确有待审批项，群内无待审批则忽略、私聊转普通消息，防止闲聊「同意/no」误唤醒 agent）；整句 **`打断`**（不限主人）。打断时还**作废**该会话当前未推送的去抖批次（停 timer + 标水位），避免 ⚡ 后又被尸体批次叫醒。整句 **`新开会话`/`新对话`**（仅主人，v0.3.3+）：同样作废未推批后透传 `trigger_reason=session_reset`，适配器进程内 `reset_session` 清空该会话 gateway 历史并回执——聊天里就地重置，**长期记忆与群成员档案不受影响**。整句 **`归档`/`归档群友`/`记群友`**（仅主人）：旁路门闩透传 `member_archive`，适配器扩成批量 `wechat_member_profile_upsert` 指令（**不清 session**；见下方「群成员偏好档案」）。
+- **控制捷径**（立即 SSE、不去抖、不包群上下文）：审批 `yes/no/...`（**仅主人**；适配器还会核对确有待审批项，群内无待审批则忽略、私聊转普通消息，防止闲聊「同意/no」误唤醒 agent）；整句 **`打断`**（不限主人）。打断时还**作废**该会话当前未推送的去抖批次（停 timer + 标水位），避免 ⚡ 后又被尸体批次叫醒。整句 **`新开会话`/`新对话`**（仅主人，v0.3.3+）：同样作废未推批后透传 `trigger_reason=session_reset`，适配器进程内 `reset_session` 清空该会话 gateway 历史并回执——聊天里就地重置，**长期记忆与群成员档案不受影响**。整句 **`归档`/`归档群友`/`记群友`**（仅主人）：旁路门闩透传 `member_archive`，适配器扩成批量 `wechat_member_profile_upsert` 指令（**不清 session**；见下方「群成员偏好档案」）。桥 v0.16+ 还支持主人整句 **`人格列表`/`当前人格`/`切换人格 <id>`/`恢复默认人格`**：群聊无需 @，透传 `persona_command` 后由适配器直接管理当前稳定微信会话的绑定；**不清 pending、不进滚动上下文、不 reset session、不打断当前 run**。
 - **撤回**（v0.14+）：整句 **`撤回`/`撤回吧`/`撤回上一条`**（**仅主人**）是唯一**不透传**的捷径——桥直接撤掉自己在该会话最近发的一条，不推 SSE、不惊动 agent（微信撤回窗口只约 2 分钟，绕一圈常赶不上），只在撤不掉时回一句原因。agent 主动撤走 tool `wechat_revoke` → `POST /revoke`（可 `count` 撤多条、`message_id` 指定某条）。所有出站消息都记账（每会话最近 24 条 / TTL 10 分钟，见 `outbox.go`），各 `send*` 接口因此也回 `message_id`。超过 `revoke_window_seconds`（默认 120）的直接拒绝并说明原因：host 的 `Revoke` 无论微信是否真撤都回成功，不拦就是「假成功」。词表 `revoke_tokens` **桥侧独有，适配器无对应 env**。
 - **私聊**：桥逐条 SSE；**适配器**侧同会话单飞 + pending（防 ⚡ Interrupt，见 `wechat_golem/README.md` §入站交付）。
 - **出站 AppMsg 卡片**（音乐等）：适配器拼好 `<appmsg>` XML + `sub_type` 后 POST `/send_app`，桥走 `message.Send`(TypeAppMusic) 经 host `SendApp` 发送；复用媒体防叠发策略（超时不重开 Send）。业务（搜歌、选 AppID 来源显示）全在 Hermes 侧，桥只补数据通道。
@@ -79,7 +79,7 @@ approval_tokens      = []       # 默认 yes/no/是/否/同意/拒绝… 共 16 
 revoke_tokens         = []      # 默认 ["撤回","撤回吧","撤回上一条"]
 revoke_window_seconds = 120     # 微信撤回时限；超窗直接拒绝并说明（0=用默认，负数=不检查）
 
-# Hermes 只读 ops（hermes_ops；管理台「Hermes」页）
+# Hermes 只读 ops（hermes_ops；管理台「Hermes / 表情 / 档案 / 人格」页）
 # hermes_ops_url   = "http://<hermes-host>:8650"   # 同机可用 127.0.0.1
 # hermes_ops_token = "与 HERMES_OPS_TOKEN 一致"
 
@@ -96,6 +96,22 @@ emoji_burst_count = 3           # 窗口内第 N 条表情触发一批推送，0
 emoji_burst_window_seconds = 30
 emoji_burst_cooldown_minutes = 5
 
+# 白名单里的群可单独覆盖以上字段（省略 = 沿用全局，不改默认行为）：
+# [[hermes_bridge.config.targets]]
+# id = "xxx@chatroom"
+# name = "老友群"
+# trigger_names = []            # 本群不吃点名词；仍可用 @ / 引用 / 冒泡 / 斗图
+# # group_push_all = true       # 仅本群每条都推
+# # bubble_rate = 0             # 仅本群关冒泡
+
+# 白名单里的群可单独覆盖以上字段（省略 = 沿用全局，不改默认行为）：
+# [[hermes_bridge.config.targets]]
+# id = "xxx@chatroom"
+# name = "老友群"
+# trigger_names = []            # 本群不吃点名词；仍可用 @ / 引用 / 冒泡 / 斗图
+# # group_push_all = true       # 仅本群每条都推
+# # bubble_rate = 0             # 仅本群关冒泡
+
 # 诊断（一般不开）
 # record_xml_dump_dir = ""      # 出站记录卡片 XML 落盘目录（绝对路径）；空=不落盘
 ```
@@ -110,11 +126,11 @@ emoji_burst_cooldown_minutes = 5
 - 能力：
   - 总览（SSE 订阅数/红灯项）
   - 白名单启停（可搜联系人）
-  - 门闩热更新（即时生效并 `saveConfig`）
+  - 门闩热更新（全局默认 + 按群覆盖；空白沿用全局，「清除覆盖」改回全局）
   - **入站旁路**（`/admin/inbound/recent` + SSE stream：pushed/dropped/context_only/scheduled/cancelled）
   - **本地 session 态**（`/admin/sessions`：去抖 pending、未推缓冲、冒泡/斗图冷却；非 Hermes gateway session）
-  - **诊断试发**（`POST /admin/diagnose`：image/video/emoji，等价 `/hermes image|…`）
-  - **Hermes 只读**（需 `hermes_ops_url`：gateway/工具/sessions/日志；**表情库**与**群友档案**浏览；档案可轻写；源码 `hermes_ops/`，运维见其 README）
+  - **诊断试发**（`POST /admin/diagnose`：image/video/voice/emoji；JSON 给 url/md5，或 `multipart/form-data` 上传本地文件，等价 `/hermes image|…`）
+  - **Hermes 运维**（需 `hermes_ops_url`：gateway/工具/sessions/日志；**表情库**、**群友档案**轻写、**人格** Markdown 与单条解绑；源码 `hermes_ops/`，运维见其 README）
 - 发现钩子：`GET /admin/meta`（无鉴权，无敏感字段）→ `{name,version,ui,admin_listen,auth}`，以后 Golem 总控可外链跳转
 - **UI 开发**：页面由 `embed.go` 编译期嵌入（`//go:embed ui/*`）——改 `ui/` 下源码后**必须重编译**才生效：
   `cd plugins && task build:hermes_bridge` 再重载 host（浏览器里是 exe 内嵌版，不是磁盘源码）。验证用真实 `admin_token`
@@ -136,6 +152,7 @@ emoji_burst_cooldown_minutes = 5
 | `/hermes disable` | 移出白名单 |
 | `/hermes image <url>` | 诊断：宿主机下载并直发图片 |
 | `/hermes video <url>` | 诊断：宿主机下载并直发视频 |
+| `/hermes voice <url>` | 诊断：宿主机下载并直发语音（必要时转码，需 ffmpeg/ffprobe） |
 | `/hermes emoji <url>` | 诊断：宿主机下载并直发表情（TypeEmoji，过大自动压缩：GIF 保动画、静图 PNG 优先 / JPEG 兜底） |
 
 > 音乐卡片没有 `/hermes` 诊断命令（业务下沉在 Hermes 侧）。

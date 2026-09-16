@@ -235,6 +235,9 @@ func (p *BridgePlugin) handleFetchMedia(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("X-Media-Kind", kind)
+	if _, name := p.inboundKindAndName(ref); name != "" {
+		w.Header().Set("X-Media-Name", name)
+	}
 	_, _ = w.Write(data)
 }
 
@@ -307,7 +310,10 @@ type sendResult struct {
 	Error   string `json:"error,omitempty"`
 	// MessageID 刚发出那条的 new_msg_id（十进制字符串，防 JSON 大整数丢精度）。
 	// 供调用方留句柄用于撤回；桥侧撤回不依赖它（/revoke 默认按「最近 N 条」）。
-	MessageID string `json:"message_id,omitempty"`
+	MessageID       string `json:"message_id,omitempty"`
+	DeliveryState   string `json:"delivery_state,omitempty"`
+	FallbackSuccess *bool  `json:"fallback_success,omitempty"`
+	Warning         string `json:"warning,omitempty"`
 }
 
 // sendAppReq 出站 AppMsg 卡片（音乐/链接/聊天记录等）：XML 与 sub_type 由适配器拼好，
@@ -1021,80 +1027,132 @@ func (p *BridgePlugin) handleMedia(w http.ResponseWriter, r *http.Request, kind 
 		return
 	}
 
-	var sendErr error
+	var (
+		messageID       string
+		sendErr         error
+		deliveryState   string
+		fallbackSuccess *bool
+		warning         string
+	)
+	setMediaResult := func(id string, outcome uploadOutcome, mediaErr error) {
+		if outcome == uploadOK {
+			messageID = id
+			deliveryState = "media_sent"
+			return
+		}
+		if req.URL == "" {
+			if outcome == uploadTimeout {
+				deliveryState = "unknown"
+				warning = fmt.Sprintf("%s发送结果未确认，且没有 URL 可降级", mediaKindName(kind))
+				return
+			}
+			sendErr = mediaErr
+			return
+		}
+		fallbackID, fallbackErr := p.fallbackLink(req.ChatID, mediaKindName(kind), req.URL, mediaErr)
+		success := fallbackErr == nil
+		fallbackSuccess = &success
+		messageID = fallbackID
+		if success {
+			deliveryState = "fallback_sent"
+			warning = fmt.Sprintf("%s发送失败，已降级发送链接", mediaKindName(kind))
+			return
+		}
+		deliveryState = "unknown"
+		warning = fmt.Sprintf("%s发送结果未确认，链接降级也失败: %v", mediaKindName(kind), fallbackErr)
+	}
+
 	switch kind {
 	case "image":
-		outcome, e := p.sendImageMessage(req.ChatID, data)
-		if outcome != uploadOK {
-			// 有 url 才降级发链接
-			if req.URL != "" {
-				p.fallbackLink(req.ChatID, "图片", req.URL, e)
-				sendErr = nil
-			} else {
-				sendErr = e
-			}
-		}
+		id, outcome, e := p.sendImageMessageWithID(req.ChatID, data)
+		setMediaResult(id, outcome, e)
 	case "emoji":
 		if req.Md5 != "" && len(data) == 0 {
 			// 收藏重发：仅传 md5 不传数据，微信用 CDN 原文件，保原图画质。
-			outcome, e := p.sendEmojiByMd5(req.ChatID, req.Md5)
+			id, outcome, e := p.sendEmojiByMd5WithID(req.ChatID, req.Md5)
 			if outcome != uploadOK {
 				slog.Error("[hermes_bridge] 表情 md5 引用发送失败", "chat", req.ChatID, "outcome", outcome, "md5", req.Md5, "err", e)
-				sendErr = e
 			} else {
 				slog.Info("[hermes_bridge] 已发 md5 引用表情", "chat", req.ChatID, "md5", req.Md5)
 			}
-		} else if req.Raw && len(data) <= maxEmojiBytes {
-			// 收藏重发且体积达标：原字节原 md5，不动（压缩会改 md5、JPEG 化丢动画）
-			slog.Info("[hermes_bridge] 表情 raw 模式，原样发送", "chat", req.ChatID, "bytes", len(data))
-			outcome, e := p.sendEmojiMessage(req.ChatID, data)
-			if outcome != uploadOK {
-				slog.Error("[hermes_bridge] 表情发送最终失败", "chat", req.ChatID, "outcome", outcome, "raw", req.Raw, "err", e)
-				if req.URL != "" {
-					p.fallbackLink(req.ChatID, "表情", req.URL, e)
-					sendErr = nil
-				} else {
-					sendErr = e
-				}
-			} else {
-				slog.Info("[hermes_bridge] 已发表情", "chat", req.ChatID, "bytes", len(data), "raw", req.Raw)
-			}
+			setMediaResult(id, outcome, e)
 		} else {
-			// 实测 2MB 表情原样上传微信「假成功」不上屏（自定义表情上限约 1MB），
-			// raw 超限时也必须压；GIF 走保动画压缩，静图才 JPEG。
-			if req.Raw {
-				slog.Info("[hermes_bridge] 表情 raw 超体积上限，转保动画压缩",
-					"chat", req.ChatID, "bytes", len(data), "limit", maxEmojiBytes)
+			if req.Raw && len(data) <= maxEmojiBytes {
+				// 收藏重发且体积达标：原字节原 md5，不动（压缩会改 md5、JPEG 化丢动画）
+				slog.Info("[hermes_bridge] 表情 raw 模式，原样发送", "chat", req.ChatID, "bytes", len(data))
+			} else {
+				// 实测 2MB 表情原样上传微信「假成功」不上屏（自定义表情上限约 1MB），
+				// raw 超限时也必须压；GIF 走保动画压缩，静图才 JPEG。
+				if req.Raw {
+					slog.Info("[hermes_bridge] 表情 raw 超体积上限，转保动画压缩",
+						"chat", req.ChatID, "bytes", len(data), "limit", maxEmojiBytes)
+				}
+				data = ensureEmojiBytes(data)
 			}
-			data = ensureEmojiBytes(data)
-			outcome, e := p.sendEmojiMessage(req.ChatID, data)
+			id, outcome, e := p.sendEmojiMessageWithID(req.ChatID, data)
 			if outcome != uploadOK {
 				slog.Error("[hermes_bridge] 表情发送最终失败", "chat", req.ChatID, "outcome", outcome, "raw", req.Raw, "err", e)
-				if req.URL != "" {
-					p.fallbackLink(req.ChatID, "表情", req.URL, e)
-					sendErr = nil
-				} else {
-					sendErr = e
-				}
 			} else {
 				slog.Info("[hermes_bridge] 已发表情", "chat", req.ChatID, "bytes", len(data), "raw", req.Raw)
 			}
+			setMediaResult(id, outcome, e)
 		}
 	case "video":
-		sendErr = p.sendVideoBytes(req.ChatID, data, req.URL)
+		id, outcome, e := p.sendVideoMessageWithID(req.ChatID, data)
+		if outcome != uploadOK {
+			slog.Error("[hermes_bridge] 视频发送最终失败",
+				"target", req.ChatID, "outcome", outcome, "bytes", len(data), "err", e)
+		}
+		setMediaResult(id, outcome, e)
 	case "voice":
 		sendErr = p.sendVoiceBytes(req.ChatID, data)
+		if sendErr == nil {
+			messageID = p.lastOutboxID(req.ChatID)
+			if cap := strings.TrimSpace(req.Caption); cap != "" {
+				_ = p.sendPlainText(p.resolveReceiver(req.ChatID), cap)
+			}
+		}
 	}
 	if sendErr != nil {
 		slog.Error("[hermes_bridge] 发媒体失败", "kind", kind, "chat", req.ChatID, "err", sendErr)
 		writeJSON(w, http.StatusBadGateway, sendResult{Error: sendErr.Error()})
 		return
 	}
-	msgID := p.lastOutboxID(req.ChatID)
-	if cap := strings.TrimSpace(req.Caption); cap != "" {
-		_ = p.sendPlainText(p.resolveReceiver(req.ChatID), cap)
+	if kind != "voice" && deliveryState == "media_sent" {
+		if cap := strings.TrimSpace(req.Caption); cap != "" {
+			if _, err := p.sendPlainTextWithID(p.resolveReceiver(req.ChatID), cap); err != nil {
+				slog.Warn("[hermes_bridge] 媒体 caption 发送失败", "kind", kind, "chat", req.ChatID, "err", err)
+				deliveryState = "partial"
+				if warning != "" {
+					warning += "；caption 发送失败: " + err.Error()
+				} else {
+					warning = "媒体主体已处理，但 caption 发送失败: " + err.Error()
+				}
+			}
+		}
 	}
-	writeJSON(w, http.StatusOK, sendResult{Success: true, MessageID: msgID})
+	writeJSON(w, http.StatusOK, sendResult{
+		Success:         true,
+		MessageID:       messageID,
+		DeliveryState:   deliveryState,
+		FallbackSuccess: fallbackSuccess,
+		Warning:         warning,
+	})
+}
+
+func mediaKindName(kind string) string {
+	switch kind {
+	case "image":
+		return "图片"
+	case "video":
+		return "视频"
+	case "voice":
+		return "语音"
+	case "emoji":
+		return "表情"
+	default:
+		return "媒体"
+	}
 }
 
 // guardSendTarget 出站目标须在白名单；主人私聊始终放行（与入站一致）。
