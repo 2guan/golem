@@ -3,7 +3,9 @@ package main
 // Config 插件配置
 type Config struct {
 	ImgURL        string `toml:"img_url" comment:"美女图片API"`
+	ImgVideoURL   string `toml:"img_video_url" comment:"美女视频API"`
 	BoyURL        string `toml:"boy_url" comment:"帅哥图片API"`
+	BoyVideoURL   string `toml:"boy_video_url" comment:"帅哥视频API"`
 	HeisiURL      string `toml:"heisi_url" comment:"黑丝图片API"`
 	BaisiURL      string `toml:"baisi_url" comment:"白丝图片API"`
 	HeisiVideoURL string `toml:"heisi_video_url" comment:"黑丝视频API"`

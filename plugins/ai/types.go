@@ -1,12 +1,25 @@
 package main
 
-import "github.com/sbgayhub/golem/sdk/contact"
+import (
+	"github.com/sbgayhub/golem/sdk/contact"
+	"github.com/sbgayhub/golem/sdk/message"
+)
 
 const contactTypeChatroom = contact.ContactType_CONTACT_TYPE_CHATROOM
 
+type contentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *imageURL `json:"image_url,omitempty"`
+}
+
+type imageURL struct {
+	URL string `json:"url"`
+}
+
 type openAIMessage struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"`
 }
 
 type incomingMessage struct {
@@ -21,6 +34,11 @@ type incomingMessage struct {
 	SpeakerName  string
 	SpeakerID    string
 	Quote        quoteInfo
+
+	RawMsg        *message.Message
+	IsImage       bool
+	ImageData     []byte
+	ImageMimeType string
 }
 
 type quoteInfo struct {
@@ -41,8 +59,10 @@ type SessionConfig struct {
 
 // Provider 预设的 OpenAI 兼容服务提供方配置
 type Provider struct {
-	BaseURL            string `toml:"base_url" comment:"OpenAI 兼容接口地址，例如 https://api.openai.com/v1"`
-	APIKey             string `toml:"api_key" comment:"接口密钥"`
-	Model              string `toml:"model" comment:"模型名称"`
-	HTTPTimeoutSeconds int    `toml:"http_timeout_seconds,omitempty" comment:"请求超时秒数，0 表示使用全局缺省"`
+	BaseURL            string   `toml:"base_url" comment:"OpenAI 兼容接口地址，例如 https://api.openai.com/v1"`
+	APIKey             string   `toml:"api_key" comment:"接口密钥"`
+	Model              string   `toml:"model" comment:"模型名称"`
+	HTTPTimeoutSeconds int      `toml:"http_timeout_seconds,omitempty" comment:"请求超时秒数，0 表示使用全局缺省"`
+	Temperature        *float64 `toml:"temperature,omitempty" comment:"采样温度（默认 0.88）"`
+	PresencePenalty    *float64 `toml:"presence_penalty,omitempty" comment:"存在惩罚（默认 0.35）"`
 }

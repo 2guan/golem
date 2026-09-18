@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Golem 机器人插件全景手册 · 准确触发词实录</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* 移动端平滑滚动与隐藏滚动条 */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    /* 点击微动效 */
+    .tap-scale { transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1); }
+    .tap-scale:active { transform: scale(0.96); }
+    /* 毛玻璃效果 */
+    .glass {
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    /* 指令点击高亮 */
+    .cmd-badge {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      transition: all 0.15s ease;
+    }
+    .cmd-badge:active {
+      background-color: #3b82f6;
+      color: #ffffff;
+      transform: scale(0.96);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen pb-16 selection:bg-blue-500 selection:text-white">
+
+  <!-- 顶部悬浮导航头 -->
+  <header class="sticky top-0 z-40 bg-white/90 glass border-b border-slate-200/80 transition-all shadow-sm">
+    <div class="max-w-4xl mx-auto px-4 pt-3 pb-2.5">
+      <div class="flex items-center justify-between gap-3 mb-2.5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white font-bold text-xl shadow-md shadow-indigo-500/25">
+            🤖
+          </div>
+          <div>
+            <h1 class="text-base font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+              Golem 插件全景手册
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200/80">真实出发词校验</span>
+            </h1>
+            <p class="text-xs text-slate-500">24 款官方真机插件 · 点击指令一键复制</p>
+          </div>
+        </div>
+        <div class="text-right">
+          <span class="inline-block text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+            v2.5 · 源码核准
+          </span>
+        </div>
+      </div>
+
+      <!-- 搜索输入框 -->
+      <div class="relative">
+        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-sm">
+          🔍
+        </span>
+        <input 
+          id="searchInput"
+          type="text" 
+          placeholder="搜索出发词（如：双人冒险、海龟汤、农场、词云、点歌）..." 
+          class="w-full pl-9 pr-8 py-2 bg-slate-100/90 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-blue-500 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 outline-none transition-all shadow-inner"
+        >
+        <button id="clearSearch" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 text-xs">
+          ✕
+        </button>
+      </div>
+
+      <!-- 分类滑动药丸按钮 -->
+      <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-2.5 pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <button class="filter-btn active px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-blue-600 text-white shadow-sm shadow-blue-500/30 tap-scale" data-cat="all">
+          ✨ 全部 (24)
+        </button>
+        <button class="filter-btn px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-slate-100 text-slate-600 hover:bg-slate-200/70 tap-scale" data-cat="ai">
+          🧠 AI与沉浸 (8)
+        </button>
+        <button class="filter-btn px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-slate-100 text-slate-600 hover:bg-slate-200/70 tap-scale" data-cat="game">
+          🎮 聚会游戏 (3)
+        </button>
+        <button class="filter-btn px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-slate-100 text-slate-600 hover:bg-slate-200/70 tap-scale" data-cat="tools">
+          📊 群管与实用 (7)
+        </button>
+        <button class="filter-btn px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-slate-100 text-slate-600 hover:bg-slate-200/70 tap-scale" data-cat="media">
+          🎬 视听娱乐 (6)
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主体内容 -->
+  <main class="max-w-4xl mx-auto px-4 pt-4 space-y-4">
+
+    <!-- 顶端温馨提示栏 -->
+    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/70 rounded-2xl p-3 sm:p-4 text-xs text-blue-800 flex items-start gap-3 shadow-sm">
+      <span class="text-base sm:text-lg flex-shrink-0 mt-0.5">💡</span>
+      <div class="space-y-1">
+        <p class="font-semibold text-blue-900">出发词使用小秘诀：</p>
+        <p class="text-blue-700 leading-relaxed">
+          1. 绝大多数玩法为**纯中文触发**（无需在前面加 <code class="bg-blue-100 px-1 py-0.5 rounded text-blue-900">#</code> 号）；<br>
+          2. 点击下方带有虚线框的<span class="inline-block px-1.5 py-0.2 bg-white text-blue-600 border border-blue-300 rounded font-mono text-[11px] mx-1">灰色指令徽章</span>即可**一键复制**，直接粘贴至微信群体验！
+        </p>
+      </div>
+    </div>
+
+    <!-- 插件卡片容器 -->
+    <div id="pluginGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
+
+      <!-- ================= 1. AI 与沉浸互动 ================= -->
+
+      <!-- infinite_adventure -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="ai"
+           data-keywords="infinite_adventure 无限冒险 双人冒险 组建小队 开启冒险 查看小队 冒险状态 查看状态 解散小队 发车 上车 随机剧本 肉丸">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🗺️</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  无限冒险
+                  <span class="text-[10px] font-normal font-mono text-slate-400">infinite_adventure</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-600 border border-amber-200/70">🔥 顶流核心</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-50 text-rose-600 border border-rose-200/70">双人专属</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/70">小队多人</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">AI沉浸</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            极具沉浸感的高自由度文字剧本杀与探险 RPG。支持两人心动/默契羁绊模式，无回合限制自由发言，也支持5人小队探索。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 text-left" data-copy="双人冒险 @横贯 赛博废土逃亡">
+                双人冒险 @横贯 赛博废土逃亡
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 text-left" data-copy="创建小队 废土探险">
+                创建小队 废土探险
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 text-left" data-copy="开启冒险 古墓探险">
+                开启冒险 古墓探险
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 text-left" data-copy="上车">
+                上车
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 text-left" data-copy="发车">
+                发车
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 text-left" data-copy="查看小队">
+                查看小队
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 text-left" data-copy="结束冒险">
+                结束冒险
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200 text-left" data-copy="冒险帮助">
+                冒险帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 双人冒险中两人可随时打字发言或行动，心动&gt;90达成结局，&le;10遗憾散伙。
+        </div>
+      </div>
+
+      <!-- turtle_soup -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="ai"
+           data-keywords="turtle_soup 海龟汤 来碗海龟汤 肉丸私房汤 开局海龟汤 海龟汤提示 看汤底 揭晓汤底 放弃海龟汤 推理">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🥣</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  AI 海龟汤
+                  <span class="text-[10px] font-normal font-mono text-slate-400">turtle_soup</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-600 border border-amber-200/70">🔥 热门推理</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 border border-blue-200/70">全自动裁判</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">AI沉浸</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            AI 主持的经典情境推理游戏。提供汤面由群友自由提问，肉丸智能回答【是/否/无关】，并识别关键突破点与最终还原。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="来碗海龟汤">
+                来碗海龟汤
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="肉丸私房汤">
+                肉丸私房汤
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="海龟汤提示">
+                海龟汤提示
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="看汤底">
+                看汤底
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="海龟汤帮助">
+                海龟汤帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 开局后在群里直接打字提问（如“死者是自杀吗？”），无需加任何命令前缀。
+        </div>
+      </div>
+
+      <!-- heartbeat_club -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="ai"
+           data-keywords="heartbeat_club 心跳沉浸馆 心跳俱乐部 心动俱乐部 查寝 宿管查寝 掰手腕 比拼身材 微醺大冒险 契合度 健身房 小酒馆 男寝">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🍷</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  心跳沉浸馆
+                  <span class="text-[10px] font-normal font-mono text-slate-400">heartbeat_club</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-50 text-rose-600 border border-rose-200/70">荷尔蒙大乱斗</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-purple-50 text-purple-600 border border-purple-200/70">1v1私聊剧场</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">AI沉浸</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            包含铁馆更衣室、微醺小酒馆、男生宿舍熄灯后的双端互动 RPG。群聊支持力量比拼与查寝，私聊支持电影级沉浸剧情。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="心跳俱乐部">
+                心跳俱乐部 (查看帮助)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="@某人 掰手腕">
+                @某人 掰手腕
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="@某人 比拼身材">
+                @某人 比拼身材
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="宿管查寝">
+                宿管查寝
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="微醺大冒险">
+                微醺大冒险
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="契合度 @某人">
+                契合度 @某人
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 私聊发送【心跳沉浸馆】可选择【去健身房】、【去小酒馆】或【回宿舍】开启专属剧情。
+        </div>
+      </div>
+
+      <!-- profile -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="ai"
+           data-keywords="profile 人物画像 画像 画像帮助 深度画像 成员分析 刻画 性格">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">👤</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  人物画像
+                  <span class="text-[10px] font-normal font-mono text-slate-400">profile</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-cyan-50 text-cyan-700 border border-cyan-200/70">AI 读心分析</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">生成高清卡片</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">AI沉浸</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            深入调取群友历史聊天语料，通过大模型刻画性格偏好、说话风格、人际印象及专属评语，并渲染为精美图文卡片。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="人物画像">
+                人物画像 (查自己)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="人物画像 @张三">
+                人物画像 @张三
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="人物画像 张三 --global">
+                人物画像 张三 --global
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="人物画像 张三 --rebuild">
+                人物画像 张三 --rebuild
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="画像帮助">
+                画像帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 前缀「人物画像」后必须跟空格或@（如“人物画像 @张三”），避免日常闲聊误触发。
+        </div>
+      </div>
+
+      <!-- avatar_review -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="ai"
+           data-keywords="avatar_review 头像评测 锐评头像 看头像 头像打分 测头像 我的头像 看看头像 头像帮助">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🖼️</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  头像锐评
+                  <span class="text-[10px] font-normal font-mono text-slate-400">avatar_review</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-600 border border-amber-200/70">辛辣幽默</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 border border-blue-200/70">视觉多模态</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">AI沉浸</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            AI 视觉大模型结合肉丸人设对微信头像进行毒舌而精准的锐评打分，支持自我审查或 @ 群友进行评测。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="评测头像">
+                评测头像 (看自己)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="锐评头像 @某人">
+                锐评头像 @某人
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="头像打分">
+                头像打分
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="头像帮助">
+                头像帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 支持出发词：评测头像、锐评头像、看头像、头像打分、我的头像。
+        </div>
+      </div>
+
+      <!-- what_to_eat -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="ai"
+           data-keywords="what_to_eat 今天吃什么 吃什么 中午吃什么 晚上吃什么 夜宵吃什么 换一个 换道菜 下午茶 来点喝的 吃什么帮助">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🍲</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  今天吃什么
+                  <span class="text-[10px] font-normal font-mono text-slate-400">what_to_eat</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-600 border border-emerald-200/70">老饕食堂</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-orange-50 text-orange-600 border border-orange-200/70">防重复换菜</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">AI沉浸</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            解决世纪难题的美食推荐官。按当前时段（早/中/晚/夜宵）推荐菜式，支持指定口味、禁忌排除及换一盘操作。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="今天吃什么">
+                今天吃什么
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="换一个">
+                换一个 / 换道菜
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="吃什么 减脂">
+                吃什么 减脂
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="来点喝的">
+                来点喝的
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="不想吃面">
+                不想吃面 / 不吃辣
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="吃什么帮助">
+                吃什么帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 还支持输入【吃什么 预算20】或【吃什么 胃难受】触发肉丸私人订制。
+        </div>
+      </div>
+
+      <!-- ai (大模型对话) -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="ai"
+           data-keywords="ai 大模型 聊天 闲聊 问答 /ai get /ai set /ai prompt /ai clear-context 提示词">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🧠</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  智能伴聊
+                  <span class="text-[10px] font-normal font-mono text-slate-400">ai</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/70">肉丸人设</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">随机插话/TTS</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">AI沉浸</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            核心对话大脑。支持 OpenAI 协议，具备独立记忆和群聊概率插话能力，配置了小米 MIMO 极具磁性的电竞大叔语音 TTS。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="@肉丸 你好呀">
+                @肉丸 [想问的问题]
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="/ai get">
+                /ai get (查看当前配置)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="/ai clear-context">
+                /ai clear-context (清空上下文)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="/ai prompt default">
+                /ai prompt default
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 私聊可直接打字；群聊直接 @ 机器人触发；若启用了 reply_rate 群内闲聊时会随机接梗。
+        </div>
+      </div>
+
+      <!-- hermes -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="ai"
+           data-keywords="hermes hermes_bridge 智能体 智能调度 代理 mcp hermes帮助 hermes状态 hermes启用">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">⚡</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  Hermes Agent
+                  <span class="text-[10px] font-normal font-mono text-slate-400">hermes</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-purple-50 text-purple-600 border border-purple-200/70">MCP 赋能</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-600 border border-amber-200/70">主人专属</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">AI沉浸</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            高级自主 Agent 协同桥接器。打通外部多智能体，赋予 Golem 执行命令、联网搜索、发图、发语音及群历史透传的 MCP 工具能力。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="hermes帮助">
+                hermes帮助
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="hermes状态">
+                hermes状态
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="hermes启用">
+                hermes启用
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="hermes重置">
+                hermes重置
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 该指令带硬校验机制，仅 Bot 主人 wxid 发送才响应，普通成员发会自动放行。
+        </div>
+      </div>
+
+      <!-- ================= 2. 聚会桌游与娱乐 ================= -->
+
+      <!-- undercover -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="game"
+           data-keywords="undercover 谁是卧底 发起谁是卧底 开始游戏 投1号 统计票数 结算投票 谁是卧底帮助 报名">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🕵️</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  谁是卧底
+                  <span class="text-[10px] font-normal font-mono text-slate-400">undercover</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-600 border border-amber-200/70">经典聚会</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-600 border border-emerald-200/70">3-8人</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 border border-blue-200/70">私聊发词</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">聚会游戏</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            经典线下聚会桌游完整移植。支持群内发起、群友直接 +1 报名、机器人私聊各自发词、轮流描述及群内投票放逐。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="发起谁是卧底">
+                发起谁是卧底
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="+1">
+                +1 (或发送“报名”)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="开始游戏">
+                开始游戏
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="进入投票">
+                进入投票
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="投1号">
+                投1号 (存活玩家输入)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="结算投票">
+                结算投票
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="结束谁是卧底">
+                结束谁是卧底
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 群内随时发送【谁是卧底帮助】可查看阶段与完整规则说明。
+        </div>
+      </div>
+
+      <!-- farm -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="game"
+           data-keywords="farm 农场 我的农场 偷菜 种土豆 农场商店 守卫商店 收菜 购买土地 农场等级 浇水 农场购买">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🌱</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  QQ农场
+                  <span class="text-[10px] font-normal font-mono text-slate-400">farm</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-600 border border-emerald-200/70">怀旧休闲</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-600 border border-amber-200/70">群偷菜互动</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">聚会游戏</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            经典偷菜游戏微信群重现。种植各种作物、定时收菜、设置恶犬防盗、趁半夜偷好友成熟作物，支持买地升级。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="农场">
+                农场 (显示主菜单)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="我的农场">
+                我的农场
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="农场商店">
+                农场商店
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="农场购买土豆 10">
+                农场购买土豆 10
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="种土豆">
+                种土豆
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="收菜">
+                收菜
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="偷菜 @某人">
+                偷菜 @某人
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="购买土地">
+                购买土地
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 还支持【浇水 @某人】、【查询土豆】、【守卫商店】等丰富指令。
+        </div>
+      </div>
+
+      <!-- robbery -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="game"
+           data-keywords="robbery 打劫 我的资产 排行榜 职业列表 转职 商店 购买 铁剑 赌博 任务 救济 打劫帮助">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🗡️</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  江湖打劫
+                  <span class="text-[10px] font-normal font-mono text-slate-400">robbery</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-red-50 text-red-600 border border-red-200/70">群内互相伤害</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-purple-50 text-purple-600 border border-purple-200/70">转职与装备</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">聚会游戏</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            群友互相打劫金币。包含武力判定、入狱通缉、转职（盗贼/战士/商人/刺客/牧师）、买装备及下注赌博。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="我的资产">
+                我的资产 (首次建号)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="打劫">
+                打劫 (随机抢群友)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="排行榜">
+                排行榜 (本群财富榜)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="职业列表">
+                职业列表
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="转职 盗贼">
+                转职 盗贼
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="商店">
+                商店
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="赌博 100">
+                赌博 100
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="打劫帮助">
+                打劫帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 进群后先让大家发【我的资产】建号进入目标池，破产可领【救济】。
+        </div>
+      </div>
+
+      <!-- ================= 3. 群管数据与实用 ================= -->
+
+      <!-- wordcloud -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="tools"
+           data-keywords="wordcloud 词云 词云 今日 词云 昨日 词云 本周 词云 本月 词云 30天 词云帮助 分词 热词">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">☁️</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  发言词云
+                  <span class="text-[10px] font-normal font-mono text-slate-400">wordcloud</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-sky-50 text-sky-600 border border-sky-200/70">高颜值图表</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/70">智能停用词</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">群管实用</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            提取群聊历史消息并进行中文分词，自动过滤灌水词汇，渲染生成全群或指定成员的高清词云图。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="词云">
+                词云 (默认近7天)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="词云 今日">
+                词云 今日
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="词云 昨日">
+                词云 昨日
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="词云 本周">
+                词云 本周
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="词云 30天">
+                词云 30天
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="词云 @张三">
+                词云 @张三
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="词云帮助">
+                词云帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 前缀词云后紧跟空格，支持组合：如【词云 本周 @张三】。
+        </div>
+      </div>
+
+      <!-- statistics -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="tools"
+           data-keywords="statistics 今日排行 昨日排行 本周排行 本月排行 总排行 发言详情 排行榜 数据统计">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">📊</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  发言统计排行
+                  <span class="text-[10px] font-normal font-mono text-slate-400">statistics</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 border border-blue-200/70">合并转发卡片</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">全量底层引擎</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">群管实用</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            实时持久化群聊全部消息类型（文字/语音/图片/表情等）。生成详尽的发言排行榜，并支持查询个人发言详情。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="今日排行">
+                今日排行
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="昨日排行">
+                昨日排行
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="本周排行">
+                本周排行
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="本月排行">
+                本月排行
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="总排行">
+                总排行
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="发言详情">
+                发言详情 (看自己)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 排行榜以合并转发消息输出，干净清爽不刷屏。
+        </div>
+      </div>
+
+      <!-- daily_gossip -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="tools"
+           data-keywords="daily_gossip 今日八卦 群八卦 吃瓜日报 八卦日报 吃瓜晚报 群报 八卦帮助">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🍉</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  今日群八卦
+                  <span class="text-[10px] font-normal font-mono text-slate-400">daily_gossip</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-600 border border-amber-200/70">吃瓜必备</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-pink-50 text-pink-600 border border-pink-200/70">AI 新闻体</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">群管实用</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            AI 自动搜集并总结本群当天的聊天话题与名场面，生成幽默诙谐的八卦小报与吃瓜快讯。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="今日八卦">
+                今日八卦
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="群八卦">
+                群八卦
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="吃瓜日报">
+                吃瓜日报
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="八卦帮助">
+                八卦帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 群内积累一定发言量后生成效果最惊艳！
+        </div>
+      </div>
+
+      <!-- moyu_daily -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="tools"
+           data-keywords="moyu_daily 摸鱼办 摸鱼日报 摸鱼日历 摸鱼倒计时 今日摸鱼 摸鱼周报 摸鱼 摸鱼帮助">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">☕</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  摸鱼办日历
+                  <span class="text-[10px] font-normal font-mono text-slate-400">moyu_daily</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-teal-50 text-teal-600 border border-teal-200/70">打工人专属</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 border border-blue-200/70">假期倒计时</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">群管实用</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            温馨提示打工人及时摸鱼休息。计算距离周末、发工资日、元旦/春节/清明/劳动/国庆等法定节假日的精确倒计时。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="摸鱼办">
+                摸鱼办
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="摸鱼日历">
+                摸鱼日历
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="今日摸鱼">
+                今日摸鱼
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="摸鱼帮助">
+                摸鱼帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 支持在 config.toml 中配置目标群号，实现工作日早晨定时自动推送。
+        </div>
+      </div>
+
+      <!-- fake_forward -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="tools"
+           data-keywords="fake_forward /fake 伪转发 假聊天 聊天记录生成 转发">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">📑</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  伪聊天转发
+                  <span class="text-[10px] font-normal font-mono text-slate-400">fake_forward</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/70">多角色合并转发</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">群管实用</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            自定义生成微信聊天记录（合并转发卡片）。支持指定多个角色名称与对话，自动匹配群成员头像。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="/fake 小明:你好|小红:你好呀|肉丸:开饭啦">
+                /fake 小明:你好|小红:你好呀
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 格式为“名字:内容”，竖线“|”分隔多条，可快速制作有趣伪记录。
+        </div>
+      </div>
+
+      <!-- cron -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="tools"
+           data-keywords="cron 定时任务 /cron add /cron list /cron update 定时推送">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">⏰</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  定时任务中心
+                  <span class="text-[10px] font-normal font-mono text-slate-400">cron</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">系统调度</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">群管实用</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            强大的 Cron 定时任务引擎。支持设定任意时间调度跨插件能力，如每天早 9 点推送新闻或摸鱼日历。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="/cron list">
+                /cron list
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy='/cron add -c "0 9 * * *" -p news.today -t 目标ID'>
+                /cron add -c "0 9 * * *" -p news.today -t 目标ID
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 支持标准 5 段式 cron 表达式与多目标推送。
+        </div>
+      </div>
+
+      <!-- auto_accept -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="tools"
+           data-keywords="auto_accept 自动加好友 好友通过 自动通过 自动回复 迎新语">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🤝</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  自动加好友
+                  <span class="text-[10px] font-normal font-mono text-slate-400">auto_accept</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-600 border border-emerald-200/70">全自动静默</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">群管实用</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            微信自动化运营管家。监听新好友添加事件，支持自定义关键字过滤、自动秒通过并立即发送欢迎致辞。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 运行机制：</span>
+            <div class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200/60">
+              ⚡ <strong>被动触发</strong>：后台静默监听好友申请，无需聊天指令。<br>
+              可以在 <code class="text-indigo-600 font-mono">plugins/config.toml</code> 中自定义欢迎词与过滤词。
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 新人添加微信后立即自动通过并开启打招呼流程。
+        </div>
+      </div>
+
+      <!-- ================= 4. 视听娱乐与媒体 ================= -->
+
+      <!-- video_parser -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="media"
+           data-keywords="video_parser 视频解析 抖音 快手 视频号 小红书 B站 短视频 提取下载 无水印">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🎬</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  短视频无水印解析
+                  <span class="text-[10px] font-normal font-mono text-slate-400">video_parser</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-50 text-rose-600 border border-rose-200/70">🔥 群聊必备</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-600 border border-blue-200/70">多平台支持</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">视听娱乐</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            自动识别群聊或私聊中发送的各平台短视频分享链接，极速解析出直链并以卡片形式发送原画无水印视频。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发方式（无需任何前缀）：</span>
+            <div class="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200/60 leading-relaxed">
+              📱 直接发送含有 <strong>抖音 / 快手 / 视频号</strong> 的分享链接即可！<br>
+              <span class="text-slate-500 text-[11px]">（机器人自动正则提取链接并回复解析后的原画视频）</span>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 免除任何命令记忆，分享出来的短视频链接直接发进群就会自动处理。
+        </div>
+      </div>
+
+      <!-- music -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="media"
+           data-keywords="music 音乐 点歌 点歌 晴天 音乐 稻香 歌曲 听歌 QQ音乐">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🎵</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  全网点歌
+                  <span class="text-[10px] font-normal font-mono text-slate-400">music</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-600 border border-emerald-200/70">音乐卡片</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/70">带封面歌词</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">视听娱乐</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            音乐搜索与点播。通过 QQ 音乐接口检索，返回微信原生音乐播放卡片（AppMsg），内嵌专辑封面、歌词与音频直链。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="点歌 晴天">
+                点歌 晴天
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="音乐 稻香">
+                音乐 稻香
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="music 七里香">
+                music 七里香
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 格式：【点歌/音乐/music】后加空格及歌名或歌手名。
+        </div>
+      </div>
+
+      <!-- setu -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="media"
+           data-keywords="setu 色图 搜图 漂亮妹妹 来点美女 来点黑丝 来点白丝 看看腿 来点帅哥 来点 plmm setu帮助">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">📸</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  搜图与美图
+                  <span class="text-[10px] font-normal font-mono text-slate-400">setu</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-50 text-rose-600 border border-rose-200/70">CDN流式图传</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-violet-50 text-violet-600 border border-violet-200/70">支持视频</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">视听娱乐</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            关键词触发随机美图与短视频，并支持百度表情包实时搜图。采用微信 CDN 流式上传，大图秒发不卡顿。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="漂亮妹妹">
+                漂亮妹妹 (或 plmm / 来点美女)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="来点黑丝">
+                来点黑丝 (概率出视频)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="来点白丝">
+                来点白丝
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="看看腿">
+                看看腿
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="来点帅哥">
+                来点帅哥
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="来点柯基">
+                来点&lt;关键词&gt; (如：来点柯基)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="setu帮助">
+                setu帮助
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 输入【来点&lt;任何词&gt;】（如 来点柴犬、来点猫猫）即可调用搜索。
+        </div>
+      </div>
+
+      <!-- news -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="media"
+           data-keywords="news 今日新闻 今日图卦 60秒读懂世界 煎蛋网 新闻早报">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">📰</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  每日新闻与图卦
+                  <span class="text-[10px] font-normal font-mono text-slate-400">news</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-50 text-amber-600 border border-amber-200/70">60秒读懂世界</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-600 border border-emerald-200/70">煎蛋图卦</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">视听娱乐</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            每日资讯推送。一键调取当天的 60 秒读懂世界早报长图，或煎蛋网幽默生动的每日图卦大图。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="今日新闻">
+                今日新闻 (获取 60 秒长图)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="今日图卦">
+                今日图卦 (获取煎蛋图卦 2 张)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 也可通过 cron 插件每天早晨固定时间自动推送到指定微信群。
+        </div>
+      </div>
+
+      <!-- meme -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="media"
+           data-keywords="meme 表情包 emoji 表情 meme 揍 meme list 揍 拍 爬 自定义表情">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🤪</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  表情包制作
+                  <span class="text-[10px] font-normal font-mono text-slate-400">meme</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-yellow-50 text-yellow-700 border border-yellow-200/70">数百款模板</span>
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/70">头像合成</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">视听娱乐</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            表情包生成神器。自动抓取群友微信头像，结合各种趣味模板（如揍、拍、撕、爬、打工人等）生成动态表情。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 准确出发词（点击复制）：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="meme 揍">
+                meme 揍 (自己头像)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="meme 揍 @张三">
+                meme 揍 @张三
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="meme 爬 @张三">
+                meme 爬 @张三 (双人互动)
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="meme 打工人 996 太累了">
+                meme 打工人 996 太累了
+              </button>
+              <button class="cmd-badge text-xs bg-slate-100 hover:bg-blue-50 text-slate-700 px-2 py-1 rounded-lg border border-slate-200" data-copy="meme list">
+                meme list (查看全部表情)
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 前缀支持：【meme】、【emoji】、【表情】任选其一。
+        </div>
+      </div>
+
+      <!-- reread -->
+      <div class="plugin-card bg-white rounded-2xl p-4 border border-slate-200/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+           data-cat="media"
+           data-keywords="reread 复读机 人类的本质是复读机 自动复读 群聊气氛">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-2xl">🦜</span>
+              <div>
+                <h2 class="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-1.5">
+                  智能复读机
+                  <span class="text-[10px] font-normal font-mono text-slate-400">reread</span>
+                </h2>
+                <div class="flex gap-1 mt-0.5">
+                  <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-600 border border-emerald-200/70">群聊气氛组</span>
+                </div>
+              </div>
+            </div>
+            <span class="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">视听娱乐</span>
+          </div>
+          <p class="text-xs text-slate-600 mb-3 leading-relaxed">
+            人类的本质是复读机！当群聊中同一条文字或表情连续出现两次时，机器人自动复读第三次，绝不无限死循环。
+          </p>
+
+          <div class="space-y-1.5 mb-2">
+            <span class="text-[11px] font-semibold text-slate-700 block">🎯 运行机制：</span>
+            <div class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200/60 leading-relaxed">
+              💬 <strong>被动触发</strong>：无需任何指令。<br>
+              群友 A: 早上好<br>
+              群友 B: 早上好<br>
+              <span class="text-blue-600 font-semibold">肉丸 (自动跟风): 早上好</span>
+            </div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-2 border-t border-slate-100 mt-2">
+          💡 群聊按会话隔离，同一句话复读一次后即止，自然不生硬。
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 空搜索状态提示 -->
+    <div id="emptyNotice" class="hidden py-12 text-center text-slate-400 space-y-2">
+      <div class="text-4xl">🔍</div>
+      <p class="text-sm font-medium">没有找到匹配的插件或出发词</p>
+      <p class="text-xs">试试搜索“冒险”、“海龟汤”、“农场”、“吃什么”、“词云”或“排行”</p>
+    </div>
+
+    <!-- 底部系统运维说明 -->
+    <footer class="mt-8 pt-6 border-t border-slate-200 text-center text-xs text-slate-400 space-y-2 pb-6">
+      <div class="flex justify-center flex-wrap gap-2 text-[11px]">
+        <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono">/pm list (查插件)</span>
+        <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono">/pm reload &lt;name&gt; (热重载)</span>
+        <span class="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono">/contact search &lt;name&gt;</span>
+      </div>
+      <p>Golem Architecture · 所有出发词与触发行为均经源码严格校对</p>
+    </footer>
+
+  </main>
+
+  <!-- 点击复制 Floating Toast 提示 -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 translate-y-3 transition-all duration-200 ease-out">
+    <div class="bg-slate-900/90 text-white text-xs px-3.5 py-2 rounded-xl shadow-lg flex items-center gap-2 border border-slate-700/60 backdrop-blur-md">
+      <span>📋</span>
+      <span>已复制出发词：<code id="toastCmd" class="font-mono text-blue-300 font-semibold"></code></span>
+    </div>
+  </div>
+
+  <!-- 前端交互逻辑脚本 -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const searchInput = document.getElementById('searchInput');
+      const clearSearch = document.getElementById('clearSearch');
+      const filterBtns = document.querySelectorAll('.filter-btn');
+      const cards = document.querySelectorAll('.plugin-card');
+      const emptyNotice = document.getElementById('emptyNotice');
+      const toast = document.getElementById('toast');
+      const toastCmd = document.getElementById('toastCmd');
+      let toastTimer = null;
+
+      let currentCat = 'all';
+      let currentQuery = '';
+
+      // 1. 复制指令交互
+      document.addEventListener('click', (e) => {
+        const target = e.target.closest('.cmd-badge');
+        if (!target) return;
+
+        const cmd = target.dataset.copy || target.innerText.trim();
+        
+        // 剪贴板复制
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(cmd);
+        } else {
+          const ta = document.createElement('textarea');
+          ta.value = cmd;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+
+        // 显示 Toast
+        toastCmd.textContent = cmd;
+        toast.classList.remove('opacity-0', 'translate-y-3');
+        toast.classList.add('opacity-100', 'translate-y-0');
+
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toast.classList.remove('opacity-100', 'translate-y-0');
+          toast.classList.add('opacity-0', 'translate-y-3');
+        }, 1800);
+      });
+
+      // 2. 筛选过滤函数
+      function applyFilter() {
+        let visibleCount = 0;
+        const q = currentQuery.trim().toLowerCase();
+
+        cards.forEach(card => {
+          const cardCat = card.getAttribute('data-cat');
+          const keywords = (card.getAttribute('data-keywords') || '').toLowerCase();
+          const cardText = card.innerText.toLowerCase();
+
+          const matchCat = (currentCat === 'all') || (cardCat === currentCat);
+          const matchQuery = !q || keywords.includes(q) || cardText.includes(q);
+
+          if (matchCat && matchQuery) {
+            card.style.display = 'flex';
+            visibleCount++;
+          } else {
+            card.style.display = 'none';
+          }
+        });
+
+        if (visibleCount === 0) {
+          emptyNotice.classList.remove('hidden');
+        } else {
+          emptyNotice.classList.add('hidden');
+        }
+      }
+
+      // 3. 分类药丸切换
+      filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          filterBtns.forEach(b => {
+            b.classList.remove('active', 'bg-blue-600', 'text-white', 'shadow-sm', 'shadow-blue-500/30');
+            b.classList.add('bg-slate-100', 'text-slate-600');
+          });
+
+          btn.classList.remove('bg-slate-100', 'text-slate-600');
+          btn.classList.add('active', 'bg-blue-600', 'text-white', 'shadow-sm', 'shadow-blue-500/30');
+
+          currentCat = btn.getAttribute('data-cat');
+          applyFilter();
+        });
+      });
+
+      // 4. 实时搜索监听
+      searchInput.addEventListener('input', (e) => {
+        currentQuery = e.target.value;
+        if (currentQuery) {
+          clearSearch.classList.remove('hidden');
+        } else {
+          clearSearch.classList.add('hidden');
+        }
+        applyFilter();
+      });
+
+      clearSearch.addEventListener('click', () => {
+        searchInput.value = '';
+        currentQuery = '';
+        clearSearch.classList.add('hidden');
+        applyFilter();
+      });
+    });
+  </script>
+</body>
+</html>

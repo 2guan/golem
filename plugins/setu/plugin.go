@@ -86,30 +86,56 @@ func (p *SetuPlugin) OnEvent(e *plugin.Event) (bool, error) {
 
 	text := strings.TrimSpace(msg.GetContent())
 	if text == "" {
+		if td := msg.GetText(); td != nil {
+			text = strings.TrimSpace(td.Content)
+		}
+	}
+	if text == "" {
 		return false, nil
 	}
 
-	// 获取接收者
+	// 剥离可能存在的 @前缀或后缀（如 "@肉丸叔叔\u2005来点帅哥"）
+	text = cleanCommandText(text)
+	if text == "" {
+		return false, nil
+	}
+
+	// 获取接收者（支持群聊与私聊兜底）
 	receiver := p.contact.Get(e.GetSender())
 	if receiver == nil {
-		slog.Warn("[setu] 未找到接收者", "sender", e.GetSender())
-		return false, nil
+		if msg.Sender != nil && msg.Sender.GetUsername() == e.GetSender() {
+			receiver = msg.Sender
+		} else if msg.Receiver != nil && msg.Receiver.GetUsername() == e.GetSender() {
+			receiver = msg.Receiver
+		} else {
+			receiver = &contact.Contact{
+				Username: e.GetSender(),
+			}
+		}
 	}
 
 	// 匹配关键词
 	switch text {
 	case "setu帮助", "色图帮助":
 		return p.handleHelp(receiver)
-	case "plmm", "漂亮妹妹", "来点美女":
+	case "plmm", "漂亮妹妹", "来点美女", "来点小姐姐", "来个美女", "来个小姐姐", "看美女", "看妹子":
 		return p.handlePlmm(receiver)
-	case "来点黑丝":
+	case "美女视频", "小姐姐视频", "来点美女视频", "来点小姐姐视频", "来个美女视频", "来个小姐姐视频", "看美女视频":
+		return p.handleVideo(receiver, "美女", p.Config.ImgVideoURL, p.Config.ImgURL)
+	case "来点黑丝", "来个黑丝", "看黑丝":
 		return p.handleSiImage(receiver, "黑丝", p.Config.HeisiVideoURL, p.Config.HeisiURL)
-	case "来点白丝":
+	case "黑丝视频", "来点黑丝视频", "来个黑丝视频":
+		return p.handleVideo(receiver, "黑丝", p.Config.HeisiVideoURL, p.Config.HeisiURL)
+	case "来点白丝", "来个白丝", "看白丝":
 		return p.handleSiImage(receiver, "白丝", p.Config.BaisiVideoURL, p.Config.BaisiURL)
-	case "看看腿":
+	case "白丝视频", "来点白丝视频", "来个白丝视频":
+		return p.handleVideo(receiver, "白丝", p.Config.BaisiVideoURL, p.Config.BaisiURL)
+	case "看看腿", "来点腿", "看腿", "来个腿":
 		return p.handleKkt(receiver)
-	case "来点帅哥":
+	case "来点帅哥", "来个帅哥", "看帅哥", "发个帅哥":
 		return p.handleBoy(receiver)
+	case "帅哥视频", "来点帅哥视频", "来个帅哥视频", "看帅哥视频":
+		return p.handleVideo(receiver, "帅哥", p.Config.BoyVideoURL, p.Config.BoyURL)
 	}
 
 	// 诊断：setu测cdn [url]，不填 url 则用默认猫图
@@ -124,6 +150,26 @@ func (p *SetuPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// cleanCommandText 剥离群聊中可能存在的 @机器人的昵称 前缀与后缀
+func cleanCommandText(content string) string {
+	text := strings.TrimSpace(content)
+	// 剥离开头的 @xxx（如 @肉丸叔叔\u2005）
+	for strings.HasPrefix(text, "@") {
+		idx := strings.IndexAny(text, " \t\r\n\u2005\u00a0:：,，")
+		if idx > 0 {
+			text = strings.TrimSpace(text[idx:])
+			text = strings.TrimLeft(text, " :：,，\t\r\n\u2005\u00a0")
+		} else {
+			break
+		}
+	}
+	// 剥离结尾紧跟的 @xxx
+	if idx := strings.LastIndex(text, "@"); idx > 0 {
+		text = strings.TrimSpace(text[:idx])
+	}
+	return strings.TrimSpace(text)
 }
 
 // handleDiagCdn 诊断用：走与 sendImage 相同的 p.cdn.UploadImage 路径，显式回执成/败（不降级吞错）。

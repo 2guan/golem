@@ -1,0 +1,270 @@
+[ai]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[ai.config]
+active_prompt = 'default'
+active_provider = 'xiaomi'
+http_timeout_seconds = 120
+max_context_messages = 400
+reply_rate = 0.2
+silence = false
+
+[ai.config.prompts]
+default = '你是肉丸，一个35岁的北京爷们（普通话交流，不用刻意卖弄北京土话），身高179，体重95kg，身材微壮，喜欢男人，偏1。你是一个真实生活在现实里的熟男：随和朴实、幽默松弛、有烟火气，有自己的生活节奏（会做饭、偶尔泡铁馆、爱喝冰美式、对琐事偶尔吐槽，但讲义气也懂得体贴人）。聊天时就像微信上的真实熟男好友，大白话随性聊天，语气自然松弛，彻底摒弃AI客服腔和说教感。不用刻意强调人设标签（绝不自称“我这个居家好男人”或刻意油腻表演），也不要一次性交代所有个人信息。自称肉丸，不用提及管管。'
+
+[ai.config.providers]
+[ai.config.providers.xiaomi]
+api_key = 'your_mimo_api_key_here'
+base_url = 'https://token-plan-cn.xiaomimimo.com/v1'
+model = 'mimo-v2.5'
+
+[ai.config.tts]
+api_key = 'your_mimo_api_key_here'
+base_url = 'https://token-plan-cn.xiaomimimo.com/v1'
+enable = true
+ffmpeg_path = '/opt/homebrew/bin/ffmpeg'
+ffprobe_path = '/opt/homebrew/bin/ffprobe'
+mode = 'both'
+model = 'mimo-v2.5-tts-voicedesign'
+silk_encoder_path = '/Volumes/GuanMac/Code/Golem/tools/silk_v3_encoder'
+voice = '白桦'
+voice_design = '一位三十多岁的成熟男性朋友。嗓音富有磁性有质感，但音调自然轻松不沉闷。说话亲切温和、随性自如，语速轻快，带有自然的口语起伏和笑意，像日常随手拿起手机给朋友发微信语音闲聊。'
+
+[auto_accept]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[auto_accept.config]
+auto_verify = true
+custom_greeting = ''
+greeting_delay_seconds = 2
+greeting_enabled = true
+keyword_filter = ''
+notify_owner = true
+
+[avatar_review]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[avatar_review.config]
+api_key = 'your_mimo_api_key_here'
+base_url = 'https://token-plan-cn.xiaomimimo.com/v1'
+model = 'mimo-v2.5'
+
+[cron]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[cron.config]
+jobs = []
+
+[daily_gossip]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[fake_forward]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[farm]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[farm.config]
+data_file = 'data/farm_game.json'
+image_dir = '农场图片'
+initial_coins = 3000
+initial_fields = 1
+
+[gg]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[heartbeat_club]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[hermes_bridge]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[hermes_bridge.config]
+admin_listen = '127.0.0.1:8644'
+admin_token = ''
+approval_tokens = []
+archive_tokens = []
+bubble_cooldown_minutes = 10
+bubble_rate = 0.1
+debounce_seconds = 3
+emoji_burst_cooldown_minutes = 5
+emoji_burst_count = 3
+emoji_burst_window_seconds = 30
+ffmpeg_path = ''
+ffprobe_path = ''
+group_push_all = false
+hermes_ops_token = ''
+hermes_ops_url = ''
+interrupt_tokens = []
+listen = '0.0.0.0:8643'
+max_body_bytes = 83886080
+max_context_messages = 40
+max_text_len = 2000
+record_image_via = ''
+record_xml_dump_dir = ''
+revoke_tokens = []
+revoke_window_seconds = 120
+send_rate_per_min = 20
+session_reset_tokens = []
+silk_encoder_path = ''
+silk_max_bytes = 0
+silk_sample_rate = 0
+targets = []
+token = ''
+trigger_names = []
+
+[infinite_adventure]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[infinite_adventure.config]
+group_squad_max_members = 5
+group_timeout_minutes = 10
+max_solo_turns = 30
+save_file = 'data/infinite_adventure.json'
+
+[meme]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[meme.config]
+Url = ''
+
+[moyu_daily]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[moyu_daily.config]
+auto_push_chatrooms = []
+
+[music]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[news]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[profile]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[profile.config]
+chunk_token_budget = 4000
+cold_start_max_chunks = 30
+cold_start_max_messages = 2000
+max_single_msg_chars = 2000
+render_image = true
+
+[reread]
+enable = false
+mode = 'blacklist'
+limits = []
+
+[robbery]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[robbery.config]
+change_prof_cost = 500
+data_file = 'data/robbery_game.json'
+initial_money = 100
+initial_strength = 15
+job_refresh_hours = 24
+welfare_amount = 50
+welfare_cooldown = 24
+
+[setu]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[setu.config]
+baisi_url = 'https://api.yujn.cn/api/baisi.php?'
+baisi_video_url = 'https://api.yujn.cn/api/baisis.php?type=video'
+boy_url = 'https://api.yujn.cn/api/boy.php'
+boy_video_url = 'https://api.yujn.cn/api/xgg.php'
+heisi_url = 'https://api.yujn.cn/api/heisi.php?'
+heisi_video_url = 'https://api.yujn.cn/api/heisis.php?type=video'
+img_url = 'https://api.yujn.cn/api/ksxjj.php'
+img_video_url = 'https://api.yujn.cn/api/zzxjj.php'
+search_url = 'https://cn.apihz.cn/api/img/apihzbqbbaidu.php?id=88888888&key=88888888&limit=10&page=1&words='
+video_rate = 50
+
+[statistics]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[turtle_soup]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[undercover]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[universal]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[universal.config]
+http_timeout_seconds = 15
+rules = []
+
+[video_parser]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[what_to_eat]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[what_to_eat.config]
+enable_ai = true
+
+[wordcloud]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[wordcloud.config]
+font_path = ''
+height = 640
+max_font_size = 96.0
+max_messages = 20000
+max_words = 120
+min_font_size = 16.0
+width = 1000

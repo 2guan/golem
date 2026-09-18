@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/sbgayhub/golem/sdk/contact"
 	"github.com/sbgayhub/golem/sdk/message"
@@ -45,19 +46,78 @@ func (p *SetuPlugin) httpGet(urlStr string) (string, error) {
 	return result, nil
 }
 
-// downloadMedia 下载媒体资源
+// downloadMedia 下载媒体资源。支持直接图片二进制流，或返回图片直链文本的接口（如 boy.php），并自带空结果重试。
 func (p *SetuPlugin) downloadMedia(urlStr string) ([]byte, error) {
-	resp, err := p.client.Get(urlStr)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	for retry := 0; retry < 5; retry++ {
+		req, err := http.NewRequest("GET", urlStr, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
-	}
+		resp, err := p.client.Do(req)
+		if err != nil {
+			if retry == 4 {
+				return nil, err
+			}
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
 
-	return io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			if retry == 4 {
+				return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
+			}
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+
+		ct := resp.Header.Get("Content-Type")
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			if retry == 4 {
+				return nil, err
+			}
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+
+		// 如果已经是图片或视频媒体数据
+		if strings.Contains(ct, "image") || strings.Contains(ct, "video") {
+			return body, nil
+		}
+
+		// 否则可能是返回纯文本 URL 的接口（如 boy.php）
+		text := strings.TrimSpace(string(body))
+		if text == "" {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+
+		if strings.HasPrefix(text, "http://") || strings.HasPrefix(text, "https://") {
+			// 二级下载实际图片
+			subReq, err := http.NewRequest("GET", text, nil)
+			if err != nil {
+				return nil, err
+			}
+			subReq.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+			subResp, err := p.client.Do(subReq)
+			if err != nil {
+				return nil, err
+			}
+			defer subResp.Body.Close()
+			if subResp.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("HTTP error from sub-url: %d", subResp.StatusCode)
+			}
+			return io.ReadAll(subResp.Body)
+		}
+
+		// 如果既不是 image 也不是有效 url，但有数据，直接返回
+		return body, nil
+	}
+	return nil, fmt.Errorf("获取媒体资源失败（多次尝试返回空）: %s", urlStr)
 }
 
 // sendText 发送文本消息
@@ -106,16 +166,27 @@ func (p *SetuPlugin) sendVideo(receiver *contact.Contact, videoURL string) error
 	defer os.Remove(tmpVideo.Name())
 	defer tmpVideo.Close()
 
-	// 下载视频数据
-	resp, err := p.client.Get(videoURL)
-	if err != nil {
-		return fmt.Errorf("下载视频失败: %w", err)
+	// 下载视频数据，带重试
+	var resp *http.Response
+	for retry := 0; retry < 3; retry++ {
+		req, err := http.NewRequest("GET", videoURL, nil)
+		if err != nil {
+			return fmt.Errorf("创建请求失败: %w", err)
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+		resp, err = p.client.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			break
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	if resp == nil || resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("下载视频失败: 状态码异常")
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP error: %d", resp.StatusCode)
-	}
 
 	if _, err := io.Copy(tmpVideo, resp.Body); err != nil {
 		return fmt.Errorf("保存视频失败: %w", err)

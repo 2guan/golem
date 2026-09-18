@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -10,10 +11,19 @@ import (
 	"github.com/sbgayhub/golem/sdk/message"
 )
 
-func buildIncoming(msg *message.Message, self *contact.SelfInfo) (incomingMessage, bool) {
+func (p *AiPlugin) buildIncoming(msg *message.Message, self *contact.SelfInfo) (incomingMessage, bool) {
+	isImage := false
+	if msg.GetType() != nil && msg.GetType().GetCode() == message.TypeImage.Code {
+		isImage = true
+	}
+
 	text := messageContent(msg)
 	if strings.TrimSpace(text) == "" {
-		return incomingMessage{}, false
+		if isImage {
+			text = "请描述并分析这张图片的内容。"
+		} else {
+			return incomingMessage{}, false
+		}
 	}
 	sender := msg.GetSender()
 	if sender == nil || sender.GetUsername() == "" {
@@ -25,41 +35,55 @@ func buildIncoming(msg *message.Message, self *contact.SelfInfo) (incomingMessag
 		Text:       strings.TrimSpace(text),
 		IsChatroom: sender.GetType() == contactTypeChatroom,
 		Quote:      extractQuote(msg),
+		RawMsg:     msg,
+		IsImage:    isImage,
 	}
+	var extraIdentities []string
 	if in.IsChatroom {
 		in.SessionKey = "chatroom:" + sender.GetUsername()
 		in.ChatroomName = displayContact(sender)
 		in.SpeakerName = displayMember(msg.GetMember())
 		in.SpeakerID = msg.GetMember().GetUsername()
+
+		if p.chatroom != nil && self != nil {
+			if member := p.chatroom.GetMember(sender.GetUsername(), self.GetUsername()); member != nil {
+				if member.DisplayName != "" {
+					extraIdentities = append(extraIdentities, member.DisplayName)
+				}
+				if member.Nickname != "" {
+					extraIdentities = append(extraIdentities, member.Nickname)
+				}
+			}
+		}
 	} else {
 		in.SessionKey = "private:" + sender.GetUsername()
 		in.SpeakerName = displayContact(sender)
 		in.SpeakerID = sender.GetUsername()
 	}
-	in.MentionedBot = isMentionedBot(msg, self)
-	in.QuotedBot = isQuotedBot(in.Quote, self)
+	in.MentionedBot = isMentionedBot(msg, self, extraIdentities...)
+	in.QuotedBot = isQuotedBot(in.Quote, self, extraIdentities...)
 	return in, true
 }
 
 func (in incomingMessage) promptContent() string {
-	var lines []string
-	if in.IsChatroom {
-		lines = append(lines,
-			"[群聊]",
-			"群聊: "+emptyDash(in.ChatroomName),
-			"发言人: "+emptyDash(in.SpeakerName)+"("+emptyDash(in.SpeakerID)+")",
-		)
-	} else {
-		lines = append(lines,
-			"[私聊]",
-			"发言人: "+emptyDash(in.SpeakerName)+"("+emptyDash(in.SpeakerID)+")",
-		)
-	}
+	quotePrefix := ""
 	if in.Quote.Content != "" {
-		lines = append(lines, "引用消息: "+in.Quote.Content)
+		if in.Quote.DisplayName != "" {
+			quotePrefix = fmt.Sprintf("[引用 %s: %s] ", in.Quote.DisplayName, in.Quote.Content)
+		} else {
+			quotePrefix = fmt.Sprintf("[引用: %s] ", in.Quote.Content)
+		}
 	}
-	lines = append(lines, "消息: "+in.Text)
-	return strings.Join(lines, "\n")
+
+	if in.IsChatroom {
+		speaker := in.SpeakerName
+		if speaker == "" {
+			speaker = "群友"
+		}
+		return fmt.Sprintf("%s: %s%s", speaker, quotePrefix, in.Text)
+	}
+
+	return quotePrefix + in.Text
 }
 
 func messageContent(msg *message.Message) string {
@@ -80,11 +104,39 @@ func messageContent(msg *message.Message) string {
 	return msg.GetContent()
 }
 
-func isMentionedBot(msg *message.Message, self *contact.SelfInfo) bool {
-	identities := selfIdentities(self)
+func extractRemindsFromRaw(msg *message.Message) []string {
+	if msg == nil || msg.GetRaw() == "" {
+		return nil
+	}
+	var rawData struct {
+		Source string `json:"source"`
+	}
+	if err := json.Unmarshal([]byte(msg.GetRaw()), &rawData); err != nil || rawData.Source == "" {
+		return nil
+	}
+	var t struct {
+		XmlName xml.Name `xml:"msgsource"`
+		Reminds string   `xml:"atuserlist"`
+	}
+	if err := xml.Unmarshal([]byte(rawData.Source), &t); err != nil || t.Reminds == "" {
+		return nil
+	}
+	var res []string
+	for _, s := range strings.Split(t.Reminds, ",") {
+		s = strings.TrimSpace(s)
+		if s != "" {
+			res = append(res, s)
+		}
+	}
+	return res
+}
+
+func isMentionedBot(msg *message.Message, self *contact.SelfInfo, extraIdentities ...string) bool {
+	identities := selfIdentities(self, extraIdentities...)
 	if len(identities) == 0 {
 		return false
 	}
+	// 1. 检查普通文本消息原生 Reminds 字段
 	if text := msg.GetText(); text != nil {
 		for _, remind := range text.GetReminds() {
 			if reminderMentionsIdentity(remind, identities) {
@@ -92,6 +144,13 @@ func isMentionedBot(msg *message.Message, self *contact.SelfInfo) bool {
 			}
 		}
 	}
+	// 2. 检查 Raw JSON 中 msgsource.atuserlist（对引用消息 TypeAppQuote 等非 Text 消息尤为关键）
+	for _, remind := range extractRemindsFromRaw(msg) {
+		if reminderMentionsIdentity(remind, identities) {
+			return true
+		}
+	}
+	// 3. 检查消息内容是否包含 @身份
 	content := messageContent(msg)
 	for _, identity := range identities {
 		if strings.Contains(content, "@"+identity) {
@@ -101,8 +160,8 @@ func isMentionedBot(msg *message.Message, self *contact.SelfInfo) bool {
 	return false
 }
 
-func isQuotedBot(quote quoteInfo, self *contact.SelfInfo) bool {
-	identities := selfIdentities(self)
+func isQuotedBot(quote quoteInfo, self *contact.SelfInfo, extraIdentities ...string) bool {
+	identities := selfIdentities(self, extraIdentities...)
 	if len(identities) == 0 {
 		return false
 	}
@@ -120,24 +179,33 @@ func isQuotedBot(quote quoteInfo, self *contact.SelfInfo) bool {
 	return false
 }
 
-func selfIdentities(self *contact.SelfInfo) []string {
-	if self == nil {
-		return nil
-	}
+func selfIdentities(self *contact.SelfInfo, extraIdentities ...string) []string {
 	seen := map[string]struct{}{}
-	values := []string{self.GetUsername(), self.GetNickname(), self.GetAlias()}
-	identities := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
+	var identities []string
+
+	add := func(val string) {
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return
 		}
-		if _, ok := seen[value]; ok {
-			continue
+		if _, ok := seen[val]; !ok {
+			seen[val] = struct{}{}
+			identities = append(identities, val)
 		}
-		seen[value] = struct{}{}
-		identities = append(identities, value)
 	}
+
+	if self != nil {
+		add(self.GetUsername())
+		add(self.GetNickname())
+		add(self.GetAlias())
+	}
+	for _, extra := range extraIdentities {
+		add(extra)
+	}
+	// 默认人设别名（确保当微信个人昵称与人设不同时，群友@人设名依然能够正确响应）
+	add("肉丸叔叔")
+	add("肉丸")
+
 	return identities
 }
 

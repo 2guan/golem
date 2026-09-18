@@ -79,17 +79,40 @@ func (p *FakeForwardPlugin) parseRecords(sender *contact.Contact, payload string
 		}
 
 		var avatar string
-		if sender.Type == contact.ContactType_CONTACT_TYPE_CHATROOM {
+		// 1. 支持名字带自定义头像 URL，例如 "马斯克(http://...):内容" 或 "马斯克[http...]:内容"
+		if idx := strings.IndexAny(name, "([（【"); idx > 0 {
+			endIdx := strings.IndexAny(name[idx+1:], ")]）】")
+			if endIdx > 0 {
+				customURL := strings.TrimSpace(name[idx+1 : idx+1+endIdx])
+				if strings.HasPrefix(customURL, "http://") || strings.HasPrefix(customURL, "https://") {
+					avatar = customURL
+					name = strings.TrimSpace(name[:idx])
+				}
+			}
+		}
+
+		// 2. 如果是群聊，优先匹配群成员群名片、昵称、备注或 wxid
+		if avatar == "" && sender.Type == contact.ContactType_CONTACT_TYPE_CHATROOM {
 			slog.Debug("获取群成员信息", "name", name)
 			for _, member := range members {
-				if member.Nickname == name {
+				if member.DisplayName == name || member.Nickname == name || member.Remark == name || member.Username == name {
 					avatar = member.GetAvatar()
-					slog.Debug("成功获取到成员头像", "avatar", avatar)
+					slog.Debug("成功获取到成员头像", "name", name, "avatar", avatar)
 					break
 				}
 			}
 		}
-		avatar = p.contact.Get("nickname::" + name).GetAvatar()
+
+		// 3. 回退匹配联系人列表
+		if avatar == "" {
+			if c := p.contact.Get("nickname::" + name); c != nil && c.GetAvatar() != "" {
+				avatar = c.GetAvatar()
+			} else if c := p.contact.Get("remark::" + name); c != nil && c.GetAvatar() != "" {
+				avatar = c.GetAvatar()
+			} else if c := p.contact.Get(name); c != nil && c.GetAvatar() != "" {
+				avatar = c.GetAvatar()
+			}
+		}
 
 		records = append(records, recordItem{Name: name, Content: content, AvatarURL: avatar})
 	}
@@ -155,19 +178,28 @@ func buildRecordItemXML(title, desc string, records []recordItem) string {
 		t := base.Add(time.Duration(i) * gap)
 		timeStr := t.Format("2006-01-02 15:04:05")
 
+		headURL := ""
+		if record.AvatarURL != "" {
+			u := record.AvatarURL
+			if strings.Contains(u, "?") {
+				headURL = fmt.Sprintf("%s&ff=%d", u, i)
+			} else {
+				headURL = fmt.Sprintf("%s?ff=%d", u, i)
+			}
+		}
+
 		builder.WriteString(fmt.Sprintf(
 			"<dataitem datatype=\"1\">\n"+
 				"\t<datadesc>%s</datadesc>\n"+
 				"\t<sourcename>%s</sourcename>\n"+
-				"\t<sourceheadurl>%s?ff=%d</sourceheadurl>\n"+
+				"\t<sourceheadurl>%s</sourceheadurl>\n"+
 				"\t<sourcetime>%s</sourcetime>\n"+
 				"\t<srcMsgCreateTime>%d</srcMsgCreateTime>\n"+
 				"\t<fromnewmsgid>%d</fromnewmsgid>\n"+
 				"</dataitem>",
 			escapeXML(record.Content),
 			escapeXML(record.Name),
-			escapeXML(record.AvatarURL),
-			i,
+			escapeXML(headURL),
 			escapeXML(timeStr),
 			t.Unix(),
 			t.UnixNano(),

@@ -46,14 +46,75 @@ func (m *MusicPlugin) GetSubscriptions() []string {
 	return []string{message.TypeText.Topic}
 }
 
-func (m *MusicPlugin) OnEvent(event *plugin.Event) (bool, error) {
-	msg := event.Payload.(*plugin.Event_Message).Message
+func extractSongName(content string) string {
+	text := strings.TrimSpace(content)
+	// 1. 剥离可能存在的 @前缀（如 "@肉丸叔叔\u2005" 或 "@机器人 "）
+	if strings.HasPrefix(text, "@") {
+		if idx := strings.IndexAny(text, " \t\r\n\u2005\u00a0"); idx > 0 {
+			text = strings.TrimSpace(text[idx:])
+		}
+	}
 
-	if !hasOnePrefix(msg.Content, prefixes) {
+	// 2. 规则前缀列表（按长度降序优先匹配）
+	patterns := []string{
+		"发给我一首歌", "给我发一首歌", "给我放一首歌", "给我点一首歌", "给我来一首歌",
+		"发给我一首", "给我发一首", "给我放一首", "给我点一首", "给我来一首",
+		"发给我首歌", "给我发首歌", "发给我首", "给我发首", "发给我个歌", "给我发个歌",
+		"发我一首歌", "来一首歌", "放一首歌", "点一首歌", "听一首歌", "搜一首歌",
+		"发我一首", "发我首", "给我一首", "给我来首", "发一首", "来一首",
+		"点一首", "放一首", "听一首", "搜一首", "发首歌", "来首歌",
+		"放首歌", "点首歌", "听首歌", "搜首歌", "发个歌", "来个歌",
+		"放个歌", "点个歌", "听个歌", "搜个歌",
+		"发首", "来首", "点首", "放首", "听首", "搜首",
+		"我要听", "我想听", "要听", "想听", "听听", "听下", "听一下",
+		"发给我", "给我发", "发我", "给我",
+		"点歌", "放歌", "搜歌", "播放", "点播",
+		"音乐", "music",
+	}
+
+	var matched bool
+	var query string
+	for _, p := range patterns {
+		if strings.HasPrefix(text, p) {
+			query = strings.TrimPrefix(text, p)
+			matched = true
+			break
+		}
+	}
+
+	if !matched {
+		return ""
+	}
+
+	query = strings.TrimSpace(query)
+	// 去除常见后缀，如 "孙燕姿的歌" -> "孙燕姿"
+	query = strings.TrimSuffix(query, "的歌")
+	query = strings.TrimSuffix(query, "这首歌")
+	query = strings.TrimSuffix(query, "这歌")
+	query = strings.TrimSuffix(query, "歌曲")
+	query = strings.TrimSuffix(query, "音乐")
+	query = strings.TrimSuffix(query, "听听")
+	query = strings.TrimSuffix(query, "听下")
+	query = strings.TrimSuffix(query, "一下")
+	query = strings.TrimSpace(query)
+
+	return query
+}
+
+func (m *MusicPlugin) OnEvent(event *plugin.Event) (bool, error) {
+	payload, ok := event.Payload.(*plugin.Event_Message)
+	if !ok || payload.Message == nil {
+		return false, nil
+	}
+	msg := payload.Message
+
+	name := extractSongName(msg.Content)
+	if name == "" {
 		return false, nil
 	}
 
-	name := ltrim(msg.Content, prefixes...)
+	slog.Info("[music] 收到点歌请求", "query", name, "sender", msg.Sender.GetUsername())
+
 	resp, err := http.DefaultClient.Get("https://109a.cn/API/qqyy/api.php?msg=" + url.PathEscape(name))
 	if err != nil {
 		slog.Warn("[music] 请求失败", "err", err)
@@ -98,24 +159,6 @@ func (m *MusicPlugin) OnEvent(event *plugin.Event) (bool, error) {
 		return false, err
 	}
 	return true, nil
-}
-
-func hasOnePrefix(s string, prefixes []string) bool {
-	for _, p := range prefixes {
-		if strings.HasPrefix(s, p) {
-			return true
-		}
-	}
-	return false
-}
-
-func ltrim(s string, prefixes ...string) string {
-	for _, p := range prefixes {
-		if strings.HasPrefix(s, p) {
-			return strings.TrimPrefix(s, p)
-		}
-	}
-	return s
 }
 
 type musicResult struct {

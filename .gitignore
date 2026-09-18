@@ -25,3 +25,25 @@ __pycache__/
 
 # Hermes 本地测试人格（运行时/私人内容，不入库）
 plugins/hermes_bridge/wechat_golem/personas/*.md
+
+# Binaries
+golem
+golem_plugin_*
+plugins/*/golem_plugin_*
+tools/silk_v3_encoder
+tools/silk-v3-decoder/
+
+# Logs & Local Databases
+*.log
+*.db
+*.db-shm
+*.db-wal
+golem.log
+
+# System files
+.DS_Store
+**/.DS_Store
+
+# Local configurations with sensitive keys
+plugins/config.toml
+plugins/reread/disabled_reread

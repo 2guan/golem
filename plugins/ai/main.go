@@ -4,17 +4,29 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"sync"
+	"time"
 
+	"github.com/sbgayhub/golem/sdk/cdn"
+	"github.com/sbgayhub/golem/sdk/chatroom"
 	"github.com/sbgayhub/golem/sdk/contact"
 	"github.com/sbgayhub/golem/sdk/message"
 	"github.com/sbgayhub/golem/sdk/plugin"
 )
 
+type cachedImage struct {
+	Data      []byte
+	MimeType  string
+	Time      time.Time
+	SpeakerID string
+}
+
 // AiPlugin AI 插件主结构
 type AiPlugin struct {
 	plugin.ConfigAbility[Config]
-	contact contact.Ability
-	message message.Ability
+	contact  contact.Ability
+	message  message.Ability
+	cdn      cdn.Ability
+	chatroom chatroom.Ability
 
 	configMu        sync.RWMutex
 	sessionConfigMu sync.RWMutex
@@ -23,6 +35,9 @@ type AiPlugin struct {
 	owner           *contact.Contact
 	mu              sync.Mutex
 	sessions        map[string][]openAIMessage
+
+	imageMu      sync.Mutex
+	recentImages map[string]*cachedImage
 }
 
 // Config 插件配置
@@ -37,6 +52,7 @@ type Config struct {
 	HTTPTimeoutSeconds int                       `toml:"http_timeout_seconds" comment:"大模型请求超时缺省值，单位秒"`
 	Silence            bool                      `toml:"silence" comment:"全局静默模式，开启后仅在被 @ 或引用时回复"`
 	SessionConfigs     map[string]*SessionConfig `toml:"session_configs,omitempty" comment:"会话级配置，key 为会话标识"`
+	TTS                TTSConfig                 `toml:"tts,omitempty" comment:"TTS 语音合成配置"`
 }
 
 // newAiPlugin 创建 AI 插件实例
@@ -45,7 +61,8 @@ func newAiPlugin() (*AiPlugin, error) {
 		ConfigAbility: plugin.ConfigAbility[Config]{
 			Config: defaultConfig(),
 		},
-		sessions: map[string][]openAIMessage{},
+		sessions:     map[string][]openAIMessage{},
+		recentImages: map[string]*cachedImage{},
 	}
 	if err := registerCommands(p); err != nil {
 		return nil, err

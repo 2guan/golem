@@ -29,6 +29,10 @@ type MemePlugin struct {
 }
 
 func (m *MemePlugin) OnLoad() error {
+	if m.Config.Url == "" {
+		slog.Warn("meme 插件未配置 Url，已跳过缓存加载（配置 Url 后可正常使用）")
+		return nil
+	}
 	if err := m.loadCache(); err != nil {
 		slog.Warn("meme 缓存加载失败", "err", err)
 		return err

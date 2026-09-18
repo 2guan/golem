@@ -7,19 +7,39 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 )
 
+type ThinkingConfig struct {
+	Type string `json:"type"`
+}
+
 type chatCompletionRequest struct {
-	Model    string          `json:"model"`
-	Messages []openAIMessage `json:"messages"`
+	Model           string          `json:"model"`
+	Messages        []openAIMessage `json:"messages"`
+	Thinking        *ThinkingConfig `json:"thinking,omitempty"`
+	Temperature     *float64        `json:"temperature,omitempty"`
+	PresencePenalty *float64        `json:"presence_penalty,omitempty"`
+}
+
+func isMiMo(model, baseURL string) bool {
+	m := strings.ToLower(model)
+	u := strings.ToLower(baseURL)
+	return strings.Contains(m, "mimo") || strings.Contains(u, "xiaomi")
 }
 
 type chatCompletionResponse struct {
 	Choices []struct {
-		Message openAIMessage `json:"message"`
+		FinishReason string `json:"finish_reason"`
+		Message      struct {
+			Role             string `json:"role"`
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+			Refusal          string `json:"refusal"`
+		} `json:"message"`
 	} `json:"choices"`
 	Error *struct {
 		Message string `json:"message"`
@@ -73,10 +93,28 @@ func (p *AiPlugin) chat(sessionKey string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
-	return callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, chatCompletionRequest{
-		Model:    prov.Model,
-		Messages: messages,
-	})
+
+	temp := 0.88
+	if prov.Temperature != nil {
+		temp = *prov.Temperature
+	}
+	penalty := 0.35
+	if prov.PresencePenalty != nil {
+		penalty = *prov.PresencePenalty
+	}
+
+	reqPayload := chatCompletionRequest{
+		Model:           prov.Model,
+		Messages:        messages,
+		Temperature:     &temp,
+		PresencePenalty: &penalty,
+	}
+	// 日常闲聊对话默认关闭思维链，获得极速响应体验
+	if isMiMo(prov.Model, prov.BaseURL) {
+		reqPayload.Thinking = &ThinkingConfig{Type: "disabled"}
+	}
+
+	return callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, reqPayload)
 }
 
 func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string, payload chatCompletionRequest) (string, error) {
@@ -121,7 +159,17 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 	if len(result.Choices) == 0 {
 		return "", errors.New("AI 响应缺少 choices")
 	}
-	return strings.TrimSpace(result.Choices[0].Message.Content), nil
+
+	choice := result.Choices[0]
+	content := strings.TrimSpace(choice.Message.Content)
+	if content == "" {
+		if choice.Message.Refusal != "" {
+			slog.Warn("[ai] 模型拒绝回答", "refusal", choice.Message.Refusal, "finish_reason", choice.FinishReason)
+			return strings.TrimSpace(choice.Message.Refusal), nil
+		}
+		slog.Warn("[ai] 模型返回空内容", "finish_reason", choice.FinishReason, "raw_resp", string(body))
+	}
+	return content, nil
 }
 
 func chatCompletionURL(baseURL string) string {

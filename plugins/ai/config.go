@@ -16,6 +16,7 @@ func defaultConfig() Config {
 		ReplyRate:          0.1,
 		MaxContextMessages: defaultMaxContextMessages,
 		HTTPTimeoutSeconds: defaultHTTPTimeoutSeconds,
+		TTS:                defaultTTSConfig(),
 	}
 }
 
@@ -55,6 +56,18 @@ func normalizeConfigValue(config Config) Config {
 	}
 	if config.ReplyRate > 1 {
 		config.ReplyRate = 1
+	}
+	config.TTS.Model = strings.TrimSpace(config.TTS.Model)
+	if config.TTS.Model == "" {
+		config.TTS.Model = "mimo-v2.5-tts-voicedesign"
+	}
+	config.TTS.VoiceDesign = strings.TrimSpace(config.TTS.VoiceDesign)
+	if config.TTS.VoiceDesign == "" {
+		config.TTS.VoiceDesign = "一位三十多岁的成熟男性朋友。嗓音富有磁性有质感，但音调自然轻松不沉闷。说话亲切温和、随性自如，语速轻快，带有自然的口语起伏和笑意，像日常随手拿起手机给朋友发微信语音闲聊。"
+	}
+	config.TTS.Mode = strings.TrimSpace(config.TTS.Mode)
+	if config.TTS.Mode == "" {
+		config.TTS.Mode = "both"
 	}
 	return config
 }

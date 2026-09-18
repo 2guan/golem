@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>微信群聊助手功能手册 - 肉丸叔叔</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=PingFang+SC:wght@400;500;600;700&display=swap');
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .glass {
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    .cmd-pill {
+      cursor: pointer;
+      user-select: none;
+    }
+    .cmd-pill:hover {
+      border-color: #10b981;
+      color: #059669;
+      background-color: #ecfdf5;
+      transform: translateY(-1px);
+    }
+    .cmd-pill:active {
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-6 left-1/2 -translate-x-1/2 z-50 transform -translate-y-12 opacity-0 pointer-events-none transition-all duration-300 ease-out bg-slate-900/90 text-white text-sm font-medium px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2">
+    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+    <span id="toast-text">命令已复制到剪贴板</span>
+  </div>
+
+  <!-- Header Section -->
+  <header class="sticky top-0 z-40 glass border-b border-slate-200/80">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="relative flex-shrink-0">
+          <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 text-xl font-bold">
+            🤖
+          </div>
+          <span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-lg text-slate-900 tracking-tight">肉丸叔叔 · 群聊智能助手</h1>
+            <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200/60">在线运行中</span>
+          </div>
+          <p class="text-xs text-slate-500">MiMo-v2.5 多模态全能大模型驱动 · 点击命令快速复制</p>
+        </div>
+      </div>
+
+      <!-- Search Input -->
+      <div class="relative w-full sm:w-72">
+        <input type="text" id="searchInput" placeholder="搜索功能、指令或关键词..." 
+          class="w-full bg-slate-100/90 border border-slate-200 text-slate-800 text-sm rounded-xl pl-9 pr-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-slate-400" />
+        <svg class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+      </div>
+    </div>
+
+    <!-- Category Nav Tabs -->
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-1.5 overflow-x-auto py-2 custom-scrollbar text-sm" id="categoryTabs">
+        <button onclick="filterCategory('all')" class="cat-btn active px-3.5 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all bg-emerald-600 text-white shadow-sm shadow-emerald-600/20">全部功能</button>
+        <button onclick="filterCategory('ai')" class="cat-btn px-3.5 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all text-slate-600 hover:bg-slate-100">🤖 AI 对话与识图</button>
+        <button onclick="filterCategory('music')" class="cat-btn px-3.5 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all text-slate-600 hover:bg-slate-100">🎵 音乐点播</button>
+        <button onclick="filterCategory('games')" class="cat-btn px-3.5 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all text-slate-600 hover:bg-slate-100">🎮 互动小游戏</button>
+        <button onclick="filterCategory('stats')" class="cat-btn px-3.5 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all text-slate-600 hover:bg-slate-100">📊 统计与词云画像</button>
+        <button onclick="filterCategory('media')" class="cat-btn px-3.5 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all text-slate-600 hover:bg-slate-100">🖼️ 表情/早报/搜图</button>
+        <button onclick="filterCategory('tools')" class="cat-btn px-3.5 py-1.5 rounded-lg font-medium whitespace-nowrap transition-all text-slate-600 hover:bg-slate-100">🛠️ 实用小工具</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Hero Banner -->
+    <div class="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 rounded-2xl p-6 sm:p-8 text-white mb-8 shadow-xl shadow-slate-900/10 relative overflow-hidden">
+      <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="max-w-2xl relative z-10">
+        <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 mb-3">
+          ✨ 微信群聊功能速查手册
+        </div>
+        <h2 class="text-2xl sm:text-3xl font-bold tracking-tight mb-2">群友日常聊天与娱乐指南</h2>
+        <p class="text-slate-300 text-sm sm:text-base leading-relaxed mb-4">
+          在群里直接发送关键词，或 @ 机器人发送指令即可触发对应功能。支持点歌卡片、多模态看图识图、磁性语音回复、农场偷菜、人物画像等丰富玩法。
+        </p>
+        <div class="flex flex-wrap gap-2 text-xs text-slate-300">
+          <span class="bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">💡 提示：点击任意绿色指令即可自动复制到剪贴板</span>
+          <span class="bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm">⚡ 反应灵敏 · 秒级响应</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="featureGrid">
+
+      <!-- Feature 1: AI Chat & Vision -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="ai" data-keywords="ai 问答 识图 看图 视觉 搜索 翻译 语音 萝莉音 蜡笔小新">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold">🤖</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-blue-50 text-blue-700">MiMo-v2.5 多模态</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">AI 智能问答与视觉识图</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            支持日常百科问答、编写代码，发图时自动进行多模态视觉分析，并支持磁性男声或定制萝莉音语音回复。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('@肉丸叔叔 这张图里是什么？')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">@肉丸叔叔 [发图] 这是什么？</button>
+                <button onclick="copyCommand('@肉丸叔叔 用可爱萝莉音跟我打个招呼')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">@肉丸叔叔 用可爱萝莉音打招呼</button>
+                <button onclick="copyCommand('@肉丸叔叔 模仿蜡笔小新的声音说句话')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">@肉丸叔叔 模仿蜡笔小新说话</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：发图后 3 分钟内直接 @ 提问，自动关联该图片</span>
+        </div>
+      </div>
+
+      <!-- Feature 2: Music -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="music" data-keywords="点歌 音乐 放歌 听歌 歌曲 孙燕姿 周杰伦 晴天 qq音乐">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">🎵</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700">QQ音乐播放卡片</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">点歌与音乐点播</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            支持日常自然口语点歌，自动搜索并发送原生微信音乐卡片，群友点开即可直接播放与查看歌词。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('发我一首孙燕姿的歌')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">发我一首孙燕姿的歌</button>
+                <button onclick="copyCommand('点歌 晴天')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">点歌 晴天</button>
+                <button onclick="copyCommand('来首 稻香')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">来首 稻香</button>
+                <button onclick="copyCommand('想听 七里香')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">想听 七里香</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：支持 @ 机器人点歌，也可直接在群里发送</span>
+        </div>
+      </div>
+
+      <!-- Feature 3: Farm Game -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="games" data-keywords="农场 种田 偷菜 收菜 浇水 土豆 土地 守卫 商店 小游戏">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl font-bold">🌾</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-700">群互动小游戏</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">农场物语小游戏</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            经典农场玩法！购买种子种植、给群友浇水或偷偷去群友农田里偷菜，还能购置看门守卫和开垦更多土地。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('农场')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">农场</button>
+                <button onclick="copyCommand('我的农场')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">我的农场</button>
+                <button onclick="copyCommand('农场商店')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">农场商店</button>
+                <button onclick="copyCommand('农场购买土豆10')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">农场购买土豆10</button>
+                <button onclick="copyCommand('种土豆')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">种土豆</button>
+                <button onclick="copyCommand('收菜')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">收菜</button>
+                <button onclick="copyCommand('偷菜@某人')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">偷菜@某人</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：发送【农场帮助】可随时查看完整作物收益表</span>
+        </div>
+      </div>
+
+      <!-- Feature 4: Robbery Game -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="games" data-keywords="打劫 资产 金币 转职 武器 装备 铁剑 排行榜 赌博 盗贼 战士">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center text-xl font-bold">⚔️</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-red-50 text-red-700">群乱斗与转职</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">打劫大作战</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            在群里随机发起打劫抢夺金币！支持战士、盗贼、刺客、商人等职业转职、购买武器装备和财富排行榜。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('我的资产')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">我的资产 (初次自动建号)</button>
+                <button onclick="copyCommand('打劫')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">打劫</button>
+                <button onclick="copyCommand('排行榜')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">排行榜</button>
+                <button onclick="copyCommand('商店')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">商店</button>
+                <button onclick="copyCommand('购买 铁剑')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">购买 铁剑</button>
+                <button onclick="copyCommand('转职 盗贼')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">转职 盗贼</button>
+                <button onclick="copyCommand('赌博 50')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">赌博 50</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：发送【打劫帮助】查看属性克制与破产救济</span>
+        </div>
+      </div>
+
+      <!-- Feature 5: Statistics & Wordcloud -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="stats" data-keywords="排行 词云 统计 话痨 发言 活跃度 今日排行 本周排行 总排行">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl font-bold">📊</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-purple-50 text-purple-700">群活跃分析</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">群发言排行与词云图</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            自动统计本群聊天活跃度，一键生成精美高频热词词云图以及群话痨龙虎榜。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('今日排行')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">今日排行</button>
+                <button onclick="copyCommand('昨日排行')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">昨日排行</button>
+                <button onclick="copyCommand('总排行')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">总排行</button>
+                <button onclick="copyCommand('发言详情')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">发言详情</button>
+                <button onclick="copyCommand('词云')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">词云 (全群近7天)</button>
+                <button onclick="copyCommand('词云 今日')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">词云 今日</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：支持发送【词云 @某人】生成指定群友的词云</span>
+        </div>
+      </div>
+
+      <!-- Feature 6: Profile AI -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="stats" data-keywords="人物画像 画像 ai 分析 性格 标签 摸鱼 报告 总结">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">🧬</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700">AI 深度洞察</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">AI 群成员人物画像</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            大模型根据历史发言记录，深度分析性格特质、作息、口头禅与摸鱼偏好，排版渲染成高质量长图返回。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('人物画像')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">人物画像 (查自己)</button>
+                <button onclick="copyCommand('人物画像 @某人')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">人物画像 @某人</button>
+                <button onclick="copyCommand('人物画像 某人 --rebuild')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">人物画像 某人 --rebuild</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：发言越丰富，AI 生成的人物画像越精准传神</span>
+        </div>
+      </div>
+
+      <!-- Feature 7: Meme Generator -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="media" data-keywords="meme 表情包 头像 恶搞 揍 拍 吃 摸 亲">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center text-xl font-bold">🎭</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-orange-50 text-orange-700">头像趣味生成</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">表情包一键生成</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            结合你或被 @ 群友的微信头像，快速合成各种热门搞笑动图与表情包（如揍、拍、吃等）。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('meme list')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">meme list (查看模板)</button>
+                <button onclick="copyCommand('meme 揍 @某人')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">meme 揍 @某人</button>
+                <button onclick="copyCommand('meme 拍')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">meme 拍</button>
+                <button onclick="copyCommand('表情 吃 @某人')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">表情 吃 @某人</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：部分表情支持同时使用双方两人的头像</span>
+        </div>
+      </div>
+
+      <!-- Feature 8: News & Daily -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="media" data-keywords="新闻 图卦 晨报 今日新闻 60秒 煎蛋 摸鱼 热点">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-xl font-bold">📰</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-teal-50 text-teal-700">每日简报</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">今日早报与图卦</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            获取当天 60 秒读懂世界新闻晨报长图，或获取煎蛋网每日热点趣味图卦，群友摸鱼必备。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('今日新闻')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">今日新闻 (60秒晨报)</button>
+                <button onclick="copyCommand('今日图卦')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">今日图卦 (煎蛋热点)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：图片走高速 CDN 通道发送，秒级加载</span>
+        </div>
+      </div>
+
+      <!-- Feature 9: Photo & Search -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="media" data-keywords="搜图 图片 漂亮妹妹 美女 帅哥 黑丝 白丝 腿 柯基 猫咪">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-pink-50 text-pink-600 flex items-center justify-center text-xl font-bold">🌸</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-pink-50 text-pink-700">美图与全网搜图</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">关键词美图与搜图</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            支持随机美女帅哥图，以及通过“来点<关键词>”全网搜索表情包或特定图片。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('漂亮妹妹')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">漂亮妹妹</button>
+                <button onclick="copyCommand('来点帅哥')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">来点帅哥</button>
+                <button onclick="copyCommand('来点柯基')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">来点柯基 (搜图)</button>
+                <button onclick="copyCommand('来点黑丝')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">来点黑丝</button>
+                <button onclick="copyCommand('看看腿')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">看看腿</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：黑白丝有概率返回短视频条目</span>
+        </div>
+      </div>
+
+      <!-- Feature 10: Fake Chat Records -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="tools" data-keywords="fake 假聊天 伪造 转发 聊天记录 恶搞 转发合辑 头像">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center text-xl font-bold">📑</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-violet-50 text-violet-700">真实微信合辑</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">伪造合并聊天记录</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            自定义生成合并转发聊天记录卡片，自动匹配群友微信高清头像，也支持指定任意网络头像。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">常用指令 (点击复制)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="copyCommand('/fake chat 张三:今晚吃什么？|李四:吃火锅吧！')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">/fake chat 张三:内容|李四:内容</button>
+                <button onclick="copyCommand('/fake chat 雷军:Are you OK?|马斯克:Full Self-Driving!')" class="cmd-pill text-xs px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 transition-all">名人对话卡片示例</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：名字填本群成员的名字，会自动带上对方真实微信头像</span>
+        </div>
+      </div>
+
+      <!-- Feature 11: Video Parsing & Reread -->
+      <div class="feature-card group bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between" data-category="tools" data-keywords="短视频 解析 抖音 快手 视频号 无水印 复读机 复读">
+        <div>
+          <div class="flex items-center justify-between mb-3">
+            <span class="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center text-xl font-bold">🎬</span>
+            <span class="text-xs font-medium px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-700">自动生效技能</span>
+          </div>
+          <h3 class="font-bold text-slate-900 text-base mb-1">短视频在线解析 & 复读机</h3>
+          <p class="text-xs text-slate-500 mb-4 leading-relaxed">
+            免指令自动工作！群友发送抖音、快手、视频号链接时自动解析卡片；同一句话连续出现 2 次自动复读第 3 次。
+          </p>
+          <div class="space-y-2 mb-4">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+              <div class="text-slate-400 text-[11px] mb-1 font-semibold uppercase tracking-wider">触发方式</div>
+              <ul class="text-slate-600 space-y-1.5 leading-relaxed">
+                <li>• <b>短视频解析</b>：直接发抖音/快手分享链接，自动返回视频信息卡片</li>
+                <li>• <b>智能复读机</b>：群友连续发送相同文本或表情，机器人自动跟风复读</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <span>✨ 技巧：静默自动化后台服务，无需复杂记忆</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Empty Search State -->
+    <div id="emptyState" class="hidden text-center py-16">
+      <div class="text-4xl mb-3">🔍</div>
+      <h4 class="text-slate-700 font-medium text-base mb-1">未找到相关功能</h4>
+      <p class="text-slate-400 text-xs">换个关键词试试，比如“点歌”、“农场”、“词云”或“看图”</p>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-200 mt-12 py-8 text-center text-xs text-slate-400">
+    <div class="max-w-6xl mx-auto px-4">
+      <p class="mb-1">Powered by <b>Golem Plugin Framework</b> & <b>Xiaomi MiMo-v2.5</b></p>
+      <p>© 2026 肉丸叔叔 · 微信群聊专属助手</p>
+    </div>
+  </footer>
+
+  <script>
+    // Copy Command to Clipboard
+    function copyCommand(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast('已复制指令：' + text);
+        }).catch(() => {
+          fallbackCopy(text);
+        });
+      } else {
+        fallbackCopy(text);
+      }
+    }
+
+    function fallbackCopy(text) {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast('已复制指令：' + text);
+      } catch (err) {
+        prompt('请手动复制：', text);
+      }
+      document.body.removeChild(textarea);
+    }
+
+    // Show Toast
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const toastText = document.getElementById('toast-text');
+      toastText.textContent = msg;
+      toast.classList.remove('opacity-0', '-translate-y-12', 'pointer-events-none');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', '-translate-y-12', 'pointer-events-none');
+      }, 2200);
+    }
+
+    // Category Filter
+    let currentCategory = 'all';
+    function filterCategory(cat) {
+      currentCategory = cat;
+      const tabs = document.querySelectorAll('#categoryTabs button');
+      tabs.forEach(tab => {
+        if (tab.getAttribute('onclick').includes(cat)) {
+          tab.classList.add('bg-emerald-600', 'text-white', 'shadow-sm', 'shadow-emerald-600/20');
+          tab.classList.remove('text-slate-600', 'hover:bg-slate-100');
+        } else {
+          tab.classList.remove('bg-emerald-600', 'text-white', 'shadow-sm', 'shadow-emerald-600/20');
+          tab.classList.add('text-slate-600', 'hover:bg-slate-100');
+        }
+      });
+      applyFilters();
+    }
+
+    // Search Filter
+    const searchInput = document.getElementById('searchInput');
+    searchInput.addEventListener('input', applyFilters);
+
+    function applyFilters() {
+      const q = searchInput.value.trim().toLowerCase();
+      const cards = document.querySelectorAll('.feature-card');
+      let visibleCount = 0;
+
+      cards.forEach(card => {
+        const cat = card.getAttribute('data-category');
+        const keywords = card.getAttribute('data-keywords').toLowerCase();
+        const text = card.textContent.toLowerCase();
+
+        const matchCat = (currentCategory === 'all' || cat === currentCategory);
+        const matchSearch = (!q || keywords.includes(q) || text.includes(q));
+
+        if (matchCat && matchSearch) {
+          card.classList.remove('hidden');
+          visibleCount++;
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+
+      const empty = document.getElementById('emptyState');
+      if (visibleCount === 0) {
+        empty.classList.remove('hidden');
+      } else {
+        empty.classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
