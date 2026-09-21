@@ -47,3 +47,4 @@ golem.log
 # Local configurations with sensitive keys
 plugins/config.toml
 plugins/reread/disabled_reread
+plugins/hermes_bridge/disabled_hermes_bridge
