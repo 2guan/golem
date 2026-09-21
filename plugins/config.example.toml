@@ -85,7 +85,7 @@ mode = 'blacklist'
 limits = []
 
 [farm]
-enable = true
+enable = false
 mode = 'blacklist'
 limits = []
 

@@ -48,3 +48,4 @@ golem.log
 plugins/config.toml
 plugins/reread/disabled_reread
 plugins/hermes_bridge/disabled_hermes_bridge
+plugins/farm/disabled_farm
