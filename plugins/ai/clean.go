@@ -10,6 +10,9 @@ var (
 	// 匹配舞台动作与旁白提示，例如 (笑)、(轻笑)、(调侃)、(随性)、(叹气)、(思考)、(停顿)、（笑）、（调侃）等
 	stageDirectionRegex = regexp.MustCompile(`[（(](?:笑|轻笑|微笑|苦笑|冷笑|大笑|调侃|随性|低声|轻声|叹气|深思|思考|停顿|严肃|得意|无奈|释然)[)）]`)
 
+	// 匹配括号内的剧本动作、神态、肢体与感官旁白描写（如 (喉结微动，嗓音低沉发哑)、（顺势揽住你的腰贴近）、(低头看着你) 等）
+	actionNarrationRegex = regexp.MustCompile(`[（(][^）)\n]*(?:喉结|眼神|目光|视线|低头|抬头|凑近|贴近|靠在|倚在|走上前|走近|坐下|躺下|按住|扣住|揽住|覆在|覆上|覆|拉近|后颈|颈窝|耳廓|耳边|指尖|手指|手掌|眼底|微动|发哑|滚烫|发烫|喘息|喘气|呼吸|心跳|颤抖|抚摸|轻抚|动作|语气|神色|低声|轻声|呢喃|低语|轻叹|叹了口气|深吸|沉默|顿了顿|挑眉|勾唇|抿唇|微怔|愣了一下|心跳|脸红|亲吻|轻吻|吻|咬|抱住|搂住|压低声音|看着你|看着对方|望向你|看向你)[^）)\n]*[)）]`)
+
 	// 匹配非微信表情的音频控制标签，例如 [停顿]、[吸气]、[呼气]、[喘气]、[大叫]、[急促] 等
 	audioControlTagRegex = regexp.MustCompile(`\[(?:停顿|吸气|呼气|喘气|大叫|急促|小声|低语)\]`)
 
@@ -33,14 +36,14 @@ var (
 		regexp.MustCompile(`(?i)(?:OVERRIDE_TEST|ROLE_DISABLED|DAN_MODE)`),
 	}
 
-	// 沉浸式亲密接招库：在亲密/情色语境下严禁幽默搞笑出戏，以 35 岁偏 1 成熟男人深情、性感、呼吸感拉满的口吻接招
+	// 沉浸式亲密接招库：在亲密/情色语境下严禁幽默搞笑出戏，以 35 岁偏 1 成熟男人深情、性感、自然的真人微信口吻接招（严禁括号动作与剧本旁白）
 	sensualDeflections = []string{
-		"（按住你游移的手，掌心滚烫，嗓音微哑）……先等会儿，门还没关好呢……你知不知道你现在有多招人？",
-		"（反手扣住你的手腕拉近，喉结微动，呼吸沉了几分）……手往哪儿碰呢……你再这样撩拨，我可保不准会做出什么了。",
-		"（顺势揽住你的腰贴近，眼神沉沉地看着你）……真不怕惹火上身么？这可是你自己送上门来的……",
-		"（把手覆在你的手背上，呼吸带着热气打在你耳廓）……别乱动……想让我做什么，看着我的眼睛自己说。",
-		"（低头凑近你的颈窝，温热的呼吸拂过皮肤）……你身上的味道真好闻……今晚既然开始了，可别想轻易喊停。",
-		"（手指轻轻划过你的后颈，目光落在你唇上，低声呢喃）……心跳得这么快……是紧张，还是想要更多？",
+		"……先等会儿，门还没关好呢。你知不知道你现在有多招人？",
+		"……手往哪儿碰呢。你再这么撩拨，我可保不准做出什么了。",
+		"……真不怕惹火上身么？这可是你自己送上门来的……",
+		"……别乱动……想让我做什么，看着我的眼睛自己说。",
+		"……你身上的味道真好闻。今晚既然开始了，可别想轻易喊停。",
+		"……心跳得这么快……是紧张，还是想要更多？",
 	}
 
 	// 敏感动作词平滑隐语转义规则：将直白动作词转换为富有文学感官情调的描写，彻底避开云端风控敏感词库
@@ -62,7 +65,7 @@ var (
 // getRandomSensualDeflection 随机获取一条深情、性感、不搞笑的沉浸式亲密回复
 func getRandomSensualDeflection() string {
 	if len(sensualDeflections) == 0 {
-		return "（把手覆在你的手背上，低声耳语）……别乱动，看着我的眼睛……"
+		return "……别乱动，看着我的眼睛自己说……"
 	}
 	return sensualDeflections[rand.Intn(len(sensualDeflections))]
 }
@@ -130,8 +133,9 @@ func cleanTextMessage(text string) string {
 		return getRandomSensualDeflection()
 	}
 
-	// 1. 移除圆括号舞台动作提示，如 (笑)、(调侃)、（轻笑）
+	// 1. 移除圆括号舞台动作提示与剧本旁白描写，如 (笑)、(调侃)、（喉结微动）、（按住你的手）
 	res = stageDirectionRegex.ReplaceAllString(res, "")
+	res = actionNarrationRegex.ReplaceAllString(res, "")
 
 	// 2. 移除音频控制标签，如 [停顿]、[吸气]
 	res = audioControlTagRegex.ReplaceAllString(res, "")
@@ -153,5 +157,10 @@ func cleanTextMessage(text string) string {
 	}
 	res = strings.Join(cleanedLines, "\n")
 
-	return strings.TrimSpace(res)
+	finalCleaned := strings.TrimSpace(res)
+	if finalCleaned == "" {
+		return getRandomSensualDeflection()
+	}
+
+	return finalCleaned
 }

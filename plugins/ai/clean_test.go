@@ -34,6 +34,21 @@ func TestCleanTextMessage(t *testing.T) {
 			expected: "真的假的啊",
 		},
 		{
+			name:     "parenthetical action narration stripped",
+			input:    "（顺势揽住你的腰贴近，眼神沉沉地看着你）真不怕惹火上身么？这可是你自己送上门来的……",
+			expected: "真不怕惹火上身么？这可是你自己送上门来的……",
+		},
+		{
+			name:     "english parenthesis action narration stripped",
+			input:    "(喉结微动，嗓音低沉发哑) 手往哪儿碰呢……",
+			expected: "手往哪儿碰呢……",
+		},
+		{
+			name:     "action only message falls back to natural deflection",
+			input:    "（低头靠近你的耳廓，嗓音微哑）",
+			isSensual: true,
+		},
+		{
 			name:     "pseudo emoji [苦笑]",
 			input:    "[苦笑] 这也太惨了",
 			expected: "[捂脸] 这也太惨了",
@@ -222,3 +237,12 @@ func TestSoftenHighRiskTerms(t *testing.T) {
 		}
 	}
 }
+
+func TestSensualDeflectionsNoParentheses(t *testing.T) {
+	for _, text := range sensualDeflections {
+		if strings.ContainsAny(text, "（）()") {
+			t.Errorf("sensual deflection contains parentheses or stage directions: %q", text)
+		}
+	}
+}
+
