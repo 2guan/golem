@@ -44,6 +44,7 @@ func normalizeConfigValue(config Config) Config {
 	config.Prompts = normalizePrompts(config.Prompts, config.LegacyPrompt, config.ActivePrompt)
 	config.LegacyPrompt = ""
 	config.ActiveProvider = strings.TrimSpace(config.ActiveProvider)
+	config.FallbackProvider = strings.TrimSpace(config.FallbackProvider)
 	config.Providers = normalizeProviders(config.Providers)
 	if config.MaxContextMessages <= 0 {
 		config.MaxContextMessages = defaultMaxContextMessages

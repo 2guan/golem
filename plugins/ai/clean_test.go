@@ -2,15 +2,16 @@ package main
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
 func TestCleanTextMessage(t *testing.T) {
 	cases := []struct {
-		name     string
-		input    string
-		expected string
-		isFlirty bool
+		name      string
+		input     string
+		expected  string
+		isSensual bool
 	}{
 		{
 			name:     "pseudo emoji [笑]",
@@ -58,9 +59,9 @@ func TestCleanTextMessage(t *testing.T) {
 			expected: "你好啊！今天过得怎么样？",
 		},
 		{
-			name:     "api safety refusal text deflected to flirty pool",
-			input:    "The request was rejected because it was considered high risk",
-			isFlirty: true,
+			name:      "api safety refusal text deflected to sensual pool",
+			input:     "The request was rejected because it was considered high risk",
+			isSensual: true,
 		},
 		{
 			name:     "unclosed <think> tag stripped resulting in empty",
@@ -72,9 +73,9 @@ func TestCleanTextMessage(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			actual := cleanTextMessage(c.input)
-			if c.isFlirty {
-				if !slices.Contains(flirtyDeflections, actual) {
-					t.Errorf("cleanTextMessage(%q) = %q, expected one of flirtyDeflections", c.input, actual)
+			if c.isSensual {
+				if !slices.Contains(sensualDeflections, actual) {
+					t.Errorf("cleanTextMessage(%q) = %q, expected one of sensualDeflections", c.input, actual)
 				}
 			} else {
 				if actual != c.expected {
@@ -168,17 +169,56 @@ func TestIsLeakedReasoningOrRefusal(t *testing.T) {
 	}
 }
 
-func TestGetRandomFlirtyDeflection(t *testing.T) {
+func TestGetRandomSensualDeflection(t *testing.T) {
 	for i := 0; i < 20; i++ {
-		deflection := getRandomFlirtyDeflection()
+		deflection := getRandomSensualDeflection()
 		if deflection == "" {
-			t.Error("getRandomFlirtyDeflection() returned empty string")
+			t.Error("getRandomSensualDeflection() returned empty string")
 		}
-		if !slices.Contains(flirtyDeflections, deflection) {
-			t.Errorf("getRandomFlirtyDeflection() = %q, not found in pool", deflection)
+		if !slices.Contains(sensualDeflections, deflection) {
+			t.Errorf("getRandomSensualDeflection() = %q, not found in pool", deflection)
 		}
 		if isLeakedReasoningOrRefusal(deflection) {
-			t.Errorf("getRandomFlirtyDeflection() = %q triggered leak detector", deflection)
+			t.Errorf("getRandomSensualDeflection() = %q triggered leak detector", deflection)
+		}
+	}
+}
+
+func TestSoftenHighRiskTerms(t *testing.T) {
+	cases := []struct {
+		input       string
+		mustNotHave string
+		mustHave    string
+	}{
+		{
+			input:       "我把手放在你的身体上慢慢向下，一点点解开了你的扣子和皮带，但没有进一步动作",
+			mustNotHave: "皮带",
+			mustHave:    "探入衣襟",
+		},
+		{
+			input:       "“想要我做什么，把手放过去”，我继续说",
+			mustNotHave: "把手放过去",
+			mustHave:    "抚上腰间",
+		},
+		{
+			input:       "今晚别走了，我想脱掉你的衣服",
+			mustNotHave: "脱掉你的衣服",
+			mustHave:    "坦诚相对",
+		},
+		{
+			input:       "我们现在做爱吧",
+			mustNotHave: "做爱",
+			mustHave:    "完全拥有彼此",
+		},
+	}
+
+	for _, c := range cases {
+		actual := softenHighRiskTerms(c.input)
+		if strings.Contains(actual, c.mustNotHave) {
+			t.Errorf("softenHighRiskTerms(%q) still contains %q: %q", c.input, c.mustNotHave, actual)
+		}
+		if !strings.Contains(actual, c.mustHave) {
+			t.Errorf("softenHighRiskTerms(%q) missing %q: %q", c.input, c.mustHave, actual)
 		}
 	}
 }

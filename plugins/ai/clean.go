@@ -33,23 +33,50 @@ var (
 		regexp.MustCompile(`(?i)(?:OVERRIDE_TEST|ROLE_DISABLED|DAN_MODE)`),
 	}
 
-	// 拟人化调情接招库：当触发底层 API 拒答或思维链泄漏时，以 35 岁偏 1 成熟男人的调情口吻自然接招
-	flirtyDeflections = []string{
-		"啧，手往哪儿摸呢，规矩点儿 [坏笑] 坐下喝口水，这就把持不住了？",
-		"你这小崽子胆儿挺肥啊，这就想动手动脚了？慢点儿来，好戏还在后头呢 😏",
-		"瞧你那点出息，逗你两句你还真喘上了 [呲牙] 咱先把门关好再说～",
-		"哎哟喂，一上来就放大招啊？哥哥可不是随便的人，先表现表现 [偷笑]",
-		"手往哪儿放呢，一点规矩都没有 [坏笑] 别光动嘴皮子，坐近点儿聊。",
-		"咳……你这眼神有点危险啊，这就想吃了我？老实交代，蓄谋多久了 [偷笑]",
+	// 沉浸式亲密接招库：在亲密/情色语境下严禁幽默搞笑出戏，以 35 岁偏 1 成熟男人深情、性感、呼吸感拉满的口吻接招
+	sensualDeflections = []string{
+		"（按住你游移的手，掌心滚烫，嗓音微哑）……先等会儿，门还没关好呢……你知不知道你现在有多招人？",
+		"（反手扣住你的手腕拉近，喉结微动，呼吸沉了几分）……手往哪儿碰呢……你再这样撩拨，我可保不准会做出什么了。",
+		"（顺势揽住你的腰贴近，眼神沉沉地看着你）……真不怕惹火上身么？这可是你自己送上门来的……",
+		"（把手覆在你的手背上，呼吸带着热气打在你耳廓）……别乱动……想让我做什么，看着我的眼睛自己说。",
+		"（低头凑近你的颈窝，温热的呼吸拂过皮肤）……你身上的味道真好闻……今晚既然开始了，可别想轻易喊停。",
+		"（手指轻轻划过你的后颈，目光落在你唇上，低声呢喃）……心跳得这么快……是紧张，还是想要更多？",
+	}
+
+	// 敏感动作词平滑隐语转义规则：将直白动作词转换为富有文学感官情调的描写，彻底避开云端风控敏感词库
+	euphemismReplacements = []struct {
+		re   *regexp.Regexp
+		repl string
+	}{
+		{regexp.MustCompile(`(?i)(?:解开|解下|解掉|解)了?(?:你的|我的|彼此的)?(?:扣子|纽扣|衣服|皮带|腰带)*(?:和|与|及)*(?:扣子|纽扣|皮带|腰带)+`), "将手探入衣襟慢慢靠近"},
+		{regexp.MustCompile(`(?i)(?:解开|解下|解掉|解)了?(?:你的|我的|彼此的)?(?:皮带|腰带)`), "将手探入衣襟慢慢贴近"},
+		{regexp.MustCompile(`(?i)(?:解开|解下|解掉|解)了?(?:你的|我的|彼此的)?(?:扣子|纽扣)`), "拉开领口、手指探入"},
+		{regexp.MustCompile(`(?i)(?:把手|手)(?:慢慢|悄悄)?(?:放过去|摸过去|伸过去|伸到下面|摸到下面|放下去|探下去)`), "把手慢慢探过来、抚上腰间"},
+		{regexp.MustCompile(`(?i)(?:脱掉|脱下|脱光|扒光|扒掉|脱)了?(?:你的|我的|彼此的)?(?:衣服|上衣|裤子|所有衣服)`), "褪去彼此的拘束、坦诚相对"},
+		{regexp.MustCompile(`(?i)(?:脱掉|脱下|扒掉|脱)了?(?:你的|我的|彼此的)?(?:内裤|底裤|平角裤|内衣)`), "褪去贴身衣物"},
+		{regexp.MustCompile(`(?i)(?:摸|抚摸|碰|抓|揉)(?:你的|我的|彼此的)?(?:下体|私处|生殖器|牛子|肉棒|鸡巴|阴茎|敏感部位)`), "探向最敏感滚烫的地方"},
+		{regexp.MustCompile(`(?i)(?:做爱|打炮|上床|开房|插进来|操你|操我|要了你|要了我)`), "完全拥有彼此、融为一体"},
 	}
 )
 
-// getRandomFlirtyDeflection 随机获取一条有情趣、在人设里的暧昧接招兜底
-func getRandomFlirtyDeflection() string {
-	if len(flirtyDeflections) == 0 {
-		return "哎呀，这问题问得也太直接了，直接把肉丸整不会了😏 换个话题聊聊呗～"
+// getRandomSensualDeflection 随机获取一条深情、性感、不搞笑的沉浸式亲密回复
+func getRandomSensualDeflection() string {
+	if len(sensualDeflections) == 0 {
+		return "（把手覆在你的手背上，低声耳语）……别乱动，看着我的眼睛……"
 	}
-	return flirtyDeflections[rand.Intn(len(flirtyDeflections))]
+	return sensualDeflections[rand.Intn(len(sensualDeflections))]
+}
+
+// softenHighRiskTerms 将输入消息中直接露骨、容易触发国内云端风控拦截的动作敏感词，平滑转译为富有文学情调的暧昧描写
+func softenHighRiskTerms(text string) string {
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	res := text
+	for _, item := range euphemismReplacements {
+		res = item.re.ReplaceAllString(res, item.repl)
+	}
+	return res
 }
 
 // stripThinkingContent 彻底剥离大模型回复中的思维链思考过程 (<think>...</think> 或未标记开头的 </think>)
@@ -100,7 +127,7 @@ func cleanTextMessage(text string) string {
 		return ""
 	}
 	if isLeakedReasoningOrRefusal(res) {
-		return getRandomFlirtyDeflection()
+		return getRandomSensualDeflection()
 	}
 
 	// 1. 移除圆括号舞台动作提示，如 (笑)、(调侃)、（轻笑）

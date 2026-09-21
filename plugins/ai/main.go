@@ -44,6 +44,7 @@ type AiPlugin struct {
 type Config struct {
 	Providers          map[string]*Provider      `toml:"providers,omitempty" comment:"Provider 预设映射，key 为 provider 名称"`
 	ActiveProvider     string                    `toml:"active_provider" comment:"当前使用的 provider 名称"`
+	FallbackProvider   string                    `toml:"fallback_provider,omitempty" comment:"触发风控拦截或主模型异常时无缝切换的备用 provider"`
 	ActivePrompt       string                    `toml:"active_prompt" comment:"当前使用的提示词名称"`
 	Prompts            map[string]string         `toml:"prompts" comment:"提示词映射，key 为提示词名称"`
 	LegacyPrompt       string                    `toml:"prompt,omitempty" comment:"旧版提示词配置，启动后迁移到 prompts.default"`

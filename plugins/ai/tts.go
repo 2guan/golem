@@ -547,7 +547,7 @@ func (p *AiPlugin) sendSplitText(receiver *contact.Contact, content string) erro
 func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userText string) error {
 	reply = stripThinkingContent(reply)
 	if isLeakedReasoningOrRefusal(reply) {
-		reply = getRandomFlirtyDeflection()
+		reply = getRandomSensualDeflection()
 	}
 
 	ttsCfg := p.configSnapshot().TTS

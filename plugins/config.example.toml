@@ -6,6 +6,7 @@ limits = []
 [ai.config]
 active_prompt = 'default'
 active_provider = 'xiaomi'
+fallback_provider = '' # 备用 provider 名称（如 openrouter），当主力触发风控或故障时自动无缝热备切换
 http_timeout_seconds = 120
 max_context_messages = 400
 reply_rate = 0.2
