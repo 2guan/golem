@@ -16,6 +16,8 @@ func defaultConfig() Config {
 		ReplyRate:          0.1,
 		MaxContextMessages: defaultMaxContextMessages,
 		HTTPTimeoutSeconds: defaultHTTPTimeoutSeconds,
+		HistoryFile:        defaultHistoryFile,
+		HistoryExpireHours: defaultHistoryExpireHours,
 		TTS:                defaultTTSConfig(),
 	}
 }
@@ -57,6 +59,13 @@ func normalizeConfigValue(config Config) Config {
 	}
 	if config.ReplyRate > 1 {
 		config.ReplyRate = 1
+	}
+	config.HistoryFile = strings.TrimSpace(config.HistoryFile)
+	if config.HistoryFile == "" {
+		config.HistoryFile = defaultHistoryFile
+	}
+	if config.HistoryExpireHours <= 0 {
+		config.HistoryExpireHours = defaultHistoryExpireHours
 	}
 	config.TTS.Model = strings.TrimSpace(config.TTS.Model)
 	if config.TTS.Model == "" {

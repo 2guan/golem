@@ -237,15 +237,32 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 	if err != nil {
 		return "", fmt.Errorf("读取 AI 响应失败: %w", err)
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var errObj struct {
+			Error *struct {
+				Message string `json:"message"`
+				Code    any    `json:"code"`
+			} `json:"error,omitempty"`
+		}
+		if err := json.Unmarshal(body, &errObj); err == nil && errObj.Error != nil && errObj.Error.Message != "" {
+			return "", fmt.Errorf("AI 接口返回错误 (状态码 %d): %s", resp.StatusCode, errObj.Error.Message)
+		}
+		var errArr []struct {
+			Error *struct {
+				Message string `json:"message"`
+				Code    any    `json:"code"`
+			} `json:"error,omitempty"`
+		}
+		if err := json.Unmarshal(body, &errArr); err == nil && len(errArr) > 0 && errArr[0].Error != nil && errArr[0].Error.Message != "" {
+			return "", fmt.Errorf("AI 接口返回错误 (状态码 %d): %s", resp.StatusCode, errArr[0].Error.Message)
+		}
+		return "", fmt.Errorf("AI 接口返回状态码: %d, body: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
 	var result chatCompletionResponse
 	if err := json.Unmarshal(body, &result); err != nil {
+		slog.Warn("[ai] 解析 AI 成功响应失败", "raw_body", string(body), "status", resp.StatusCode)
 		return "", fmt.Errorf("解析 AI 响应失败: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if result.Error != nil && result.Error.Message != "" {
-			return "", fmt.Errorf("AI 接口返回错误 (状态码 %d): %s", resp.StatusCode, result.Error.Message)
-		}
-		return "", fmt.Errorf("AI 接口返回状态码: %d", resp.StatusCode)
 	}
 	if result.Error != nil && result.Error.Message != "" {
 		return "", fmt.Errorf("AI 接口返回错误: %s", result.Error.Message)

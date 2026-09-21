@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 func isContentEmpty(c any) bool {
 	if c == nil {
@@ -27,10 +30,14 @@ func (p *AiPlugin) appendContext(key string, msg openAIMessage) {
 		}
 		msg.Content = s
 	}
+	p.ensureHistoryLoaded()
+
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.sessions == nil {
 		p.sessions = map[string][]openAIMessage{}
+	}
+	if p.sessionTimes == nil {
+		p.sessionTimes = map[string]time.Time{}
 	}
 	items := append(p.sessions[key], msg)
 	limit := p.getMaxContextMessages(key)
@@ -38,13 +45,19 @@ func (p *AiPlugin) appendContext(key string, msg openAIMessage) {
 		items = items[len(items)-limit:]
 	}
 	p.sessions[key] = items
+	p.sessionTimes[key] = time.Now()
+	p.mu.Unlock()
+
+	p.saveHistoryAsync()
 }
 
 // slimContext 将指定会话中消息的图片 Base64 替换为精简占位符，防止后续轮次重复发送巨量 Base64 数据
 func (p *AiPlugin) slimContext(key string) {
+	p.ensureHistoryLoaded()
+
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	items := p.sessions[key]
+	modified := false
 	for i := range items {
 		if parts, ok := items[i].Content.([]contentPart); ok {
 			var textParts []string
@@ -56,11 +69,18 @@ func (p *AiPlugin) slimContext(key string) {
 				}
 			}
 			items[i].Content = strings.Join(textParts, " ")
+			modified = true
 		}
+	}
+	p.mu.Unlock()
+
+	if modified {
+		p.saveHistoryAsync()
 	}
 }
 
 func (p *AiPlugin) contextMessages(key string) []openAIMessage {
+	p.ensureHistoryLoaded()
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	items := p.sessions[key]
@@ -71,16 +91,25 @@ func (p *AiPlugin) contextMessages(key string) []openAIMessage {
 }
 
 func (p *AiPlugin) clearContext(key string) {
+	p.ensureHistoryLoaded()
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	delete(p.sessions, key)
+	if p.sessionTimes != nil {
+		delete(p.sessionTimes, key)
+	}
+	p.mu.Unlock()
+
+	p.saveHistoryAsync()
 }
 
 func (p *AiPlugin) popLastContext(key string) {
+	p.ensureHistoryLoaded()
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	items := p.sessions[key]
 	if len(items) > 0 {
 		p.sessions[key] = items[:len(items)-1]
 	}
+	p.mu.Unlock()
+
+	p.saveHistoryAsync()
 }

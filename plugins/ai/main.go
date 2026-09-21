@@ -35,6 +35,11 @@ type AiPlugin struct {
 	owner           *contact.Contact
 	mu              sync.Mutex
 	sessions        map[string][]openAIMessage
+	sessionTimes     map[string]time.Time
+	historyOnce      sync.Once
+	historyWriteMu   sync.Mutex
+	historySeq       uint64
+	lastPersistedSeq uint64
 
 	imageMu      sync.Mutex
 	recentImages map[string]*cachedImage
@@ -52,6 +57,8 @@ type Config struct {
 	MaxContextMessages int                       `toml:"max_context_messages" comment:"每个会话最多保留的上下文消息数"`
 	HTTPTimeoutSeconds int                       `toml:"http_timeout_seconds" comment:"大模型请求超时缺省值，单位秒"`
 	Silence            bool                      `toml:"silence" comment:"全局静默模式，开启后仅在被 @ 或引用时回复"`
+	HistoryFile        string                    `toml:"history_file,omitempty" comment:"历史上下文持久化文件路径，默认 data/ai_history.json"`
+	HistoryExpireHours int                       `toml:"history_expire_hours,omitempty" comment:"会话保鲜时长（小时），超过该时长无更新自动淘汰，默认 72 小时"`
 	SessionConfigs     map[string]*SessionConfig `toml:"session_configs,omitempty" comment:"会话级配置，key 为会话标识"`
 	TTS                TTSConfig                 `toml:"tts,omitempty" comment:"TTS 语音合成配置"`
 }
@@ -63,8 +70,10 @@ func newAiPlugin() (*AiPlugin, error) {
 			Config: defaultConfig(),
 		},
 		sessions:     map[string][]openAIMessage{},
+		sessionTimes: map[string]time.Time{},
 		recentImages: map[string]*cachedImage{},
 	}
+	p.ensureHistoryLoaded()
 	if err := registerCommands(p); err != nil {
 		return nil, err
 	}
