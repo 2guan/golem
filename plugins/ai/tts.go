@@ -545,6 +545,11 @@ func (p *AiPlugin) sendSplitText(receiver *contact.Contact, content string) erro
 
 // handleAIReply 综合处理文本与语音发送：发语音时不发相同文本，发文本时不发相同语音
 func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userText string) error {
+	reply = stripThinkingContent(reply)
+	if isLeakedReasoningOrRefusal(reply) {
+		reply = safeDeflectionReply
+	}
+
 	ttsCfg := p.configSnapshot().TTS
 
 	// 1. 如果未启用 TTS，剥离 voice 标签后纯文本发送

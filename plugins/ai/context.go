@@ -19,6 +19,14 @@ func (p *AiPlugin) appendContext(key string, msg openAIMessage) {
 	if key == "" || isContentEmpty(msg.Content) {
 		return
 	}
+	// 如果是文本消息，严禁将包含思维链泄漏或安全拦截的内容存入历史上下文
+	if s, ok := msg.Content.(string); ok {
+		s = stripThinkingContent(s)
+		if isLeakedReasoningOrRefusal(s) {
+			return
+		}
+		msg.Content = s
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.sessions == nil {

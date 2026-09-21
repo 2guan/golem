@@ -149,11 +149,19 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if result.Error != nil && result.Error.Message != "" {
+			if isLeakedReasoningOrRefusal(result.Error.Message) {
+				slog.Warn("[ai] AI 接口返回安全拦截错误，转为人设应答", "error", result.Error.Message)
+				return safeDeflectionReply, nil
+			}
 			return "", fmt.Errorf("AI 接口返回错误: %s", result.Error.Message)
 		}
 		return "", fmt.Errorf("AI 接口返回状态码: %d", resp.StatusCode)
 	}
 	if result.Error != nil && result.Error.Message != "" {
+		if isLeakedReasoningOrRefusal(result.Error.Message) {
+			slog.Warn("[ai] AI 接口返回安全拦截错误，转为人设应答", "error", result.Error.Message)
+			return safeDeflectionReply, nil
+		}
 		return "", fmt.Errorf("AI 接口返回错误: %s", result.Error.Message)
 	}
 	if len(result.Choices) == 0 {
@@ -161,14 +169,26 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 	}
 
 	choice := result.Choices[0]
+	if choice.Message.Refusal != "" {
+		slog.Warn("[ai] 模型拒绝回答 (API Refusal)，转为人设安全兜底", "refusal", choice.Message.Refusal, "finish_reason", choice.FinishReason)
+		return safeDeflectionReply, nil
+	}
+
 	content := strings.TrimSpace(choice.Message.Content)
 	if content == "" {
-		if choice.Message.Refusal != "" {
-			slog.Warn("[ai] 模型拒绝回答", "refusal", choice.Message.Refusal, "finish_reason", choice.FinishReason)
-			return strings.TrimSpace(choice.Message.Refusal), nil
-		}
 		slog.Warn("[ai] 模型返回空内容", "finish_reason", choice.FinishReason, "raw_resp", string(body))
+		return "", nil
 	}
+
+	// 剥离思维链思考过程
+	content = stripThinkingContent(content)
+
+	// 检测剥离后是否为空或是否包含思维链泄漏、提示词泄漏或 API 安全拦截提示
+	if content == "" || isLeakedReasoningOrRefusal(content) {
+		slog.Warn("[ai] 模型输出触发思维链/提示词泄漏或安全拦截过滤", "raw_content", choice.Message.Content, "finish_reason", choice.FinishReason)
+		return safeDeflectionReply, nil
+	}
+
 	return content, nil
 }
 
