@@ -31,6 +31,12 @@ func isMiMo(model, baseURL string) bool {
 	return strings.Contains(m, "mimo") || strings.Contains(u, "xiaomi")
 }
 
+func isGoogleGemini(model, baseURL string) bool {
+	m := strings.ToLower(model)
+	u := strings.ToLower(baseURL)
+	return strings.Contains(u, "googleapis.com") || strings.Contains(m, "gemini") || strings.Contains(m, "gemma")
+}
+
 type chatCompletionResponse struct {
 	Choices []struct {
 		FinishReason string `json:"finish_reason"`
@@ -158,9 +164,12 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 	if prov.Temperature != nil {
 		temp = *prov.Temperature
 	}
-	penalty := 0.35
+	var penalty *float64
 	if prov.PresencePenalty != nil {
-		penalty = *prov.PresencePenalty
+		penalty = prov.PresencePenalty
+	} else {
+		defaultPenalty := 0.35
+		penalty = &defaultPenalty
 	}
 
 	candidateModels := []string{prov.Model}
@@ -174,11 +183,16 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 	var lastErr error
 	for idx, modelName := range candidateModels {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+		var reqPenalty *float64
+		if !isGoogleGemini(modelName, prov.BaseURL) {
+			reqPenalty = penalty
+		}
+
 		reqPayload := chatCompletionRequest{
 			Model:           modelName,
 			Messages:        messages,
 			Temperature:     &temp,
-			PresencePenalty: &penalty,
+			PresencePenalty: reqPenalty,
 		}
 		// 日常闲聊对话默认关闭思维链，获得极速响应体验
 		if isMiMo(modelName, prov.BaseURL) {
