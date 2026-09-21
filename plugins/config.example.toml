@@ -145,7 +145,7 @@ token = ''
 trigger_names = []
 
 [infinite_adventure]
-enable = true
+enable = false
 mode = 'blacklist'
 limits = []
 
