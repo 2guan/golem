@@ -13,12 +13,13 @@ type aiGetCommand struct {
 }
 
 type aiSetCommand struct {
-	_          struct{} `cmd:"ai set" help:"更新 AI 全局配置" usage:"/ai set [-p provider] [-r reply_rate] [--max-context n] [--timeout n] [-s silence]" example:"/ai set -p deepseek -r 0.2\n/ai set -s true"`
-	Provider   *string  `flag:"p,provider" help:"切换全局活动 provider 名称"`
-	ReplyRate  *float64 `flag:"r,reply-rate" help:"普通消息回复概率，取值 0~1"`
-	MaxContext *int     `flag:"max-context" help:"每个会话最多保留的上下文消息数"`
-	Timeout    *int     `flag:"timeout" help:"大模型请求超时缺省值，单位秒"`
-	Silence    *bool    `flag:"s,silence" help:"全局静默模式，true 开启 / false 关闭"`
+	_                struct{} `cmd:"ai set" help:"更新 AI 全局配置" usage:"/ai set [-p provider] [--fallback-provider provider] [-r reply_rate] [--max-context n] [--timeout n] [-s silence]" example:"/ai set -p deepseek -r 0.2\n/ai set -s true"`
+	Provider         *string  `flag:"p,provider" help:"切换全局活动 provider 名称"`
+	FallbackProvider *string  `flag:"fallback-provider" help:"切换全局备用 fallback provider 名称"`
+	ReplyRate        *float64 `flag:"r,reply-rate" help:"普通消息回复概率，取值 0~1"`
+	MaxContext       *int     `flag:"max-context" help:"每个会话最多保留的上下文消息数"`
+	Timeout          *int     `flag:"timeout" help:"大模型请求超时缺省值，单位秒"`
+	Silence          *bool    `flag:"s,silence" help:"全局静默模式，true 开启 / false 关闭"`
 }
 
 type aiPromptCommand struct {
@@ -153,6 +154,17 @@ func (p *AiPlugin) applySetCommandLocked(cmd aiSetCommand) error {
 			return fmt.Errorf("provider 不存在：%s（请先 /ai provider-add %s）", name, name)
 		}
 		p.Config.ActiveProvider = name
+		changed = true
+	}
+	if cmd.FallbackProvider != nil {
+		fb := strings.TrimSpace(*cmd.FallbackProvider)
+		if fb != "" {
+			p.Config = normalizeConfigValue(p.Config)
+			if _, ok := p.Config.Providers[fb]; !ok {
+				return fmt.Errorf("fallback provider 不存在：%s（请先 /ai provider-add %s）", fb, fb)
+			}
+		}
+		p.Config.FallbackProvider = fb
 		changed = true
 	}
 	if cmd.ReplyRate != nil {
@@ -514,14 +526,18 @@ func (p *AiPlugin) handleProviderList(aiProviderListCommand) (string, error) {
 	if len(names) == 0 {
 		return "暂无 Provider 预设，请使用 /ai provider-add <name> 新增", nil
 	}
-	lines := []string{fmt.Sprintf("共 %d 个 Provider（活动：%s）：", len(names), emptyDash(config.ActiveProvider))}
+	lines := []string{fmt.Sprintf("共 %d 个 Provider（活动：%s，备用：%s）：", len(names), emptyDash(config.ActiveProvider), emptyDash(config.FallbackProvider))}
 	for _, name := range names {
 		prov := config.Providers[name]
 		marker := ""
 		if name == config.ActiveProvider {
 			marker = " *"
 		}
-		lines = append(lines, fmt.Sprintf("%s%s | model=%s url=%s key=%s", name, marker, emptyDash(prov.Model), emptyDash(prov.BaseURL), maskSecret(prov.APIKey)))
+		fbInfo := ""
+		if len(prov.FallbackModels) > 0 {
+			fbInfo = fmt.Sprintf(" fallbacks=[%s]", strings.Join(prov.FallbackModels, ","))
+		}
+		lines = append(lines, fmt.Sprintf("%s%s | model=%s%s url=%s key=%s", name, marker, emptyDash(prov.Model), fbInfo, emptyDash(prov.BaseURL), maskSecret(prov.APIKey)))
 	}
 	return strings.Join(lines, "\n"), nil
 }

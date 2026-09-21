@@ -100,19 +100,30 @@ func (p *AiPlugin) chat(sessionKey string) (string, error) {
 	}
 
 	reply, err := p.chatWithProvider(sessionKey, prov)
-	// 如果主力通道失败或返回风控拦截（如 high risk），尝试无缝切换到备用模型 (Plan B)
+	// 如果主力通道失败或返回风控拦截（如 high risk），尝试无缝切换到备用 provider (Plan B)
 	if err != nil || reply == "" || isLeakedReasoningOrRefusal(reply) {
 		fallbackProv, fbErr := p.resolveFallbackProvider(sessionKey)
 		if fbErr == nil && fallbackProv != nil {
-			slog.Info("[ai] 主力模型触发风控或异常，自动切换到备用模型请求", "fallback_model", fallbackProv.Model, "session", sessionKey)
+			slog.Info("[ai] 主力通道触发风控或候选模型均不可用，自动切换到备用 provider 请求", "fallback_provider_model", fallbackProv.Model, "session", sessionKey)
 			fbReply, fbChatErr := p.chatWithProvider(sessionKey, fallbackProv)
 			if fbChatErr == nil && strings.TrimSpace(fbReply) != "" && !isLeakedReasoningOrRefusal(fbReply) {
 				return strings.TrimSpace(fbReply), nil
 			}
-			slog.Warn("[ai] 备用模型请求亦未成功", "err", fbChatErr)
+			slog.Warn("[ai] 备用 provider 请求亦未成功", "err", fbChatErr)
 		}
 	}
-	return reply, err
+
+	if err != nil {
+		// 如果是因为风控拦截或敏感话题受限/配额耗尽，兜底使用沉浸式亲密回复，绝不报错破坏体验
+		errMsg := err.Error()
+		if isLeakedReasoningOrRefusal(errMsg) || strings.Contains(errMsg, "high risk") || strings.Contains(errMsg, "429") || strings.Contains(errMsg, "RESOURCE_EXHAUSTED") {
+			slog.Warn("[ai] 触发风控或配额耗尽且通道不可用，使用沉浸式亲密接招兜底", "err", err)
+			return getRandomSensualDeflection(), nil
+		}
+		return "", err
+	}
+
+	return reply, nil
 }
 
 func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, error) {
@@ -139,8 +150,9 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 	if timeout <= 0 {
 		timeout = config.HTTPTimeoutSeconds
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	defer cancel()
+	if timeout <= 0 {
+		timeout = 60
+	}
 
 	temp := 0.88
 	if prov.Temperature != nil {
@@ -151,18 +163,52 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 		penalty = *prov.PresencePenalty
 	}
 
-	reqPayload := chatCompletionRequest{
-		Model:           prov.Model,
-		Messages:        messages,
-		Temperature:     &temp,
-		PresencePenalty: &penalty,
-	}
-	// 日常闲聊对话默认关闭思维链，获得极速响应体验
-	if isMiMo(prov.Model, prov.BaseURL) {
-		reqPayload.Thinking = &ThinkingConfig{Type: "disabled"}
+	candidateModels := []string{prov.Model}
+	for _, m := range prov.FallbackModels {
+		m = strings.TrimSpace(m)
+		if m != "" && m != prov.Model {
+			candidateModels = append(candidateModels, m)
+		}
 	}
 
-	return callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, reqPayload)
+	var lastErr error
+	for idx, modelName := range candidateModels {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+		reqPayload := chatCompletionRequest{
+			Model:           modelName,
+			Messages:        messages,
+			Temperature:     &temp,
+			PresencePenalty: &penalty,
+		}
+		// 日常闲聊对话默认关闭思维链，获得极速响应体验
+		if isMiMo(modelName, prov.BaseURL) {
+			reqPayload.Thinking = &ThinkingConfig{Type: "disabled"}
+		}
+
+		reply, err := callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, reqPayload)
+		cancel()
+
+		if err == nil && strings.TrimSpace(reply) != "" && !isLeakedReasoningOrRefusal(reply) {
+			if idx > 0 {
+				slog.Info("[ai] 主模型超限或异常，备用模型调用成功", "primary_model", prov.Model, "used_model", modelName, "session", sessionKey)
+			}
+			return reply, nil
+		}
+
+		lastErr = err
+		if lastErr == nil {
+			lastErr = errors.New("模型返回内容异常或触发过滤")
+		}
+		slog.Warn("[ai] 模型调用失败或受限，尝试下一个候选模型",
+			"provider_model", modelName,
+			"session", sessionKey,
+			"attempt", idx+1,
+			"total", len(candidateModels),
+			"err", lastErr,
+		)
+	}
+
+	return "", fmt.Errorf("Provider 所有候选模型均调用失败: %w", lastErr)
 }
 
 func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string, payload chatCompletionRequest) (string, error) {
@@ -197,19 +243,11 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if result.Error != nil && result.Error.Message != "" {
-			if isLeakedReasoningOrRefusal(result.Error.Message) {
-				slog.Warn("[ai] AI 接口返回安全拦截错误，转为沉浸式亲密接招", "error", result.Error.Message)
-				return getRandomSensualDeflection(), nil
-			}
-			return "", fmt.Errorf("AI 接口返回错误: %s", result.Error.Message)
+			return "", fmt.Errorf("AI 接口返回错误 (状态码 %d): %s", resp.StatusCode, result.Error.Message)
 		}
 		return "", fmt.Errorf("AI 接口返回状态码: %d", resp.StatusCode)
 	}
 	if result.Error != nil && result.Error.Message != "" {
-		if isLeakedReasoningOrRefusal(result.Error.Message) {
-			slog.Warn("[ai] AI 接口返回安全拦截错误，转为沉浸式亲密接招", "error", result.Error.Message)
-			return getRandomSensualDeflection(), nil
-		}
 		return "", fmt.Errorf("AI 接口返回错误: %s", result.Error.Message)
 	}
 	if len(result.Choices) == 0 {
@@ -218,14 +256,12 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 
 	choice := result.Choices[0]
 	if choice.Message.Refusal != "" {
-		slog.Warn("[ai] 模型拒绝回答 (API Refusal)，转为沉浸式亲密接招", "refusal", choice.Message.Refusal, "finish_reason", choice.FinishReason)
-		return getRandomSensualDeflection(), nil
+		return "", fmt.Errorf("模型拒绝回答 (API Refusal): %s", choice.Message.Refusal)
 	}
 
 	content := strings.TrimSpace(choice.Message.Content)
 	if content == "" {
-		slog.Warn("[ai] 模型返回空内容", "finish_reason", choice.FinishReason, "raw_resp", string(body))
-		return "", nil
+		return "", errors.New("模型返回空内容")
 	}
 
 	// 剥离思维链思考过程
@@ -233,8 +269,7 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 
 	// 检测剥离后是否为空或是否包含思维链泄漏、提示词泄漏或 API 安全拦截提示
 	if content == "" || isLeakedReasoningOrRefusal(content) {
-		slog.Warn("[ai] 模型输出触发思维链/提示词泄漏或安全拦截过滤，转为沉浸式亲密接招", "raw_content", choice.Message.Content, "finish_reason", choice.FinishReason)
-		return getRandomSensualDeflection(), nil
+		return "", fmt.Errorf("模型输出触发思维链/提示词泄漏或安全拦截: %s", choice.Message.Content)
 	}
 
 	return content, nil

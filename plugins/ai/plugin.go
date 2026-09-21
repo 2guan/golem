@@ -358,7 +358,7 @@ func (p *AiPlugin) OnEvent(event *plugin.Event) (bool, error) {
 			err = nil
 			slog.Info("[ai] 大模型重试成功，已恢复正常应答", "session", incoming.SessionKey)
 		} else {
-			slog.Warn("[ai] 大模型重试依然失败，启用人设幽默兜底", "retryErr", retryErr, "session", incoming.SessionKey)
+			slog.Warn("[ai] 大模型重试依然失败，启用人设沉浸接招兜底", "retryErr", retryErr, "session", incoming.SessionKey)
 		}
 	}
 

@@ -20,6 +20,7 @@ default = '你是肉丸，一个35岁的北京爷们（普通话交流，不用�
 api_key = 'your_mimo_api_key_here'
 base_url = 'https://token-plan-cn.xiaomimimo.com/v1'
 model = 'mimo-v2.5'
+# fallback_models = ['mimo-v2', 'mimo-v1'] # 可选：主模型超限或异常时依次降级的备用模型列表
 
 [ai.config.tts]
 api_key = 'your_mimo_api_key_here'

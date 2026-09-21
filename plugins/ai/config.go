@@ -84,6 +84,14 @@ func normalizeProviders(providers map[string]*Provider) map[string]*Provider {
 		prov.BaseURL = strings.TrimSpace(prov.BaseURL)
 		prov.APIKey = strings.TrimSpace(prov.APIKey)
 		prov.Model = strings.TrimSpace(prov.Model)
+		var cleanedFallback []string
+		for _, m := range prov.FallbackModels {
+			m = strings.TrimSpace(m)
+			if m != "" {
+				cleanedFallback = append(cleanedFallback, m)
+			}
+		}
+		prov.FallbackModels = cleanedFallback
 		if prov.HTTPTimeoutSeconds < 0 {
 			prov.HTTPTimeoutSeconds = 0
 		}

@@ -62,6 +62,7 @@ type Provider struct {
 	BaseURL            string   `toml:"base_url" comment:"OpenAI 兼容接口地址，例如 https://api.openai.com/v1"`
 	APIKey             string   `toml:"api_key" comment:"接口密钥"`
 	Model              string   `toml:"model" comment:"模型名称"`
+	FallbackModels     []string `toml:"fallback_models,omitempty" comment:"超限或异常时依次降级的备用模型列表"`
 	HTTPTimeoutSeconds int      `toml:"http_timeout_seconds,omitempty" comment:"请求超时秒数，0 表示使用全局缺省"`
 	Temperature        *float64 `toml:"temperature,omitempty" comment:"采样温度（默认 0.88）"`
 	PresencePenalty    *float64 `toml:"presence_penalty,omitempty" comment:"存在惩罚（默认 0.35）"`
