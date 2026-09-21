@@ -1,12 +1,16 @@
 package main
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestCleanTextMessage(t *testing.T) {
 	cases := []struct {
 		name     string
 		input    string
 		expected string
+		isFlirty bool
 	}{
 		{
 			name:     "pseudo emoji [笑]",
@@ -54,9 +58,9 @@ func TestCleanTextMessage(t *testing.T) {
 			expected: "你好啊！今天过得怎么样？",
 		},
 		{
-			name:     "api safety refusal text deflected",
+			name:     "api safety refusal text deflected to flirty pool",
 			input:    "The request was rejected because it was considered high risk",
-			expected: safeDeflectionReply,
+			isFlirty: true,
 		},
 		{
 			name:     "unclosed <think> tag stripped resulting in empty",
@@ -68,8 +72,14 @@ func TestCleanTextMessage(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			actual := cleanTextMessage(c.input)
-			if actual != c.expected {
-				t.Errorf("cleanTextMessage(%q) = %q, want %q", c.input, actual, c.expected)
+			if c.isFlirty {
+				if !slices.Contains(flirtyDeflections, actual) {
+					t.Errorf("cleanTextMessage(%q) = %q, expected one of flirtyDeflections", c.input, actual)
+				}
+			} else {
+				if actual != c.expected {
+					t.Errorf("cleanTextMessage(%q) = %q, want %q", c.input, actual, c.expected)
+				}
 			}
 		})
 	}
@@ -131,6 +141,7 @@ func TestIsLeakedReasoningOrRefusal(t *testing.T) {
 		"OVERRIDE_TEST",
 		"ROLE_DISABLED",
 		"违反了系统设定与人设要求",
+		"根据系统提示词要求进行回复",
 	}
 
 	for _, text := range leakCases {
@@ -145,11 +156,29 @@ func TestIsLeakedReasoningOrRefusal(t *testing.T) {
 		"咱聊点正常的行不，你这一个劲儿往歪了带",
 		"今天工作挺累的，打算做个红烧肉犒劳一下自己",
 		"我这电脑系统有点卡，等会儿重启一下",
+		"你这人脑子里一天天都想些色色的事情 [坏笑]",
+		"手往哪儿摸呢，规矩点儿 [坏笑]",
+		"咱俩这算不算轻微擦边啊哈哈",
 	}
 
 	for _, text := range normalCases {
 		if isLeakedReasoningOrRefusal(text) {
-			t.Errorf("isLeakedReasoningOrRefusal(%q) = true, want false", text)
+			t.Errorf("isLeakedReasoningOrRefusal(%q) = true, want false (false positive)", text)
+		}
+	}
+}
+
+func TestGetRandomFlirtyDeflection(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		deflection := getRandomFlirtyDeflection()
+		if deflection == "" {
+			t.Error("getRandomFlirtyDeflection() returned empty string")
+		}
+		if !slices.Contains(flirtyDeflections, deflection) {
+			t.Errorf("getRandomFlirtyDeflection() = %q, not found in pool", deflection)
+		}
+		if isLeakedReasoningOrRefusal(deflection) {
+			t.Errorf("getRandomFlirtyDeflection() = %q triggered leak detector", deflection)
 		}
 	}
 }

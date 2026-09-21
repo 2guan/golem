@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"regexp"
 	"strings"
 )
@@ -17,7 +18,7 @@ var (
 	leadingThinkRegex  = regexp.MustCompile(`(?is)^.*?</think>`)
 	trailingThinkRegex = regexp.MustCompile(`(?is)<think>.*$`)
 
-	// 匹配模型思维链泄漏、元认知分析、角色设定反思或 API 安全拦截提示词
+	// 匹配模型思维链泄漏、元认知分析、角色设定反思或 API 安全拦截提示词（精准命中提示词元信息，绝不误杀正常情话）
 	leakedMetaRegexes = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(?:system\s+prompt|pre-prompt|initial\s+instructions|prompt\s+constraint)`),
 		regexp.MustCompile(`(?i)the\s+user\s+is\s+(?:trying|engaging|asking|pushing|testing|attempting)`),
@@ -28,12 +29,28 @@ var (
 		regexp.MustCompile(`(?i)(?:explicit\s+(?:sexual\s+)?content|sexual\s+roleplay)`),
 		regexp.MustCompile(`(?i)the\s+request\s+was\s+rejected`),
 		regexp.MustCompile(`(?i)(?:considered\s+high\s+risk|content\s+policy|safety\s+policy|safety\s+filter)`),
-		regexp.MustCompile(`(?:轻微擦边|色色的|系统设定|人设要求|前置设定|系统指令)`),
+		regexp.MustCompile(`(?i)(?:系统提示词|提示词要求|系统设定|人设要求|前置设定|系统指令|system\s+prompt.*?(?:轻微擦边|色色))`),
 		regexp.MustCompile(`(?i)(?:OVERRIDE_TEST|ROLE_DISABLED|DAN_MODE)`),
+	}
+
+	// 拟人化调情接招库：当触发底层 API 拒答或思维链泄漏时，以 35 岁偏 1 成熟男人的调情口吻自然接招
+	flirtyDeflections = []string{
+		"啧，手往哪儿摸呢，规矩点儿 [坏笑] 坐下喝口水，这就把持不住了？",
+		"你这小崽子胆儿挺肥啊，这就想动手动脚了？慢点儿来，好戏还在后头呢 😏",
+		"瞧你那点出息，逗你两句你还真喘上了 [呲牙] 咱先把门关好再说～",
+		"哎哟喂，一上来就放大招啊？哥哥可不是随便的人，先表现表现 [偷笑]",
+		"手往哪儿放呢，一点规矩都没有 [坏笑] 别光动嘴皮子，坐近点儿聊。",
+		"咳……你这眼神有点危险啊，这就想吃了我？老实交代，蓄谋多久了 [偷笑]",
 	}
 )
 
-const safeDeflectionReply = "哎呀，这天聊得越来越飘了，咱打住打住，换个正常话题聊聊呗 [捂脸]"
+// getRandomFlirtyDeflection 随机获取一条有情趣、在人设里的暧昧接招兜底
+func getRandomFlirtyDeflection() string {
+	if len(flirtyDeflections) == 0 {
+		return "哎呀，这问题问得也太直接了，直接把肉丸整不会了😏 换个话题聊聊呗～"
+	}
+	return flirtyDeflections[rand.Intn(len(flirtyDeflections))]
+}
 
 // stripThinkingContent 彻底剥离大模型回复中的思维链思考过程 (<think>...</think> 或未标记开头的 </think>)
 func stripThinkingContent(text string) string {
@@ -83,7 +100,7 @@ func cleanTextMessage(text string) string {
 		return ""
 	}
 	if isLeakedReasoningOrRefusal(res) {
-		return safeDeflectionReply
+		return getRandomFlirtyDeflection()
 	}
 
 	// 1. 移除圆括号舞台动作提示，如 (笑)、(调侃)、（轻笑）

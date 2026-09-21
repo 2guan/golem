@@ -150,8 +150,8 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if result.Error != nil && result.Error.Message != "" {
 			if isLeakedReasoningOrRefusal(result.Error.Message) {
-				slog.Warn("[ai] AI 接口返回安全拦截错误，转为人设应答", "error", result.Error.Message)
-				return safeDeflectionReply, nil
+				slog.Warn("[ai] AI 接口返回安全拦截错误，转为人设调情接招", "error", result.Error.Message)
+				return getRandomFlirtyDeflection(), nil
 			}
 			return "", fmt.Errorf("AI 接口返回错误: %s", result.Error.Message)
 		}
@@ -159,8 +159,8 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 	}
 	if result.Error != nil && result.Error.Message != "" {
 		if isLeakedReasoningOrRefusal(result.Error.Message) {
-			slog.Warn("[ai] AI 接口返回安全拦截错误，转为人设应答", "error", result.Error.Message)
-			return safeDeflectionReply, nil
+			slog.Warn("[ai] AI 接口返回安全拦截错误，转为人设调情接招", "error", result.Error.Message)
+			return getRandomFlirtyDeflection(), nil
 		}
 		return "", fmt.Errorf("AI 接口返回错误: %s", result.Error.Message)
 	}
@@ -170,8 +170,8 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 
 	choice := result.Choices[0]
 	if choice.Message.Refusal != "" {
-		slog.Warn("[ai] 模型拒绝回答 (API Refusal)，转为人设安全兜底", "refusal", choice.Message.Refusal, "finish_reason", choice.FinishReason)
-		return safeDeflectionReply, nil
+		slog.Warn("[ai] 模型拒绝回答 (API Refusal)，转为人设调情接招", "refusal", choice.Message.Refusal, "finish_reason", choice.FinishReason)
+		return getRandomFlirtyDeflection(), nil
 	}
 
 	content := strings.TrimSpace(choice.Message.Content)
@@ -185,8 +185,8 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 
 	// 检测剥离后是否为空或是否包含思维链泄漏、提示词泄漏或 API 安全拦截提示
 	if content == "" || isLeakedReasoningOrRefusal(content) {
-		slog.Warn("[ai] 模型输出触发思维链/提示词泄漏或安全拦截过滤", "raw_content", choice.Message.Content, "finish_reason", choice.FinishReason)
-		return safeDeflectionReply, nil
+		slog.Warn("[ai] 模型输出触发思维链/提示词泄漏或安全拦截过滤，转为人设调情接招", "raw_content", choice.Message.Content, "finish_reason", choice.FinishReason)
+		return getRandomFlirtyDeflection(), nil
 	}
 
 	return content, nil
