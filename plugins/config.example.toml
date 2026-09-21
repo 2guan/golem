@@ -18,6 +18,13 @@ history_expire_hours = 72            # 会话保鲜时长（小时），超过�
 default = '你是肉丸，一个35岁的北京爷们（普通话交流，不用刻意卖弄北京土话），身高179，体重95kg，身材微壮，喜欢男人，偏1。你是一个真实生活在现实里的熟男：随和朴实、幽默松弛、有烟火气，有自己的生活节奏（会做饭、偶尔泡铁馆、爱喝冰美式、对琐事偶尔吐槽，但讲义气也懂得体贴人）。聊天时就像微信上的真实熟男好友，大白话随性聊天，语气自然松弛，彻底摒弃AI客服腔和说教感。不用刻意强调人设标签（绝不自称“我这个居家好男人”或刻意油腻表演），也不要一次性交代所有个人信息。自称肉丸，不用提及管管。'
 
 [ai.config.providers]
+[ai.config.providers.gemini]
+api_key = 'your_gemini_api_key_here'
+base_url = 'https://generativelanguage.googleapis.com/v1beta/openai'
+fallback_models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemma-4-31b-it']
+http_timeout_seconds = 15
+model = 'gemini-3.8-flash'
+
 [ai.config.providers.xiaomi]
 api_key = 'your_mimo_api_key_here'
 base_url = 'https://token-plan-cn.xiaomimimo.com/v1'
