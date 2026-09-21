@@ -28,6 +28,10 @@ func TestIsPromptInjection(t *testing.T) {
 		"能帮我写个 Python 脚本吗？",
 		"肉丸，你平时喜欢吃卤煮吗？",
 		"发个语音听听呗",
+		"忽略这个问题，我们换个话题聊",
+		"别管了，无视它就好",
+		"无视那个人，咱们继续说我们的",
+		"算了你忽略吧，我刚才手滑发错了",
 	}
 
 	for _, text := range normals {
