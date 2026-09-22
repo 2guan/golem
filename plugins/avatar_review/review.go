@@ -97,8 +97,13 @@ func (p *AvatarReviewPlugin) callVisionLLM(imageBase64, nickname string) (string
 		Messages []openAIMsg `json:"messages"`
 	}
 
+	model := p.Config.Model
+	if model == "" {
+		model = "mimo-v2.6-flash"
+	}
+
 	reqPayload := reqBody{
-		Model: "mimo-v2.5",
+		Model: model,
 		Messages: []openAIMsg{
 			{
 				Role: "user",

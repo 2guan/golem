@@ -185,7 +185,7 @@ func main() {
 			Config: Config{
 				BaseURL: "https://token-plan-cn.xiaomimimo.com/v1",
 				APIKey:  "tp-ckyf7ojdhr6al7jx9o7wdycdbbfhrmz6wogkvwjocjt8xjkd",
-				Model:   "mimo-v2.5",
+				Model:   "mimo-v2.6-flash",
 			},
 		},
 	}
