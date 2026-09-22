@@ -55,19 +55,19 @@ func extractSongName(content string) string {
 		}
 	}
 
-	// 2. 规则前缀列表（按长度降序优先匹配）
+	// 2. 规则前缀列表（按长度降序优先匹配，必须包含明确的点歌/音乐意图，严禁“给我/发我”等泛化词）
 	patterns := []string{
 		"发给我一首歌", "给我发一首歌", "给我放一首歌", "给我点一首歌", "给我来一首歌",
 		"发给我一首", "给我发一首", "给我放一首", "给我点一首", "给我来一首",
 		"发给我首歌", "给我发首歌", "发给我首", "给我发首", "发给我个歌", "给我发个歌",
 		"发我一首歌", "来一首歌", "放一首歌", "点一首歌", "听一首歌", "搜一首歌",
-		"发我一首", "发我首", "给我一首", "给我来首", "发一首", "来一首",
+		"发我一首", "发我首", "给我一首", "给我来首", "给我放首", "给我点首", "给我发首", "发一首", "来一首",
 		"点一首", "放一首", "听一首", "搜一首", "发首歌", "来首歌",
 		"放首歌", "点首歌", "听首歌", "搜首歌", "发个歌", "来个歌",
 		"放个歌", "点个歌", "听个歌", "搜个歌",
 		"发首", "来首", "点首", "放首", "听首", "搜首",
-		"我要听", "我想听", "要听", "想听", "听听", "听下", "听一下",
-		"发给我", "给我发", "发我", "给我",
+		"我要听一首", "我想听一首", "我要听首歌", "我想听首歌", "我要听歌", "我想听歌",
+		"我要听", "我想听",
 		"点歌", "放歌", "搜歌", "播放", "点播",
 		"音乐", "music",
 	}
@@ -88,15 +88,32 @@ func extractSongName(content string) string {
 
 	query = strings.TrimSpace(query)
 	// 去除常见后缀，如 "孙燕姿的歌" -> "孙燕姿"
-	query = strings.TrimSuffix(query, "的歌")
 	query = strings.TrimSuffix(query, "这首歌")
 	query = strings.TrimSuffix(query, "这歌")
+	query = strings.TrimSuffix(query, "的歌")
 	query = strings.TrimSuffix(query, "歌曲")
 	query = strings.TrimSuffix(query, "音乐")
 	query = strings.TrimSuffix(query, "听听")
 	query = strings.TrimSuffix(query, "听下")
 	query = strings.TrimSuffix(query, "一下")
+	query = strings.TrimSuffix(query, "歌")
 	query = strings.TrimSpace(query)
+
+	if query == "" {
+		return ""
+	}
+
+	// 排除常见的非点歌对话词（避免如“我想听你的声音”、“我想听你说话”、“我想听故事”等误触发）
+	nonSongPhrases := []string{
+		"你的声音", "你说话", "你讲", "你说", "你叫", "声音", "语音",
+		"故事", "八卦", "实话", "真话", "解释", "建议", "意见", "秘密",
+		"看看", "瞧瞧", "照片", "这个", "那个", "什么", "啥",
+	}
+	for _, nonSong := range nonSongPhrases {
+		if query == nonSong || strings.HasPrefix(query, nonSong) {
+			return ""
+		}
+	}
 
 	return query
 }
