@@ -202,7 +202,8 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 		reply, err := callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, reqPayload)
 		cancel()
 
-		if err == nil && strings.TrimSpace(reply) != "" && !isLeakedReasoningOrRefusal(reply) {
+		cleanCandidate := stripThinkingContent(reply)
+		if err == nil && strings.TrimSpace(cleanCandidate) != "" && !isLeakedReasoningOrRefusal(cleanCandidate) {
 			if idx > 0 {
 				slog.Info("[ai] 主模型超限或异常，备用模型调用成功", "primary_model", prov.Model, "used_model", modelName, "session", sessionKey)
 			}

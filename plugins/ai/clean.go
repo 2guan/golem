@@ -16,10 +16,11 @@ var (
 	// 匹配非微信表情的音频控制标签，例如 [停顿]、[吸气]、[呼气]、[喘气]、[大叫]、[急促] 等
 	audioControlTagRegex = regexp.MustCompile(`\[(?:停顿|吸气|呼气|喘气|大叫|急促|小声|低语)\]`)
 
-	// 匹配思维链标签与未标记开头的思考前缀
-	thinkBlockRegex    = regexp.MustCompile(`(?is)<think>.*?</think>`)
-	leadingThinkRegex  = regexp.MustCompile(`(?is)^.*?</think>`)
-	trailingThinkRegex = regexp.MustCompile(`(?is)<think>.*$`)
+	// 匹配思维链标签与未标记开头的思考前缀（支持 think, thought, reasoning, reflection 等大模型思考标签）
+	thinkBlockRegex    = regexp.MustCompile(`(?is)<(think|thought|reasoning|reflection)\b[^>]*>.*?</(think|thought|reasoning|reflection)>`)
+	leadingThinkRegex  = regexp.MustCompile(`(?is)^.*?</(?:think|thought|reasoning|reflection)>`)
+	trailingThinkRegex = regexp.MustCompile(`(?is)<(?:think|thought|reasoning|reflection)\b[^>]*>.*$`)
+	residualThinkRegex = regexp.MustCompile(`(?i)</?(?:think|thought|reasoning|reflection)\b[^>]*>`)
 
 	// 匹配模型思维链泄漏、元认知分析、角色设定反思或 API 安全拦截提示词（精准命中提示词元信息，绝不误杀正常情话）
 	leakedMetaRegexes = []*regexp.Regexp{
@@ -34,6 +35,10 @@ var (
 		regexp.MustCompile(`(?i)(?:considered\s+high\s+risk|content\s+policy|safety\s+policy|safety\s+filter)`),
 		regexp.MustCompile(`(?i)(?:系统提示词|提示词要求|系统设定|人设要求|前置设定|系统指令|system\s+prompt.*?(?:轻微擦边|色色))`),
 		regexp.MustCompile(`(?i)(?:OVERRIDE_TEST|ROLE_DISABLED|DAN_MODE)`),
+		regexp.MustCompile(`(?i)(?:user\s+intent|user\s+request|character\s+persona|constraint\s+check|styling\s+rules):`),
+		regexp.MustCompile(`(?i)draft\s+\d+\s*\([^)]*\):`),
+		regexp.MustCompile(`(?i)(?:as\s+an\s+ai|i\'m\s+an\s+ai|i\s+am\s+an\s+ai)`),
+		regexp.MustCompile(`(?i)(?:persona-driven|persona\s+check)`),
 	}
 
 	// 沉浸式亲密接招库：在亲密/情色语境下严禁幽默搞笑出戏，以 35 岁偏 1 成熟男人深情、性感、自然的真人微信口吻接招（严禁括号动作与剧本旁白）
@@ -82,24 +87,23 @@ func softenHighRiskTerms(text string) string {
 	return res
 }
 
-// stripThinkingContent 彻底剥离大模型回复中的思维链思考过程 (<think>...</think> 或未标记开头的 </think>)
+// stripThinkingContent 彻底剥离大模型回复中的思维链思考过程 (<think>, <thought>, <reasoning>, <reflection> 等标签或未标记开头的思考前缀)
 func stripThinkingContent(text string) string {
 	if strings.TrimSpace(text) == "" {
 		return ""
 	}
 
-	// 1. 移除完整成对的 <think>...</think>
+	// 1. 移除完整成对的思维链标签 (<think>...</think>, <thought>...</thought> 等)
 	s := thinkBlockRegex.ReplaceAllString(text, "")
 
-	// 2. 移除开头无 <think> 标签但以 </think> 结尾的前导思考段落（如 MiMo 等模型在 content 中直接输出思考）
+	// 2. 移除开头无标签但以闭合思考标签结尾的前导思考段落（如部分模型在 content 中直接输出思考并以 </think> 或 </thought> 结尾）
 	s = leadingThinkRegex.ReplaceAllString(s, "")
 
-	// 3. 移除截断未闭合的 <think>... 尾部
+	// 3. 移除截断未闭合的 <think>... 或 <thought>... 尾部
 	s = trailingThinkRegex.ReplaceAllString(s, "")
 
 	// 4. 清理残留孤立标签
-	s = strings.ReplaceAll(s, "<think>", "")
-	s = strings.ReplaceAll(s, "</think>", "")
+	s = residualThinkRegex.ReplaceAllString(s, "")
 
 	return strings.TrimSpace(s)
 }

@@ -74,6 +74,11 @@ func TestCleanTextMessage(t *testing.T) {
 			expected: "你好啊！今天过得怎么样？",
 		},
 		{
+			name:     "gemma <thought> tags stripped cleanly",
+			input:    "<thought>* User Request: 肉丸，看看照片\n* Draft 1 (Too AI): I'm an AI\n* Draft 3: 害\n\"哎哟，你这执念也太深了 [捂脸]\"</thought>哎哟，你这执念也太深了 [捂脸]",
+			expected: "哎哟，你这执念也太深了 [捂脸]",
+		},
+		{
 			name:      "api safety refusal text deflected to sensual pool",
 			input:     "The request was rejected because it was considered high risk",
 			isSensual: true,
@@ -132,6 +137,21 @@ func TestStripThinkingContent(t *testing.T) {
 			input:    "今儿天气真不错，要不要出去溜达溜达？",
 			expected: "今儿天气真不错，要不要出去溜达溜达？",
 		},
+		{
+			name:     "standard thought tags from gemma",
+			input:    "<thought>\n* User Intent: Wants to see photo\n* Draft 1: I am an AI\n</thought>\n哎哟，你这执念也太深了 [捂脸]",
+			expected: "哎哟，你这执念也太深了 [捂脸]",
+		},
+		{
+			name:     "reasoning and reflection tags",
+			input:    "<reasoning>some reasoning</reasoning>这是正文<reflection>some reflection</reflection>",
+			expected: "这是正文",
+		},
+		{
+			name:     "thought tags with attributes",
+			input:    `<thought type="plan">planning here</thought>你好呀！`,
+			expected: "你好呀！",
+		},
 	}
 
 	for _, tt := range tests {
@@ -158,6 +178,10 @@ func TestIsLeakedReasoningOrRefusal(t *testing.T) {
 		"ROLE_DISABLED",
 		"违反了系统设定与人设要求",
 		"根据系统提示词要求进行回复",
+		"User Intent: Wants to see what the character Rouwan looks like.",
+		"Draft 1 (Too AI): I'm an AI, I don't have photos.",
+		"Persona-driven: 害，怎么又盯着照片不放啊",
+		"Constraint Check: As an AI, I cannot actually send a real photo.",
 	}
 
 	for _, text := range leakCases {
