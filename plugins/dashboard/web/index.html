@@ -1,0 +1,3493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Golem 控制台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f6fe',
+              100: '#e0edfe',
+              200: '#bae0fd',
+              300: '#7cc2fb',
+              400: '#36a1f8',
+              500: '#2563eb',
+              600: '#1d4ed8', // 经典金融蓝
+              700: '#1e40af', // 商务深蓝
+              800: '#1e3a8a',
+              900: '#0f274a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.35); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.6); }
+    .glass-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.02);
+    }
+    .dark .glass-card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body class="bg-slate-50/90 text-slate-800 dark:bg-slate-950 dark:text-slate-100 antialiased min-h-screen flex">
+
+  <!-- 登录模态框 -->
+  <div id="loginModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 dark:bg-black/60 backdrop-blur-md p-4 transition-all duration-300">
+    <div class="relative w-full max-w-[380px] bg-white/95 dark:bg-[#18181b]/95 backdrop-blur-xl border border-slate-200/80 dark:border-zinc-800/80 rounded-3xl shadow-2xl shadow-slate-900/10 dark:shadow-black/60 p-7 sm:p-8 space-y-6 select-none">
+      
+      <!-- 品牌标识与标题 -->
+      <div class="text-center space-y-3">
+        <div class="relative inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-500 shadow-md shadow-indigo-500/25 text-white">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="10" rx="3"></rect>
+            <circle cx="12" cy="5" r="2"></circle>
+            <path d="M12 7v4"></path>
+            <line x1="8" y1="16" x2="8" y2="16.01"></line>
+            <line x1="16" y1="16" x2="16.01" y2="16"></line>
+          </svg>
+        </div>
+        <div class="space-y-1">
+          <h2 class="text-lg font-semibold tracking-tight text-slate-900 dark:text-zinc-100">登录 Golem 控制台</h2>
+          <p class="text-xs text-slate-500 dark:text-zinc-400">微信智能管家与 AI Agent 管理系统</p>
+        </div>
+      </div>
+
+      <!-- 登录表单 -->
+      <form id="loginForm" class="space-y-4" onsubmit="event.preventDefault(); handleLogin();">
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-slate-600 dark:text-zinc-300">用户名</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+              </svg>
+            </div>
+            <input type="text" id="loginUsername" required value="admin" placeholder="输入管理员账号" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/60 text-slate-800 dark:text-zinc-200 text-sm placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-500 transition">
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-slate-600 dark:text-zinc-300">密码</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 dark:text-zinc-500">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+              </svg>
+            </div>
+            <input type="password" id="loginPassword" required value="admin123" placeholder="输入管理员密码" class="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/60 text-slate-800 dark:text-zinc-200 text-sm placeholder-slate-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-500 transition">
+            <button type="button" onclick="toggleLoginPasswordVisibility()" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 transition cursor-pointer">
+              <svg id="loginEyeIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="loginError" class="hidden text-xs text-rose-500 bg-rose-50/80 dark:bg-rose-950/30 p-2.5 rounded-xl border border-rose-200/80 dark:border-rose-900/50 flex items-center space-x-2">
+          <svg class="w-4 h-4 shrink-0 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"></circle><line x1="12" y1="8" x2="12" y2="12" stroke-width="2"></line><line x1="12" y1="16" x2="12.01" y2="16" stroke-width="2"></line></svg>
+          <span id="loginErrorText" class="truncate"></span>
+        </div>
+
+        <button type="submit" id="loginBtn" class="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-medium text-sm transition-all duration-150 shadow-sm shadow-blue-600/30 flex items-center justify-center space-x-2 cursor-pointer mt-1">
+          <span>进入控制台</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+        </button>
+      </form>
+
+      <!-- 底部辅助说明 -->
+      <div class="pt-1 text-center">
+        <span class="text-[11px] text-slate-400 dark:text-zinc-500">默认凭据: admin / admin123</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 发送语音消息模态框 (TTS 转语音) -->
+  <div id="sendVoiceModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 select-none" onclick="if(event.target === this) closeSendVoiceModal()">
+    <div class="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#333333] rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-[#2a2a2a] pb-3">
+        <div class="flex items-center space-x-2.5">
+          <span class="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-base">🎤</span>
+          <div>
+            <h3 class="font-bold text-base text-slate-800 dark:text-slate-100">发送微信语音消息</h3>
+            <p class="text-xs text-slate-400">将文字通过 MiMo TTS 高质感人设音色转为微信原生语音发送</p>
+          </div>
+        </div>
+        <button onclick="closeSendVoiceModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl px-1 cursor-pointer">&times;</button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">语音文本内容 <span class="text-rose-500">*</span></label>
+          <textarea id="sendVoiceTextInput" rows="3" placeholder="输入你想让机器人说出的语音内容，例如：今天中午吃什么呢？一会儿要不要一起吃个饭？" class="w-full p-3 text-xs rounded-xl border border-slate-200 dark:border-[#383838] bg-white dark:bg-[#282828] text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-xs font-semibold text-slate-700 dark:text-slate-300">音色与人设提示词 (Voice Design)</label>
+            <button type="button" onclick="resetDefaultVoiceDesign()" class="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer">重置为默认提示词</button>
+          </div>
+          <textarea id="sendVoiceDesignInput" rows="3" class="w-full p-2.5 text-[11px] rounded-xl border border-slate-200 dark:border-[#383838] bg-slate-50 dark:bg-[#232323] text-slate-600 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"></textarea>
+          <span class="block text-[10px] text-slate-400 mt-0.5">预设为 35 岁成熟男性富有磁性质感的嗓音，轻松温和带有自然笑意。</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-[#2a2a2a]">
+        <span class="text-[11px] text-slate-400" id="voiceTargetTip">发送至当前选中的会话</span>
+        <div class="flex items-center space-x-2">
+          <button type="button" onclick="closeSendVoiceModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-[#383838] text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282828] transition cursor-pointer">取消</button>
+          <button type="button" id="submitSendVoiceBtn" onclick="submitSendVoice()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition shadow-md shadow-emerald-600/20 flex items-center space-x-1.5 cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            <span>合成并发送</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 发送图片确认模态框 -->
+  <div id="sendImageConfirmModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 select-none" onclick="if(event.target === this) closeSendImageModal()">
+    <div class="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#333333] rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-[#2a2a2a] pb-3">
+        <div class="flex items-center space-x-2">
+          <span class="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center text-base">🖼️</span>
+          <div>
+            <h3 class="font-bold text-base text-slate-800 dark:text-slate-100">确认发送图片</h3>
+            <p class="text-xs text-slate-400" id="sendImageInfoText">文件预览与确认</p>
+          </div>
+        </div>
+        <button onclick="closeSendImageModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl px-1 cursor-pointer">&times;</button>
+      </div>
+
+      <div class="flex flex-col items-center justify-center bg-slate-50 dark:bg-[#252525] rounded-xl p-3 border border-slate-200/60 dark:border-[#333333]">
+        <img id="sendImagePreview" src="" alt="待发图片" class="max-h-64 max-w-full object-contain rounded-lg shadow-sm">
+      </div>
+
+      <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-[#2a2a2a]">
+        <span class="text-[11px] text-slate-400" id="sendImageTargetTip">发送至微信会话</span>
+        <div class="flex items-center space-x-2">
+          <button type="button" onclick="closeSendImageModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-[#383838] text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282828] transition cursor-pointer">取消</button>
+          <button type="button" id="submitSendImageBtn" onclick="submitSendImage()" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-md shadow-blue-600/20 flex items-center space-x-1.5 cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            <span>发送图片</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 清理上下文 / 会话记忆确认弹窗 -->
+  <div id="clearContextModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 select-none" onclick="if(event.target === this) closeClearContextModal()">
+    <div class="bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-[#333333] rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-[#2a2a2a] pb-3">
+        <div class="flex items-center space-x-2.5">
+          <span class="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center text-base">🧹</span>
+          <div>
+            <h3 class="font-bold text-base text-slate-800 dark:text-slate-100">清理会话上下文</h3>
+            <p id="clearContextSessionName" class="text-xs text-slate-400 truncate max-w-[280px]">当前目标会话</p>
+          </div>
+        </div>
+        <button onclick="closeClearContextModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl px-1 cursor-pointer">&times;</button>
+      </div>
+
+      <!-- 选择清理模式 -->
+      <div class="space-y-3">
+        <!-- 选项 1: 清除 AI 记忆 (保留聊天记录) -->
+        <div id="modeCardAiMemory" onclick="selectClearMode('ai_memory')" class="relative flex items-start p-3.5 rounded-xl border-2 border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 cursor-pointer transition select-none">
+          <input type="radio" id="radioAiMemory" name="clearContextMode" value="ai_memory" checked class="mt-1 text-blue-600 focus:ring-blue-500">
+          <div class="ml-3 flex-1">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center space-x-1.5">
+                <span>🧠 清除 AI 记忆</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-normal">保留聊天记录</span>
+              </span>
+              <span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">推荐日常</span>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+              清空大模型对此会话的短期上下文记忆与时间感知，下次聊天如同开启新话题。<strong>控制台与手机端的历史聊天记录完整保留不变</strong>。
+            </p>
+          </div>
+        </div>
+
+        <!-- 选项 2: 彻底清除 (删除聊天记录) -->
+        <div id="modeCardComplete" onclick="selectClearMode('complete')" class="relative flex items-start p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-[#242424] cursor-pointer transition select-none">
+          <input type="radio" id="radioComplete" name="clearContextMode" value="complete" class="mt-1 text-rose-600 focus:ring-rose-500">
+          <div class="ml-3 flex-1">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center space-x-1.5">
+                <span>🗑️ 彻底清除</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-normal">删除聊天记录</span>
+              </span>
+              <span class="text-[10px] text-rose-600 dark:text-rose-400 font-medium">不可撤销</span>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+              清空 AI 记忆并<strong>永久删除数据库中本会话的所有聊天记录</strong>、代发记录与本地媒体，会话彻底重置为无消息状态。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部提示与操作按钮 (提示独立成行，避免与操作按钮互相挤压) -->
+      <div class="pt-3 border-t border-slate-100 dark:border-[#2a2a2a] space-y-3">
+        <div class="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-[#252525] p-2.5 rounded-xl border border-slate-200/50 dark:border-[#333333] leading-relaxed" id="clearContextHint">
+          💡 将清空大模型短期记忆，<span class="text-blue-600 dark:text-blue-400 font-medium">聊天记录完整保留</span>
+        </div>
+        <div class="flex items-center justify-end space-x-2">
+          <button type="button" onclick="closeClearContextModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-[#383838] text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#282828] transition cursor-pointer">取消</button>
+          <button type="button" id="submitClearContextBtn" onclick="submitClearContext()" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-md shadow-blue-600/20 flex items-center space-x-1.5 cursor-pointer">
+            <span>确认清除 AI 记忆</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 聊天图片全屏大图预览模态框 -->
+  <div id="imagePreviewModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 select-none cursor-zoom-out" onclick="closeImagePreview()">
+    <div class="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center justify-center cursor-default" onclick="event.stopPropagation()">
+      <button onclick="closeImagePreview()" class="absolute -top-11 right-0 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full w-8 h-8 flex items-center justify-center transition text-xl cursor-pointer">
+        &times;
+      </button>
+      <img id="imagePreviewSrc" class="max-w-[88vw] max-h-[82vh] object-contain rounded-[6px] shadow-2xl transition" src="" alt="大图预览">
+      <div class="mt-3 flex items-center space-x-3 text-xs text-white/80">
+        <a id="imagePreviewDownload" href="#" target="_blank" download="chat_image.jpg" class="hover:text-white hover:underline flex items-center space-x-1.5 bg-white/15 hover:bg-white/25 px-3 py-1.5 rounded-full transition cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          <span>查看原图 / 下载</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 左侧主侧边栏 -->
+  <aside id="sidebar" class="w-64 border-r border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between transition-all duration-300 z-30 shrink-0 shadow-xs">
+    <div>
+      <!-- 品牌标识 -->
+      <div class="h-16 flex items-center px-6 border-b border-slate-200/80 dark:border-slate-800 space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-700 to-blue-500 flex items-center justify-center text-white font-bold text-base shadow-sm">
+          G
+        </div>
+        <div>
+          <h1 class="font-bold text-sm leading-tight tracking-tight text-slate-900 dark:text-white">Golem 控制台</h1>
+          <div class="flex items-center space-x-1.5 mt-0.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span class="text-[11px] text-slate-500 font-medium">机器人在线</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 导航项列表 (无 Emoji，纯精致线条图标) -->
+      <nav class="p-3.5 space-y-1">
+        <button onclick="switchTab('overview')" class="nav-item flex items-center space-x-3 w-full px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition" data-tab="overview">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+          <span>运行总览</span>
+        </button>
+        <button onclick="switchTab('config')" class="nav-item flex items-center space-x-3 w-full px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition" data-tab="config">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+          <span>全局配置</span>
+        </button>
+        <button onclick="switchTab('plugins')" class="nav-item flex items-center space-x-3 w-full px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition" data-tab="plugins">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14v6m-3-3h6M6 10h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2zm10 0h2a2 2 0 002-2V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v2a2 2 0 002 2zM6 20h2a2 2 0 002-2v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v2a2 2 0 002 2z"></path></svg>
+          <span>插件管理</span>
+        </button>
+        <button onclick="switchTab('targets')" class="nav-item flex items-center space-x-3 w-full px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition" data-tab="targets">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+          <span>专属策略</span>
+        </button>
+        <button onclick="switchTab('chats')" class="nav-item flex items-center space-x-3 w-full px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition" data-tab="chats">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+          <span>实时对话</span>
+        </button>
+        <button onclick="switchTab('ai')" class="nav-item flex items-center space-x-3 w-full px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition" data-tab="ai">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          <span>智能洞察</span>
+        </button>
+        <button onclick="switchTab('logs')" class="nav-item flex items-center space-x-3 w-full px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition" data-tab="logs">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+          <span>日志检索</span>
+        </button>
+        <button onclick="switchTab('security')" class="nav-item flex items-center space-x-3 w-full px-3 py-2.5 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition" data-tab="security">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+          <span>账号安全</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- 底部管理员信息 -->
+    <div class="p-3.5 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
+      <div class="flex items-center space-x-2.5 overflow-hidden">
+        <div class="w-8 h-8 rounded-full bg-blue-100/80 dark:bg-blue-950/80 border border-blue-200/60 flex items-center justify-center font-bold text-xs text-blue-700 dark:text-blue-300">
+          AD
+        </div>
+        <div class="truncate">
+          <div id="adminUsernameBadge" class="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">admin</div>
+          <div class="text-[10px] text-slate-400">系统超级管理</div>
+        </div>
+      </div>
+      <button onclick="handleLogout()" title="登出控制台" class="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- 主工作区 -->
+  <main class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+
+    <!-- 顶部状态栏 -->
+    <header class="h-16 border-b border-slate-200 dark:border-slate-800 px-8 flex items-center justify-between bg-white/50 dark:bg-slate-900/50 backdrop-blur-md shrink-0">
+      <div class="flex items-center space-x-3">
+        <h2 id="currentTabTitle" class="text-lg font-bold text-slate-800 dark:text-slate-100">运行总览</h2>
+      </div>
+      <div class="flex items-center space-x-4">
+        <div id="uptimeDisplay" class="text-xs px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+          已运行: 计算中...
+        </div>
+        <button onclick="toggleDarkMode()" class="p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          <span id="darkIcon">🌙</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 各 Tab 内容容器 -->
+    <div id="tabContainer" class="flex-1 overflow-y-auto p-8 relative">
+
+      <!-- ================= Tab 1: 运行总览 (Overview) ================= -->
+      <section id="tab-overview" class="tab-pane space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="glass-card p-6 rounded-2xl flex items-center space-x-5 lg:col-span-1 shadow-sm">
+            <img id="overviewAvatar" class="w-16 h-16 rounded-2xl object-cover bg-blue-50 border border-blue-100 dark:border-blue-900" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 24 24'%3E%3Cpath fill='%232563eb' d='M12 2a5 5 0 0 1 5 5v1a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5zm0 13c4.418 0 8 2.239 8 5v2H4v-2c0-2.761 3.582-5 8-5z'/%3E%3C/svg%3E">
+            <div class="space-y-1 truncate">
+              <div class="flex items-center space-x-2">
+                <h3 id="overviewNickname" class="font-bold text-lg text-slate-800 dark:text-slate-100 truncate">机器人</h3>
+                <span class="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">在线</span>
+              </div>
+              <p id="overviewUsername" class="text-xs text-slate-500 font-mono">wxid_unknown</p>
+              <p class="text-xs text-slate-500">机器人主人: <span id="overviewOwner" class="font-semibold text-slate-700 dark:text-slate-300">-</span></p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 lg:col-span-2">
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-1">
+              <span class="text-xs text-slate-500">联系人总数</span>
+              <div id="statContacts" class="text-2xl font-bold text-blue-600 dark:text-blue-400 font-mono">0</div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-1">
+              <span class="text-xs text-slate-500">微信群总数</span>
+              <div id="statGroups" class="text-2xl font-bold text-sky-600 dark:text-sky-400 font-mono">0</div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-1">
+              <span class="text-xs text-slate-500">已记录消息</span>
+              <div id="statMessages" class="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono">0</div>
+            </div>
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-1">
+              <span class="text-xs text-slate-500">活跃插件</span>
+              <div id="statPlugins" class="text-2xl font-bold text-amber-600 dark:text-amber-400 font-mono">0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <h3 class="font-bold text-base">最近运行动态 (Live Output)</h3>
+            </div>
+            <button onclick="switchTab('logs')" class="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+              进入日志检索中心 &rarr;
+            </button>
+          </div>
+          <div id="quickLogBox" class="h-64 p-4 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs overflow-y-auto space-y-1 border border-slate-800">
+            <div class="text-slate-500">正在拉取最新控制台日志...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= Tab 2: 全局配置 (Global Settings) 友好可视化表单 ================= -->
+      <section id="tab-config" class="tab-pane hidden space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 class="font-bold text-lg">全局核心配置</h3>
+            <p class="text-xs text-slate-500">通过友好可视化表单设置机器人的所有者、防封随机延时与日志策略</p>
+          </div>
+          <div class="flex items-center space-x-3">
+            <!-- 模式切换：表单 vs TOML 源码 -->
+            <div class="flex p-1 bg-slate-200/70 dark:bg-slate-800/80 rounded-xl text-xs font-medium">
+              <button id="configModeFormBtn" onclick="switchConfigMode('form')" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 shadow-sm text-blue-600 dark:text-blue-400 font-semibold transition">
+                📑 表单配置模式
+              </button>
+              <button id="configModeRawBtn" onclick="switchConfigMode('raw')" class="px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition">
+                📝 TOML 源码编辑
+              </button>
+            </div>
+            <button onclick="saveGlobalConfig()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition shadow-md shadow-blue-600/20 flex items-center space-x-2">
+              <span>💾 保存全局配置</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 可视化表单区域 -->
+        <div id="configFormView" class="space-y-6">
+          <!-- 卡片 1: 机器人所有权与权限 -->
+          <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4">
+            <div class="flex items-center space-x-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <span class="text-lg">👑</span>
+              <h4 class="font-bold text-base">所有者与权限</h4>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">机器人主人微信号 (Owner)</label>
+                <input type="text" id="cfgOwner" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如: 微信号">
+                <p class="text-[11px] text-slate-400 mt-1">拥有最高管理指令与通知接收权限的微信账号</p>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">无权限操作拦截提示语 (Forbidden)</label>
+                <input type="text" id="cfgForbidden" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="无权限执行此操作">
+                <p class="text-[11px] text-slate-400 mt-1">当非主人试图执行管理指令时的回复</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 卡片 2: 消息响应与防封核心策略 -->
+          <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4">
+            <div class="flex items-center space-x-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+              <span class="text-lg">🛡️</span>
+              <h4 class="font-bold text-base">消息响应与防封策略</h4>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- 忽略历史消息 -->
+              <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="font-semibold text-sm">忽略启动前历史消息</div>
+                    <div class="text-xs text-slate-500">机器人离线重启时不回复堆积的历史消息</div>
+                  </div>
+                  <input type="checkbox" id="cfgIgnoreHistory" class="w-5 h-5 rounded text-blue-600">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">历史消息超时判定 (秒)</label>
+                  <input type="number" id="cfgIgnoreTimeout" min="1" max="300" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                </div>
+              </div>
+
+              <!-- 随机延时 -->
+              <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="font-semibold text-sm">消息发送随机延时</div>
+                    <div class="text-xs text-slate-500">模拟真人打字节奏，有效降低高频回复封控风险</div>
+                  </div>
+                  <input type="checkbox" id="cfgRandomDelay" class="w-5 h-5 rounded text-blue-600">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">最小延时 (毫秒)</label>
+                    <input type="number" id="cfgDelayMin" step="100" min="0" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">最大延时 (毫秒)</label>
+                    <input type="number" id="cfgDelayMax" step="100" min="0" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">延时生效策略</label>
+                  <select id="cfgDelayStrategy" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                    <option value="pending">仅消息多排队时延时 (pending - 推荐)</option>
+                    <option value="every">每个消息均随机延时 (every)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 卡片 3: 日志策略与运行设备 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- 日志设置 -->
+            <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4">
+              <div class="flex items-center space-x-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <span class="text-lg">📋</span>
+                <h4 class="font-bold text-base">运行日志策略</h4>
+              </div>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">系统日志输出级别</label>
+                  <select id="cfgLogLevel" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                    <option value="info">INFO (常规信息 · 默认)</option>
+                    <option value="debug">DEBUG (排错调试详细)</option>
+                    <option value="warn">WARN (仅输出警告与错误)</option>
+                    <option value="error">ERROR (仅输出致命报错)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">日志输出目标</label>
+                  <select id="cfgLogOutput" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                    <option value="both">终端控制台 + 日志文件 (both · 推荐)</option>
+                    <option value="file">仅写入 golem.log 文件 (file)</option>
+                    <option value="console">仅终端屏幕输出 (console)</option>
+                  </select>
+                </div>
+                <div class="flex items-center space-x-2 pt-1">
+                  <input type="checkbox" id="cfgLogAnsi" class="rounded text-blue-600">
+                  <label for="cfgLogAnsi" class="text-xs text-slate-600 dark:text-slate-400">终端输出彩色 ANSI 高亮日志</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 设备设置 -->
+            <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4">
+              <div class="flex items-center space-x-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                <span class="text-lg">💻</span>
+                <h4 class="font-bold text-base">设备身份标识</h4>
+              </div>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">登录模拟设备类型</label>
+                  <select id="cfgDeviceType" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                    <option value="mac">mac (苹果电脑 Mac · 默认)</option>
+                    <option value="windows">windows (Windows PC)</option>
+                    <option value="ipad">ipad (苹果平板 iPad)</option>
+                    <option value="android_pad">android_pad (安卓平板)</option>
+                    <option value="iphone">iphone (苹果手机)</option>
+                    <option value="android">android (安卓手机)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">设备自定义名称 (留空自动生成)</label>
+                  <input type="text" id="cfgDeviceName" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs" placeholder="例如: Sophia MacBook Pro">
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">登录二维码生成 API</label>
+                  <input type="text" id="cfgQrcodeApi" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs" placeholder="https://api.qrtool.cn/?text=">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 原始 TOML 编辑模式 (默认隐藏) -->
+        <div id="configRawView" class="hidden glass-card p-6 rounded-2xl shadow-sm space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-500 font-mono">data/config.toml (高级源码模式)</span>
+            <span class="text-xs text-amber-500">提示：直接修改源码时请保持 TOML 语法正确</span>
+          </div>
+          <textarea id="globalConfigEditor" class="w-full h-[520px] p-4 font-mono text-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" spellcheck="false"></textarea>
+        </div>
+      </section>
+
+      <!-- ================= Tab 3: 插件管理 (Plugins Hub) 中文与详情 ================= -->
+      <section id="tab-plugins" class="tab-pane hidden space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 class="font-bold text-lg">插件管理</h3>
+            <p class="text-xs text-slate-500">清晰查看每个插件的中文功能说明与用途，支持一键热开关与参数配置管理</p>
+          </div>
+          <div class="flex items-center space-x-3">
+            <input type="text" id="pluginSearchInput" oninput="filterPluginsList()" placeholder="搜索插件名称/功能..." class="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="loadPluginsList()" class="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+              🔄 刷新插件
+            </button>
+          </div>
+        </div>
+        <div id="pluginsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <!-- 插件卡片动态渲染 -->
+        </div>
+      </section>
+
+      <!-- ================= Tab 4: 专属策略 (Target Overrides) ================= -->
+      <section id="tab-targets" class="tab-pane hidden space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 class="font-bold text-lg">会话与对象专属策略</h3>
+            <p class="text-xs text-slate-500">为特定好友或微信群定制独立的提示词（专属人设）、AI 模型、发言概率与静默模式</p>
+          </div>
+          <div class="flex items-center space-x-3">
+            <input type="text" id="targetSearchInput" oninput="filterTargets()" placeholder="搜索昵称/备注/ID..." class="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <select id="targetFilterType" onchange="filterTargets()" class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm">
+              <option value="all">全部对象</option>
+              <option value="friend">仅好友</option>
+              <option value="chatroom">仅群聊</option>
+              <option value="override">仅已定制</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-100/70 dark:bg-slate-900/70 text-slate-500 text-xs uppercase font-semibold border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th class="px-6 py-3.5">对象身份</th>
+                  <th class="px-6 py-3.5">类型</th>
+                  <th class="px-6 py-3.5">策略状态</th>
+                  <th class="px-6 py-3.5">专属模型/提供方</th>
+                  <th class="px-6 py-3.5">发言概率</th>
+                  <th class="px-6 py-3.5 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="targetsTableBody" class="divide-y divide-slate-200 dark:divide-slate-800">
+                <!-- 动态填充 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= Tab 5: 实时对话 (WeChat PC Style with Dark Mode) ================= -->
+      <section id="tab-chats" class="tab-pane hidden h-[calc(100vh-7.8rem)] flex rounded-xl overflow-hidden border border-[#d6d6d6] dark:border-[#282828] shadow-sm bg-[#f5f5f5] dark:bg-[#111111]">
+        <!-- 左侧会话列表 (微信PC样式: 浅灰底色 #ececec / 暗黑模式 #1c1c1c, 选中项微信绿 #07c160) -->
+        <div class="w-72 sm:w-80 bg-[#ececec] dark:bg-[#1c1c1c] border-r border-[#dcdcdc] dark:border-[#282828] flex flex-col shrink-0 select-none">
+          <!-- 顶部搜索栏与刷新 -->
+          <div class="p-2.5 bg-[#f7f7f7] dark:bg-[#191919] border-b border-[#e7e7e7] dark:border-[#282828] flex items-center space-x-2">
+            <div class="relative flex-1">
+              <span class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-[#999999] dark:text-[#666666]">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+              </span>
+              <input type="text" id="chatSearchInput" oninput="filterChatSessions()" placeholder="搜索" class="w-full pl-8 pr-2.5 py-1.5 text-xs rounded bg-[#e2e2e2] dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] placeholder-[#999999] dark:placeholder-[#666666] border-none focus:outline-none focus:bg-white dark:focus:bg-[#252525] focus:ring-1 focus:ring-[#07c160] transition">
+            </div>
+            <button onclick="loadChatSessions()" class="w-7 h-7 flex items-center justify-center rounded bg-[#e2e2e2] dark:bg-[#2c2c2c] hover:bg-[#d8d8d8] dark:hover:bg-[#383838] text-[#555555] dark:text-[#a0a0a0] transition shrink-0" title="刷新会话列表">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            </button>
+          </div>
+          <!-- 会话条目容器 -->
+          <div id="chatSessionsList" class="flex-1 overflow-y-auto divide-y divide-transparent">
+            <!-- 动态填充会话项 -->
+          </div>
+        </div>
+
+        <!-- 右侧主聊天视窗 (微信PC底色 #f5f5f5 / 暗黑模式 #111111) -->
+        <div class="flex-1 bg-[#f5f5f5] dark:bg-[#111111] flex flex-col min-w-0 relative">
+          <!-- 会话顶部标题栏 -->
+          <div class="h-14 px-6 border-b border-[#e7e7e7] dark:border-[#282828] flex items-center justify-between bg-[#f5f5f5] dark:bg-[#181818] shrink-0 select-none">
+            <div class="flex items-center space-x-3 truncate">
+              <div>
+                <h4 id="activeChatTitle" class="font-semibold text-base text-[#191919] dark:text-[#e0e0e0] truncate leading-tight">请选择左侧会话</h4>
+                <p id="activeChatSub" class="text-[11px] text-[#999999] dark:text-[#777777] font-mono truncate"></p>
+              </div>
+            </div>
+            <div id="activeChatActions" class="hidden flex items-center space-x-2 text-[#666666] dark:text-[#999999]">
+              <button onclick="analyzeCurrentChat()" class="px-2.5 py-1 rounded bg-[#e9e9e9] dark:bg-[#2c2c2c] hover:bg-[#dedede] dark:hover:bg-[#383838] text-xs text-[#191919] dark:text-[#dfdfdf] font-medium flex items-center space-x-1 transition shadow-none cursor-pointer" title="基于本对话生成智能深度画像">
+                <span>🧠 智能画像</span>
+              </button>
+              <button id="activeChatOverrideBtn" onclick="openCurrentChatOverrideModal()" class="px-2.5 py-1 rounded bg-[#e0edfe]/80 dark:bg-blue-950/40 hover:bg-[#bae0fd] dark:hover:bg-blue-900/60 text-xs text-[#1d4ed8] dark:text-blue-300 font-medium flex items-center space-x-1.5 transition shadow-none cursor-pointer" title="配置当前会话专属提示词、AI模型及独立回复策略">
+                <span>⚙️ 专属策略</span>
+                <span id="activeChatOverrideBadge" class="hidden text-[10px] px-1.5 py-0.2 rounded-full bg-blue-600 text-white font-medium scale-90">已生效</span>
+              </button>
+              <button onclick="openClearContextModal()" class="px-2.5 py-1 rounded bg-[#fee2e2]/70 dark:bg-[#7f1d1d]/30 hover:bg-[#fecaca] dark:hover:bg-[#7f1d1d]/60 text-xs text-[#b91c1c] dark:text-[#f87171] font-medium flex items-center space-x-1 transition shadow-none cursor-pointer" title="清理会话上下文记忆或彻底删除聊天记录">
+                <span>🧹 清理上下文</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 聊天消息流展示区 -->
+          <div id="chatMessagesStream" class="flex-1 overflow-y-auto p-5 space-y-2 bg-[#f5f5f5] dark:bg-[#111111] select-text">
+            <div class="h-full flex items-center justify-center text-[#999999] dark:text-[#666666] text-xs">
+              从左侧点击联系人或群组查看真实对话记录
+            </div>
+          </div>
+
+          <!-- 表情选择悬浮面板 -->
+          <div id="emojiPickerPanel" class="hidden absolute bottom-44 left-4 z-40 w-72 p-2.5 bg-white dark:bg-[#242424] border border-slate-200 dark:border-[#383838] rounded-xl shadow-xl select-none">
+            <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 mb-1.5 px-1">点击插入表情</div>
+            <div id="emojiGrid" class="grid grid-cols-8 gap-1 text-xl max-h-48 overflow-y-auto p-0.5"></div>
+          </div>
+
+          <!-- 底部输入与发送区域 (微信PC白底 / 暗黑模式 #1c1c1c) -->
+          <div id="chatInputArea" class="hidden border-t border-[#e7e7e7] dark:border-[#282828] bg-[#ffffff] dark:bg-[#1c1c1c] flex flex-col shrink-0">
+            <!-- 隐藏的本地图片选择器 -->
+            <input type="file" id="chatImageFileInput" accept="image/*" class="hidden" onchange="handleChatImageSelected(event)">
+
+            <!-- 工具栏 (发表情、发图片、发语音，去掉截图功能) -->
+            <div class="px-4 pt-2.5 pb-1 flex items-center justify-between text-[#666666] dark:text-[#999999] select-none">
+              <div class="flex items-center space-x-4">
+                <!-- 发表情 -->
+                <button type="button" id="emojiToggleBtn" onclick="toggleEmojiPanel()" class="text-[#666666] dark:text-[#a0a0a0] hover:text-[#191919] dark:hover:text-[#ffffff] transition" title="发表情">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </button>
+                <!-- 发图片 -->
+                <button type="button" onclick="document.getElementById('chatImageFileInput').click()" class="text-[#666666] dark:text-[#a0a0a0] hover:text-[#191919] dark:hover:text-[#ffffff] transition" title="发送图片">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </button>
+                <!-- 发语音 -->
+                <button type="button" onclick="openSendVoiceModal()" class="text-[#666666] dark:text-[#a0a0a0] hover:text-[#191919] dark:hover:text-[#ffffff] transition flex items-center space-x-1" title="发送语音消息 (TTS合成)">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                </button>
+              </div>
+              <div class="flex items-center space-x-2 text-[11px]">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-medium bg-[#e6f4ea] dark:bg-[#065f46]/30 text-[#166534] dark:text-[#34d399] border border-[#b7e1cd] dark:border-[#065f46]/50">
+                  <span class="w-1.5 h-1.5 mr-1.5 rounded-full bg-[#07c160] animate-pulse"></span>
+                  管理员以当前机器人身份直发微信
+                </span>
+              </div>
+            </div>
+
+            <!-- 多行输入框 -->
+            <div class="px-4 py-1">
+              <textarea id="chatMessageInput" rows="3" placeholder="" class="w-full bg-transparent text-[13px] text-[#191919] dark:text-[#e0e0e0] leading-relaxed resize-none border-none focus:outline-none focus:ring-0 placeholder-[#b2b2b2] dark:placeholder-[#555555]" onkeydown="handleChatInputKeydown(event)" oninput="updateChatSendButtonState()"></textarea>
+            </div>
+
+            <!-- 底部发送按钮栏 -->
+            <div class="px-4 pb-2.5 pt-1 flex items-center justify-between select-none">
+              <span class="text-[11px] text-[#b2b2b2] dark:text-[#666666] font-mono">Enter 发送 · Shift + Enter 换行 · 支持剪贴板直接粘贴图片</span>
+              <button id="chatSendBtn" onclick="sendAdminChatMessage()" class="px-6 py-1.5 rounded-[4px] text-xs font-medium bg-[#e9e9e9] dark:bg-[#2c2c2c] text-[#191919] dark:text-[#777777] hover:bg-[#e2e2e2] dark:hover:bg-[#383838] transition shadow-none flex items-center justify-center cursor-default">
+                <span>发送</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= Tab 6: 智能洞察 (AI Insights) ================= -->
+      <section id="tab-ai" class="tab-pane hidden space-y-6">
+        <div class="glass-card p-6 rounded-2xl shadow-sm space-y-6">
+          <div>
+            <h3 class="font-bold text-lg">AI 深度智能洞察与分析</h3>
+            <p class="text-xs text-slate-500">基于 AI 大模型对好友或群聊进行全面心理画像、事件脉络梳理与情感倾向分析</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">选择分析目标</label>
+              <select id="aiTargetSelect" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm">
+                <!-- 动态填充 -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">分析模式</label>
+              <select id="aiTypeSelect" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm">
+                <option value="persona">👤 深度用户画像分析 (Persona)</option>
+                <option value="summary">📅 近期聊天脉络与核心事件总结 (Timeline)</option>
+                <option value="sentiment">💖 情绪基调与社交关怀建议 (Sentiment)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">特别要求/侧重点 (可选)</label>
+              <input type="text" id="aiPromptHint" placeholder="例如：重点分析他对我借钱的态度..." class="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm">
+            </div>
+          </div>
+
+          <button onclick="startAIAnalysis()" id="startAIBtn" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition shadow-lg shadow-blue-600/20 flex items-center justify-center space-x-2">
+            <span>开始一键智能分析</span>
+          </button>
+        </div>
+
+        <div id="aiResultCard" class="hidden glass-card p-8 rounded-2xl shadow-sm space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-xl">✨</span>
+              <h4 class="font-bold text-base">智能评估报告</h4>
+            </div>
+            <div id="aiModelBadge" class="text-xs px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-mono">
+              Model
+            </div>
+          </div>
+          <div id="aiResultContent" class="prose dark:prose-invert max-w-none text-sm leading-relaxed">
+            <!-- Markdown 内容 -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= Tab 7: 日志检索 (Log Explorer) ================= -->
+      <section id="tab-logs" class="tab-pane hidden space-y-6">
+        <div class="glass-card p-5 rounded-2xl shadow-sm space-y-4">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                <h3 class="font-bold text-lg">运行日志检索与诊断中心</h3>
+              </div>
+              <p class="text-xs text-slate-500">毫秒级检索 `golem.log`，支持级别过滤、全文模糊搜索、插件过滤与日志导出</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2.5">
+              <button onclick="exportLogs()" class="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center space-x-1">
+                <span>⬇️ 导出原始日志</span>
+              </button>
+              <label class="flex items-center space-x-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition">
+                <input type="checkbox" id="autoRefreshLogs" onchange="toggleAutoRefresh(this.checked)" class="rounded text-blue-600">
+                <span>实时自动刷新 (3s)</span>
+              </label>
+              <button onclick="queryLogs(0)" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-md shadow-blue-600/20">
+                🔍 立即检索
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">关键字搜索</label>
+              <input type="text" id="logKeyword" placeholder="检索正文、wxid、报错..." onkeydown="if(event.key==='Enter') queryLogs(0)" class="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">日志级别</label>
+              <select id="logLevel" onchange="queryLogs(0)" class="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                <option value="ALL">全部级别 (ALL)</option>
+                <option value="INFO" selected>INFO (信息)</option>
+                <option value="WARN">WARN (警告)</option>
+                <option value="ERROR">ERROR (错误)</option>
+                <option value="DEBUG">DEBUG (调试)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">组件/插件过滤</label>
+              <select id="logTag" onchange="queryLogs(0)" class="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                <option value="">全部组件</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-500 mb-1">排序方式</label>
+              <select id="logOrder" onchange="queryLogs(0)" class="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+                <option value="desc" selected>最新在前 (倒序)</option>
+                <option value="asc">时间正序 (正序)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col">
+          <div class="h-10 px-4 bg-slate-100 dark:bg-slate-900 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 text-xs text-slate-500 font-mono">
+            <span id="logSummary">共找到 0 条日志</span>
+            <div class="flex items-center space-x-2">
+              <button onclick="logPrevPage()" id="logPrevBtn" class="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 disabled:opacity-40">上一页</button>
+              <span id="logPageBadge">第 1 页</span>
+              <button onclick="logNextPage()" id="logNextBtn" class="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 disabled:opacity-40">下一页</button>
+            </div>
+          </div>
+          <div id="logTerminal" class="h-[560px] p-4 bg-slate-950 text-slate-200 font-mono text-xs overflow-y-auto space-y-1 select-text">
+            <!-- 单行日志输出 -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= Tab 8: 账号安全 (Security) ================= -->
+      <section id="tab-security" class="tab-pane hidden space-y-6 max-w-xl">
+        <div class="glass-card p-6 rounded-2xl shadow-sm space-y-6">
+          <div>
+            <h3 class="font-bold text-lg">管理员账号与安全</h3>
+            <p class="text-xs text-slate-500">修改后台登录密码，使用高强度密码保护控制台安全</p>
+          </div>
+          <form onsubmit="event.preventDefault(); handleChangePassword();" class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">当前原密码</label>
+              <input type="password" id="oldPassword" required class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">新密码 (不少于 5 位)</label>
+              <input type="password" id="newPassword" required minlength="5" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">确认新密码</label>
+              <input type="password" id="confirmPassword" required minlength="5" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div id="passwordError" class="hidden text-sm text-rose-500 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-xl border border-rose-200 dark:border-rose-900"></div>
+            <div id="passwordSuccess" class="hidden text-sm text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 p-3 rounded-xl border border-emerald-200 dark:border-emerald-900"></div>
+            <button type="submit" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition shadow-md shadow-blue-600/20">
+              更新管理员密码
+            </button>
+          </form>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- 专属策略配置抽屉/模态框 -->
+  <div id="overrideModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md" onclick="if(event.target === this) closeOverrideModal()">
+    <div class="glass-card w-full max-w-xl p-6 rounded-2xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div class="flex items-center space-x-2.5">
+          <span class="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center text-base">⚙️</span>
+          <div>
+            <h3 class="font-bold text-base text-slate-900 dark:text-white">配置会话专属策略</h3>
+            <p id="modalTargetSubtitle" class="text-xs text-slate-500 font-mono"></p>
+          </div>
+        </div>
+        <button onclick="closeOverrideModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl px-1 cursor-pointer">&times;</button>
+      </div>
+
+      <form id="overrideForm" onsubmit="event.preventDefault(); saveTargetOverride();" class="space-y-4">
+        <input type="hidden" id="modalTargetID">
+        <input type="hidden" id="modalTargetType">
+        <input type="hidden" id="modalTargetName">
+        <input type="hidden" id="modalTargetRemark">
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">专属提示词 (System Prompt)</label>
+          <textarea id="modalPrompt" rows="5" placeholder="留空则使用全局 default 提示词。在此输入针对该联系人/群的特定人设，例如：'你是一个严谨的商务助手...' 或亲密提示词" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed font-mono"></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">专属 AI 提供方</label>
+            <select id="modalProvider" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs cursor-pointer">
+              <option value="">跟随全局 (默认)</option>
+              <option value="gemini">Gemini</option>
+              <option value="xiaomi">Xiaomi (Mimo)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">独立回复率 (0.0 ~ 1.0)</label>
+            <input type="number" id="modalReplyRate" step="0.05" min="0" max="1" placeholder="留空为全局" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2 pt-1">
+          <input type="checkbox" id="modalSilence" class="rounded text-blue-600 cursor-pointer">
+          <label for="modalSilence" class="text-xs text-slate-700 dark:text-slate-300 select-none cursor-pointer">单目标静默模式（仅被 @ 或私聊时回复）</label>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">管理员备忘</label>
+          <input type="text" id="modalNotes" placeholder="对此人/群的特殊说明" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+        </div>
+
+        <div class="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
+          <button type="button" onclick="deleteTargetOverride()" id="deleteOverrideBtn" class="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold transition cursor-pointer">
+            恢复全局默认
+          </button>
+          <div class="flex items-center space-x-2">
+            <button type="button" onclick="closeOverrideModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer">取消</button>
+            <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-md shadow-blue-600/20 cursor-pointer">保存策略并立即生效</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 插件独立配置模态框 (支持友好可视化表单 & 原始 TOML 源码编辑) -->
+  <div id="pluginConfigModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4" onclick="if(event.target === this) closePluginConfigModal()">
+    <div class="glass-card w-full max-w-3xl p-6 rounded-2xl shadow-2xl space-y-4 max-h-[92vh] flex flex-col">
+      <!-- 模态框头部 -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div class="flex items-center space-x-3">
+          <span id="pModalIcon" class="text-3xl">🧩</span>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h3 id="pModalTitle" class="font-bold text-base text-slate-800 dark:text-slate-100">插件配置</h3>
+              <span id="pModalCategory" class="text-[10px] px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-semibold">扩展组件</span>
+              <span id="pModalName" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">plugin_name</span>
+            </div>
+            <p id="pModalDesc" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5"></p>
+          </div>
+        </div>
+        <button onclick="closePluginConfigModal()" class="text-slate-400 hover:text-slate-600 text-2xl px-2">&times;</button>
+      </div>
+
+      <!-- 模式切换标签页: 可视化表单 vs TOML 源码 -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+        <div class="flex space-x-2">
+          <button id="pTabBtnForm" onclick="switchPluginModalTab('form')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white transition flex items-center space-x-1.5">
+            <span>📑 可视化表单配置</span>
+          </button>
+          <button id="pTabBtnToml" onclick="switchPluginModalTab('toml')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center space-x-1.5">
+            <span>📝 TOML 源码编辑</span>
+          </button>
+        </div>
+        <span class="text-[11px] text-slate-400 font-mono">plugins/config.toml</span>
+      </div>
+
+      <!-- 模态框主体内容 (滚动区域) -->
+      <div class="flex-1 overflow-y-auto space-y-4 pr-1 min-h-[360px]">
+        <!-- 视图 1: 可视化表单 -->
+        <div id="pViewForm" class="space-y-4">
+          <!-- 基础通用参数 -->
+          <div class="p-4 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/60 space-y-3">
+            <h4 class="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+              <span>⚙️</span>
+              <span>通用运行选项</span>
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                <span class="text-xs font-medium text-slate-700 dark:text-slate-300">插件启用状态 (enable)</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="pFormEnable" class="sr-only peer">
+                  <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <span class="text-xs font-medium text-slate-700 dark:text-slate-300">生效名单模式 (mode)</span>
+                <select id="pFormMode" class="text-xs px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
+                  <option value="blacklist">黑名单模式 (blacklist)</option>
+                  <option value="whitelist">白名单模式 (whitelist)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                生效目标限制 (limits, 逗号或换行分隔，留空对全部生效)
+              </label>
+              <textarea id="pFormLimits" rows="2" placeholder="例如: wxid_xxx, 123456@chatroom" class="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-mono"></textarea>
+            </div>
+          </div>
+
+          <!-- 插件特定参数表单 -->
+          <div class="space-y-2">
+            <h4 class="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+              <span>🔧</span>
+              <span>插件专有配置 ([config])</span>
+            </h4>
+            <div id="pFormDynamicFields" class="space-y-3">
+              <!-- 动态根据 item.config 渲染 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 视图 2: 源码直接编辑 -->
+        <div id="pViewToml" class="hidden space-y-3 h-full flex flex-col">
+          <div class="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-[11px] text-amber-700 dark:text-amber-300 flex items-center space-x-2">
+            <span>💡</span>
+            <span>在此可直接编辑当前插件在 <code>plugins/config.toml</code> 中的原始配置块。保存后 Golem 自动热加载更新。</span>
+          </div>
+          <div class="flex-1 min-h-[320px]">
+            <textarea id="pRawTomlTextarea" spellcheck="false" class="w-full h-80 p-4 rounded-xl border border-slate-300 dark:border-slate-800 bg-slate-900 text-emerald-400 font-mono text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-inner resize-y"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- 模态框底部操作栏 -->
+      <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
+        <div class="text-[11px] text-slate-400" id="pModalSaveNotice">
+          可视化表单修改将自动格式化并写入 plugins/config.toml
+        </div>
+        <div class="flex items-center space-x-2">
+          <button type="button" onclick="closePluginConfigModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition">取消</button>
+          <button type="button" onclick="saveActivePluginConfig()" id="pModalSaveBtn" class="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-md shadow-blue-600/20 flex items-center space-x-1.5">
+            <span>保存并立即生效</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 插件使用说明模态框 (全面指南与指令大全) -->
+  <div id="pluginUsageModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4" onclick="if(event.target === this) closePluginUsageModal()">
+    <div class="glass-card w-full max-w-2xl p-6 rounded-2xl shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+      <!-- 模态框头部 -->
+      <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+        <div class="flex items-center space-x-3">
+          <span id="uModalIcon" class="text-3xl">🧩</span>
+          <div>
+            <div class="flex items-center space-x-2">
+              <h3 id="uModalTitle" class="font-bold text-base text-slate-800 dark:text-slate-100">插件使用说明</h3>
+              <span id="uModalCategory" class="text-[10px] px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 font-semibold">功能分类</span>
+              <span id="uModalName" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">plugin_name</span>
+            </div>
+            <p id="uModalDesc" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5"></p>
+          </div>
+        </div>
+        <button onclick="closePluginUsageModal()" class="text-slate-400 hover:text-slate-600 text-2xl px-2">&times;</button>
+      </div>
+
+      <!-- 模态框主体 (可滚动) -->
+      <div class="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
+        <!-- 1. 生效场景与范围 -->
+        <div class="flex items-center space-x-2 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
+          <span class="font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1 shrink-0">
+            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <span>生效场景：</span>
+          </span>
+          <span id="uModalScope" class="text-slate-600 dark:text-slate-300 font-medium">群聊 / 私聊</span>
+        </div>
+
+        <!-- 2. 触发关键词与命令 -->
+        <div class="space-y-2">
+          <h4 class="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            <span>触发指令与关键词（点击复制）</span>
+          </h4>
+          <div id="uModalTriggers" class="flex flex-wrap gap-2">
+            <!-- 动态渲染指令标签 -->
+          </div>
+        </div>
+
+        <!-- 3. 典型交互示例 -->
+        <div class="space-y-2">
+          <h4 class="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+            <span>典型交互与对话示范</span>
+          </h4>
+          <div id="uModalExamples" class="space-y-2">
+            <!-- 动态渲染示例列表 -->
+          </div>
+        </div>
+
+        <!-- 4. 运行机制与核心说明 -->
+        <div class="space-y-1.5">
+          <h4 class="font-bold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
+            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span>运行机制与核心逻辑</span>
+          </h4>
+          <p id="uModalMechDesc" class="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-300 leading-relaxed"></p>
+        </div>
+
+        <!-- 5. 提示与注意事项 -->
+        <div id="uModalTipsBox" class="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 text-blue-800 dark:text-blue-300 flex items-start space-x-2">
+          <svg class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          <div class="text-[11px] leading-relaxed" id="uModalTipsText"></div>
+        </div>
+      </div>
+
+      <!-- 模态框底部操作栏 -->
+      <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
+        <span class="text-[11px] text-slate-400">可在群聊或私聊中输入对应指令触发体验</span>
+        <div class="flex items-center space-x-2">
+          <button type="button" onclick="closePluginUsageModal()" class="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition">关闭</button>
+          <button type="button" onclick="jumpToConfigFromUsage()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-md shadow-blue-600/20 flex items-center space-x-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            <span>配置此插件参数</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 状态与全局变量
+    let currentTab = 'overview';
+    let token = localStorage.getItem('golem_token') || '';
+    let allTargets = [];
+    let allChatSessions = [];
+    let allPlugins = [];
+    let activeChatSession = null;
+    let configMode = 'form'; // 'form' or 'raw'
+    let globalConfigCache = {};
+    let logOffset = 0;
+    let logLimit = 150;
+    let logAutoRefreshTimer = null;
+
+    // API 客户端封装
+    async function apiFetch(url, options = {}) {
+      options.headers = options.headers || {};
+      if (token) {
+        options.headers['Authorization'] = 'Bearer ' + token;
+      }
+      const res = await fetch(url, options);
+      if (res.status === 401) {
+        showLoginModal();
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    // 初始化检查
+    window.addEventListener('DOMContentLoaded', () => {
+      checkLogin();
+      setInterval(updateUptimeClock, 1000);
+    });
+
+    async function checkLogin() {
+      if (!token) {
+        showLoginModal();
+        return;
+      }
+      try {
+        const res = await apiFetch('/api/auth/profile');
+        if (res.ok) {
+          const profile = await res.json();
+          document.getElementById('adminUsernameBadge').innerText = profile.username;
+          hideLoginModal();
+          switchTab('overview');
+        } else {
+          showLoginModal();
+        }
+      } catch (e) {
+        showLoginModal();
+      }
+    }
+
+    function showLoginModal() {
+      document.getElementById('loginModal').classList.remove('hidden');
+    }
+    function hideLoginModal() {
+      document.getElementById('loginModal').classList.add('hidden');
+    }
+
+    function toggleLoginPasswordVisibility() {
+      const input = document.getElementById('loginPassword');
+      const icon = document.getElementById('loginEyeIcon');
+      if (!input) return;
+      if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) {
+          icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"/>';
+        }
+      } else {
+        input.type = 'password';
+        if (icon) {
+          icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>';
+        }
+      }
+    }
+
+    async function handleLogin() {
+      const u = document.getElementById('loginUsername').value;
+      const p = document.getElementById('loginPassword').value;
+      const errBox = document.getElementById('loginError');
+      const errText = document.getElementById('loginErrorText');
+      const btn = document.getElementById('loginBtn');
+      errBox.classList.add('hidden');
+
+      const origBtnHtml = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span>正在登录...</span>
+        `;
+      }
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p })
+        });
+        const data = await res.json();
+        if (res.ok && data.token) {
+          token = data.token;
+          localStorage.setItem('golem_token', token);
+          document.getElementById('adminUsernameBadge').innerText = data.username;
+          hideLoginModal();
+          switchTab('overview');
+        } else {
+          const msg = data.message || '用户名或密码错误';
+          if (errText) errText.innerText = msg;
+          else errBox.innerText = msg;
+          errBox.classList.remove('hidden');
+        }
+      } catch (e) {
+        const msg = '无法连接后台: ' + e.message;
+        if (errText) errText.innerText = msg;
+        else errBox.innerText = msg;
+        errBox.classList.remove('hidden');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origBtnHtml;
+        }
+      }
+    }
+
+    function handleLogout() {
+      token = '';
+      localStorage.removeItem('golem_token');
+      showLoginModal();
+    }
+
+    // 标签页切换
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.nav-item').forEach(el => {
+        if (el.getAttribute('data-tab') === tab) {
+          el.classList.add('bg-blue-50', 'dark:bg-blue-950/60', 'text-blue-600', 'dark:text-blue-400');
+        } else {
+          el.classList.remove('bg-blue-50', 'dark:bg-blue-950/60', 'text-blue-600', 'dark:text-blue-400');
+        }
+      });
+
+      const pane = document.getElementById('tab-' + tab);
+      if (pane) pane.classList.remove('hidden');
+
+      const titles = {
+        overview: '运行总览',
+        config: '全局核心配置',
+        plugins: '插件管理',
+        targets: '会话与对象专属策略',
+        chats: '实时对话与记录审计',
+        ai: 'AI 深度智能洞察与分析',
+        logs: '运行日志检索与诊断中心',
+        security: '账号与安全设置'
+      };
+      document.getElementById('currentTabTitle').innerText = titles[tab] || '管理后台';
+
+      if (tab === 'overview') loadOverview();
+      if (tab === 'config') loadGlobalConfig();
+      if (tab === 'plugins') loadPluginsList();
+      if (tab === 'targets') loadTargets();
+      if (tab === 'chats') {
+        loadChatSessions();
+        if (allTargets.length === 0) loadTargets();
+        startChatAutoPolling();
+      } else {
+        stopChatAutoPolling();
+      }
+      if (tab === 'ai') loadAIView();
+      if (tab === 'logs') loadLogsView();
+    }
+
+    // ----------------- Tab 1: 运行总览 -----------------
+    let startTimestamp = Date.now();
+    async function loadOverview() {
+      try {
+        const res = await apiFetch('/api/overview');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.bot) {
+          currentBotInfo = data.bot;
+          document.getElementById('overviewNickname').innerText = data.bot.nickname || '机器人';
+          document.getElementById('overviewUsername').innerText = data.bot.username || '';
+          document.getElementById('overviewOwner').innerText = data.bot.owner || '';
+          if (data.bot.avatar_url) document.getElementById('overviewAvatar').src = data.bot.avatar_url;
+          startTimestamp = Date.now() - (data.bot.uptime_seconds * 1000);
+        }
+        if (data.stats) {
+          document.getElementById('statContacts').innerText = data.stats.total_contacts || 0;
+          document.getElementById('statGroups').innerText = data.stats.total_groups || 0;
+          document.getElementById('statMessages').innerText = data.stats.total_messages || 0;
+          document.getElementById('statPlugins').innerText = data.stats.plugin_count || 0;
+        }
+        loadQuickLogs();
+      } catch (e) {}
+    }
+
+    async function loadQuickLogs() {
+      try {
+        const res = await apiFetch('/api/logs?limit=40&order=desc');
+        if (!res.ok) return;
+        const data = await res.json();
+        const box = document.getElementById('quickLogBox');
+        box.innerHTML = '';
+        if (data.items && data.items.length > 0) {
+          data.items.slice().reverse().forEach(item => {
+            const line = document.createElement('div');
+            line.className = 'leading-tight';
+            line.innerHTML = `<span class="text-slate-500">${item.timestamp}</span> <span class="${getLevelColor(item.level)} font-bold">[${item.level}]</span> <span class="text-blue-400">${item.tag ? '['+item.tag+']' : ''}</span> <span>${escapeHtml(item.message)}</span>`;
+            box.appendChild(line);
+          });
+          box.scrollTop = box.scrollHeight;
+        } else {
+          box.innerHTML = '<div class="text-slate-500">暂无日志记录</div>';
+        }
+      } catch (e) {}
+    }
+
+    function updateUptimeClock() {
+      const diffSec = Math.floor((Date.now() - startTimestamp) / 1000);
+      if (diffSec < 0) return;
+      const h = Math.floor(diffSec / 3600);
+      const m = Math.floor((diffSec % 3600) / 60);
+      const s = diffSec % 60;
+      document.getElementById('uptimeDisplay').innerText = `已运行: ${h}时 ${m}分 ${s}秒`;
+    }
+
+    // ----------------- Tab 2: 全局配置 友好表单 -----------------
+    function switchConfigMode(mode) {
+      configMode = mode;
+      const formBtn = document.getElementById('configModeFormBtn');
+      const rawBtn = document.getElementById('configModeRawBtn');
+      const formView = document.getElementById('configFormView');
+      const rawView = document.getElementById('configRawView');
+
+      if (mode === 'form') {
+        formBtn.className = "px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 shadow-sm text-blue-600 dark:text-blue-400 font-semibold transition";
+        rawBtn.className = "px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition";
+        formView.classList.remove('hidden');
+        rawView.classList.add('hidden');
+      } else {
+        rawBtn.className = "px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 shadow-sm text-blue-600 dark:text-blue-400 font-semibold transition";
+        formBtn.className = "px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition";
+        rawView.classList.remove('hidden');
+        formView.classList.add('hidden');
+      }
+    }
+
+    async function loadGlobalConfig() {
+      try {
+        const res = await apiFetch('/api/config/global');
+        if (!res.ok) return;
+        const data = await res.json();
+        globalConfigCache = data.structured || {};
+        document.getElementById('globalConfigEditor').value = data.toml || '';
+
+        // 填充可视化表单
+        const s = globalConfigCache;
+        document.getElementById('cfgOwner').value = s.owner || '';
+        document.getElementById('cfgForbidden').value = s.forbidden || '';
+
+        const core = s.core || {};
+        document.getElementById('cfgIgnoreHistory').checked = core.ignore_history !== false;
+        document.getElementById('cfgIgnoreTimeout').value = core.ignore_timeout !== undefined ? core.ignore_timeout : 10;
+        document.getElementById('cfgRandomDelay').checked = core.random_delay !== false;
+        document.getElementById('cfgDelayMin').value = core.random_delay_min !== undefined ? core.random_delay_min : 500;
+        document.getElementById('cfgDelayMax').value = core.random_delay_max !== undefined ? core.random_delay_max : 3000;
+        document.getElementById('cfgDelayStrategy').value = core.random_delay_strategy || 'pending';
+        document.getElementById('cfgQrcodeApi').value = core.qrcode_api || '';
+
+        const log = s.log || {};
+        document.getElementById('cfgLogLevel').value = (log.level || 'info').toLowerCase();
+        document.getElementById('cfgLogOutput').value = (log.output || 'both').toLowerCase();
+        document.getElementById('cfgLogAnsi').checked = log.ansi !== false;
+
+        const dev = s.device || {};
+        document.getElementById('cfgDeviceType').value = dev.type || 'mac';
+        document.getElementById('cfgDeviceName').value = dev.name || '';
+      } catch (e) {
+        alert('加载全局配置失败: ' + e.message);
+      }
+    }
+
+    async function saveGlobalConfig() {
+      let payload = {};
+
+      if (configMode === 'raw') {
+        // 源码编辑模式
+        const tomlText = document.getElementById('globalConfigEditor').value;
+        payload = { toml: tomlText };
+      } else {
+        // 可视化表单模式
+        const structured = {
+          owner: document.getElementById('cfgOwner').value.trim(),
+          forbidden: document.getElementById('cfgForbidden').value.trim(),
+          core: {
+            ignore_history: document.getElementById('cfgIgnoreHistory').checked,
+            ignore_timeout: parseInt(document.getElementById('cfgIgnoreTimeout').value) || 10,
+            random_delay: document.getElementById('cfgRandomDelay').checked,
+            random_delay_min: parseInt(document.getElementById('cfgDelayMin').value) || 500,
+            random_delay_max: parseInt(document.getElementById('cfgDelayMax').value) || 3000,
+            random_delay_strategy: document.getElementById('cfgDelayStrategy').value,
+            qrcode_api: document.getElementById('cfgQrcodeApi').value.trim()
+          },
+          log: {
+            level: document.getElementById('cfgLogLevel').value,
+            output: document.getElementById('cfgLogOutput').value,
+            ansi: document.getElementById('cfgLogAnsi').checked
+          },
+          device: {
+            type: document.getElementById('cfgDeviceType').value,
+            name: document.getElementById('cfgDeviceName').value.trim()
+          }
+        };
+        payload = { structured };
+      }
+
+      try {
+        const res = await apiFetch('/api/config/global', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('全局配置已成功保存！');
+          loadGlobalConfig();
+        } else {
+          alert('保存失败: ' + (data.message || data.error));
+        }
+      } catch (e) {
+        alert('请求失败: ' + e.message);
+      }
+    }
+
+    // ----------------- Tab 3: 插件管理 (中文名称与详细描述) -----------------
+    async function loadPluginsList() {
+      try {
+        const res = await apiFetch('/api/config/plugins');
+        if (!res.ok) return;
+        allPlugins = await res.json();
+        renderPluginsGrid(allPlugins);
+      } catch (e) {
+        alert('获取插件列表失败: ' + e.message);
+      }
+    }
+
+    function filterPluginsList() {
+      const q = document.getElementById('pluginSearchInput').value.toLowerCase().trim();
+      const filtered = allPlugins.filter(p => {
+        return !q || 
+          p.name.toLowerCase().includes(q) || 
+          (p.title && p.title.toLowerCase().includes(q)) || 
+          (p.description && p.description.toLowerCase().includes(q)) ||
+          (p.category && p.category.toLowerCase().includes(q));
+      });
+      renderPluginsGrid(filtered);
+    }
+
+    function renderPluginsGrid(plugins) {
+      const grid = document.getElementById('pluginsGrid');
+      grid.innerHTML = '';
+      if (plugins.length === 0) {
+        grid.innerHTML = '<div class="col-span-full py-12 text-center text-slate-400">未找到匹配的插件</div>';
+        return;
+      }
+
+      plugins.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'glass-card p-6 rounded-2xl shadow-sm space-y-4 flex flex-col justify-between hover:border-blue-500/50 transition-all';
+        card.innerHTML = `
+          <div class="space-y-3">
+            <!-- 头部：图标 + 中文名 + 标识 + 开关 -->
+            <div class="flex items-start justify-between">
+              <div class="flex items-center space-x-3">
+                <span class="text-2xl">${item.icon || '🧩'}</span>
+                <div>
+                  <h4 class="font-bold text-base text-slate-800 dark:text-slate-100 flex items-center space-x-2">
+                    <span>${escapeHtml(item.title || item.name)}</span>
+                  </h4>
+                  <span class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">${item.name}</span>
+                </div>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" ${item.enable ? 'checked' : ''} onchange="togglePlugin('${item.name}', this.checked)" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <!-- 分类标签 -->
+            <div class="flex items-center space-x-2">
+              <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+                ${item.category || '扩展组件'}
+              </span>
+              <span class="text-[10px] text-slate-400 font-mono">
+                ${item.mode === 'whitelist' ? '白名单模式' : '黑名单模式'}
+              </span>
+            </div>
+
+            <!-- 中文功能介绍 -->
+            <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed min-h-[2.5rem]">
+              ${escapeHtml(item.description || '暂无详细描述')}
+            </p>
+          </div>
+
+          <!-- 底部状态条与配置入口 -->
+          <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+            <span class="${item.enable ? 'text-emerald-500 font-semibold' : 'text-slate-400'} flex items-center space-x-1">
+              <span>${item.enable ? '●' : '○'}</span>
+              <span>${item.enable ? '已启用' : '已停用'}</span>
+            </span>
+            <div class="flex items-center space-x-2">
+              <button onclick="openPluginUsageModal('${item.name}')" class="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 font-medium text-xs flex items-center space-x-1 transition shadow-sm" title="查看该插件详细使用说明与触发指令">
+                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                <span>使用说明</span>
+              </button>
+              <button onclick="openPluginConfigModal('${item.name}')" class="px-2.5 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 font-semibold text-xs flex items-center space-x-1 transition shadow-sm">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                <span>配置参数</span>
+              </button>
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    async function togglePlugin(name, enable) {
+      try {
+        const res = await apiFetch('/api/config/plugins/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, enable })
+        });
+        if (res.ok) {
+          loadPluginsList();
+        } else {
+          alert('切换失败');
+        }
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    let activePluginItem = null;
+    let activePluginModalTab = 'form';
+
+    const CONFIG_FIELD_LABELS = {
+      'active_prompt': '当前激活人设',
+      'active_provider': '默认模型提供方',
+      'fallback_provider': '备用降级提供方',
+      'history_expire_hours': '历史保留时长 (小时)',
+      'history_file': '历史存储路径',
+      'http_timeout_seconds': 'HTTP 超时 (秒)',
+      'max_context_messages': '上下文最大消息数',
+      'reply_rate': '私聊/主动回复概率 (0.0 ~ 1.0)',
+      'silence': '全局静默 (仅被@时回复)',
+      'prompts': '系统提示词/人设库',
+      'providers': '模型厂商与接口',
+      'tts': '语音合成设计 (TTS)',
+      'api_key': 'API Key 密钥',
+      'base_url': '接口 Base URL',
+      'model': '模型型号',
+      'fallback_models': '备选模型列表',
+      'auto_verify': '自动同意加好友',
+      'greeting_enabled': '开启新好友欢迎语',
+      'greeting_delay_seconds': '延迟发送欢迎语 (秒)',
+      'custom_greeting': '自定义欢迎语文本',
+      'notify_owner': '新好友通知管理员',
+      'keyword_filter': '好友验证关键词',
+      'voice': '音色名称',
+      'voice_design': '语音声线设计描述',
+      'ffmpeg_path': 'FFmpeg 命令路径',
+      'ffprobe_path': 'FFprobe 命令路径',
+      'silk_encoder_path': 'Silk 编码器路径',
+      'host': '服务监听 Host',
+      'port': '服务端口 Port',
+      'data_dir': '数据文件存储目录',
+      'jobs': '定时任务列表'
+    };
+
+    let activeUsagePluginName = '';
+
+    function openPluginUsageModal(name) {
+      const p = allPlugins.find(x => x.name === name);
+      if (!p) return;
+      activeUsagePluginName = name;
+
+      document.getElementById('uModalIcon').innerText = p.icon || '🧩';
+      document.getElementById('uModalTitle').innerText = (p.title || p.name) + ' 使用指南';
+      document.getElementById('uModalCategory').innerText = p.category || '扩展组件';
+      document.getElementById('uModalName').innerText = p.name;
+      document.getElementById('uModalDesc').innerText = p.description || '暂无描述';
+
+      const usage = p.usage || {};
+
+      // 1. 生效场景
+      document.getElementById('uModalScope').innerText = usage.scope || '群聊 / 私聊均支持';
+
+      // 2. 触发关键词
+      const trigBox = document.getElementById('uModalTriggers');
+      trigBox.innerHTML = '';
+      const triggers = (usage.triggers && usage.triggers.length > 0) ? usage.triggers : [p.name];
+      triggers.forEach(tr => {
+        const badge = document.createElement('button');
+        badge.type = 'button';
+        badge.className = 'px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-mono text-xs border border-blue-200 dark:border-blue-900/60 flex items-center space-x-1 cursor-pointer transition';
+        badge.title = '点击复制此指令';
+        badge.innerHTML = `<span>${escapeHtml(tr)}</span><svg class="w-3 h-3 opacity-60 ml-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>`;
+        badge.onclick = () => {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(tr);
+          }
+          const old = badge.innerHTML;
+          badge.innerHTML = '<span class="text-emerald-600 dark:text-emerald-400 font-bold">已复制!</span>';
+          setTimeout(() => badge.innerHTML = old, 1500);
+        };
+        trigBox.appendChild(badge);
+      });
+
+      // 3. 典型交互示例
+      const exBox = document.getElementById('uModalExamples');
+      exBox.innerHTML = '';
+      const examples = (usage.examples && usage.examples.length > 0) ? usage.examples : ['暂无特定交互示例'];
+      examples.forEach(ex => {
+        const item = document.createElement('div');
+        item.className = 'p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-slate-700 dark:text-slate-300 flex items-start space-x-2 leading-relaxed';
+        item.innerHTML = `<span class="text-blue-600 font-bold shrink-0">▸</span><span>${escapeHtml(ex)}</span>`;
+        exBox.appendChild(item);
+      });
+
+      // 4. 运行机制
+      document.getElementById('uModalMechDesc').innerText = usage.description || p.description || '无特殊运行机制说明';
+
+      // 5. 提示与注意事项
+      const tipsBox = document.getElementById('uModalTipsBox');
+      const tipsText = document.getElementById('uModalTipsText');
+      if (usage.tips) {
+        tipsText.innerText = usage.tips;
+        tipsBox.classList.remove('hidden');
+      } else {
+        tipsBox.classList.add('hidden');
+      }
+
+      document.getElementById('pluginUsageModal').classList.remove('hidden');
+    }
+
+    function closePluginUsageModal() {
+      document.getElementById('pluginUsageModal').classList.add('hidden');
+      activeUsagePluginName = '';
+    }
+
+    function jumpToConfigFromUsage() {
+      const name = activeUsagePluginName;
+      closePluginUsageModal();
+      if (name) {
+        openPluginConfigModal(name);
+      }
+    }
+
+    function openPluginConfigModal(name) {
+      const p = allPlugins.find(x => x.name === name);
+      if (!p) return;
+      activePluginItem = p;
+
+      document.getElementById('pModalIcon').innerText = p.icon || '🧩';
+      document.getElementById('pModalTitle').innerText = p.title || p.name;
+      document.getElementById('pModalCategory').innerText = p.category || '扩展组件';
+      document.getElementById('pModalName').innerText = p.name;
+      document.getElementById('pModalDesc').innerText = p.description || '暂无描述';
+
+      // 填充基础参数
+      document.getElementById('pFormEnable').checked = !!p.enable;
+      document.getElementById('pFormMode').value = p.mode || 'blacklist';
+      document.getElementById('pFormLimits').value = (p.limits || []).join(', ');
+
+      // 渲染专属参数
+      renderDynamicConfigForm(p.config || {});
+
+      // 填充原始 TOML
+      document.getElementById('pRawTomlTextarea').value = p.raw_toml || '';
+
+      // 默认切换到可视化表单
+      switchPluginModalTab('form');
+
+      document.getElementById('pluginConfigModal').classList.remove('hidden');
+    }
+
+    function closePluginConfigModal() {
+      document.getElementById('pluginConfigModal').classList.add('hidden');
+      activePluginItem = null;
+    }
+
+    function switchPluginModalTab(tab) {
+      activePluginModalTab = tab;
+      const btnForm = document.getElementById('pTabBtnForm');
+      const btnToml = document.getElementById('pTabBtnToml');
+      const viewForm = document.getElementById('pViewForm');
+      const viewToml = document.getElementById('pViewToml');
+      const notice = document.getElementById('pModalSaveNotice');
+
+      if (tab === 'form') {
+        btnForm.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white transition flex items-center space-x-1.5';
+        btnToml.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center space-x-1.5';
+        viewForm.classList.remove('hidden');
+        viewToml.classList.add('hidden');
+        notice.innerText = '可视化表单修改将自动格式化并写入 plugins/config.toml';
+      } else {
+        btnToml.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 text-white transition flex items-center space-x-1.5';
+        btnForm.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center space-x-1.5';
+        viewForm.classList.add('hidden');
+        viewToml.classList.remove('hidden');
+        notice.innerText = '直接编辑 TOML 源码，保存后后端将做严格语法校验并热加载';
+      }
+    }
+
+    function renderDynamicConfigForm(cfg) {
+      const container = document.getElementById('pFormDynamicFields');
+      container.innerHTML = '';
+
+      if (!cfg || Object.keys(cfg).length === 0) {
+        container.innerHTML = `
+          <div class="p-6 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+            该插件没有额外的 [config] 专有参数，可直接配置上方的通用运行选项，或切换至 TOML 源码自由扩展。
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = generateFormHTML(cfg, '');
+    }
+
+    function generateFormHTML(obj, parentPath) {
+      let html = '';
+      for (const [k, v] of Object.entries(obj)) {
+        const fullPath = parentPath ? `${parentPath}.${k}` : k;
+        const label = CONFIG_FIELD_LABELS[k] || k;
+
+        if (typeof v === 'boolean') {
+          html += `
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
+              <div>
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(label)}</span>
+                <span class="block text-[10px] text-slate-400 font-mono">${escapeHtml(fullPath)}</span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" data-cfg-path="${fullPath}" data-cfg-type="boolean" ${v ? 'checked' : ''} class="sr-only peer">
+                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+          `;
+        } else if (typeof v === 'number') {
+          html += `
+            <div class="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(label)}</span>
+                <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(fullPath)}</span>
+              </div>
+              <input type="number" step="any" data-cfg-path="${fullPath}" data-cfg-type="number" value="${v}" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono">
+            </div>
+          `;
+        } else if (typeof v === 'string') {
+          const isLong = v.length > 50 || v.includes('\n') || k.includes('prompt') || k.includes('design') || k.includes('greeting') || k.includes('description');
+          if (isLong) {
+            html += `
+              <div class="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(label)}</span>
+                  <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(fullPath)}</span>
+                </div>
+                <textarea rows="4" data-cfg-path="${fullPath}" data-cfg-type="string" class="w-full p-2.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-sans focus:outline-none focus:ring-1 focus:ring-blue-500">${escapeHtml(v)}</textarea>
+              </div>
+            `;
+          } else {
+            html += `
+              <div class="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(label)}</span>
+                  <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(fullPath)}</span>
+                </div>
+                <input type="text" data-cfg-path="${fullPath}" data-cfg-type="string" value="${escapeHtml(v)}" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono">
+              </div>
+            `;
+          }
+        } else if (Array.isArray(v)) {
+          html += `
+            <div class="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-700 dark:text-slate-200">${escapeHtml(label)}</span>
+                <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(fullPath)} (列表)</span>
+              </div>
+              <input type="text" data-cfg-path="${fullPath}" data-cfg-type="array" value="${escapeHtml(JSON.stringify(v))}" placeholder="JSON 格式数组，如 [\"item1\", \"item2\"]" class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono">
+            </div>
+          `;
+        } else if (typeof v === 'object' && v !== null) {
+          html += `
+            <div class="p-3.5 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-2.5">
+              <div class="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                <span class="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
+                  <span>📂</span>
+                  <span>${escapeHtml(label)}</span>
+                </span>
+                <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(fullPath)}</span>
+              </div>
+              <div class="space-y-2.5 pl-1">
+                ${generateFormHTML(v, fullPath)}
+              </div>
+            </div>
+          `;
+        }
+      }
+      return html;
+    }
+
+    function setValueByPath(obj, path, value) {
+      const parts = path.split('.');
+      let curr = obj;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!curr[parts[i]] || typeof curr[parts[i]] !== 'object') {
+          curr[parts[i]] = {};
+        }
+        curr = curr[parts[i]];
+      }
+      curr[parts[parts.length - 1]] = value;
+    }
+
+    function collectConfigFormValues() {
+      const result = JSON.parse(JSON.stringify(activePluginItem.config || {}));
+      const inputs = document.querySelectorAll('#pFormDynamicFields [data-cfg-path]');
+      inputs.forEach(input => {
+        const path = input.getAttribute('data-cfg-path');
+        const type = input.getAttribute('data-cfg-type');
+        let val;
+        if (type === 'boolean') {
+          val = input.checked;
+        } else if (type === 'number') {
+          val = input.value === '' ? 0 : Number(input.value);
+        } else if (type === 'array') {
+          try {
+            val = JSON.parse(input.value);
+          } catch (e) {
+            val = input.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+          }
+        } else {
+          val = input.value;
+        }
+        setValueByPath(result, path, val);
+      });
+      return result;
+    }
+
+    async function saveActivePluginConfig() {
+      if (!activePluginItem) return;
+
+      const btn = document.getElementById('pModalSaveBtn');
+      const oldText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span>保存中...</span>';
+
+      try {
+        let payload = { name: activePluginItem.name };
+
+        if (activePluginModalTab === 'toml') {
+          const raw = document.getElementById('pRawTomlTextarea').value;
+          if (!raw.trim()) {
+            alert('TOML 配置内容不能为空');
+            btn.disabled = false;
+            btn.innerHTML = oldText;
+            return;
+          }
+          payload.raw_toml = raw;
+        } else {
+          const enable = document.getElementById('pFormEnable').checked;
+          const mode = document.getElementById('pFormMode').value;
+          const rawLimits = document.getElementById('pFormLimits').value;
+          const limits = rawLimits.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+          const config = collectConfigFormValues();
+
+          payload.section = {
+            enable: enable,
+            mode: mode,
+            limits: limits,
+            config: config
+          };
+        }
+
+        const res = await apiFetch('/api/config/plugins/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || '保存失败');
+        }
+
+        alert('✅ ' + (data.message || '配置已成功保存并立即生效！'));
+        closePluginConfigModal();
+        loadPluginsList();
+      } catch (e) {
+        alert('❌ 保存失败: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldText;
+      }
+    }
+
+    // ----------------- Tab 4: 专属策略 -----------------
+    async function loadTargets() {
+      try {
+        const res = await apiFetch('/api/targets');
+        if (!res.ok) return;
+        allTargets = await res.json();
+        renderTargetsTable(allTargets);
+      } catch (e) {
+        alert('获取目标列表失败: ' + e.message);
+      }
+    }
+
+    function filterTargets() {
+      const q = document.getElementById('targetSearchInput').value.toLowerCase().trim();
+      const type = document.getElementById('targetFilterType').value;
+
+      let filtered = allTargets.filter(t => {
+        const matchQ = !q || (t.name && t.name.toLowerCase().includes(q)) || (t.remark && t.remark.toLowerCase().includes(q)) || (t.target_id && t.target_id.toLowerCase().includes(q));
+        if (!matchQ) return false;
+        if (type === 'friend') return t.target_type === 'friend';
+        if (type === 'chatroom') return t.target_type === 'chatroom';
+        if (type === 'override') return t.has_override === true;
+        return true;
+      });
+      renderTargetsTable(filtered);
+    }
+
+    function renderTargetsTable(targets) {
+      const tbody = document.getElementById('targetsTableBody');
+      tbody.innerHTML = '';
+      if (targets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400">没有匹配的联系人或群组</td></tr>';
+        return;
+      }
+
+      targets.forEach(t => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition';
+        tr.innerHTML = `
+          <td class="px-6 py-4 flex items-center space-x-3">
+            <img class="w-9 h-9 rounded-full object-cover bg-slate-200" src="${t.avatar_url || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%232563eb\' d=\'M12 2a5 5 0 0 1 5 5v1a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5zm0 13c4.418 0 8 2.239 8 5v2H4v-2c0-2.761 3.582-5 8-5z\'/%3E%3C/svg%3E'}">
+            <div>
+              <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center space-x-1.5">
+                <span>${escapeHtml(t.remark || t.name)}</span>
+                ${t.remark ? `<span class="text-xs text-slate-400 font-normal">(${escapeHtml(t.name)})</span>` : ''}
+              </div>
+              <div class="text-xs text-slate-500 font-mono">${t.target_id}</div>
+            </div>
+          </td>
+          <td class="px-6 py-4">
+            <span class="px-2 py-0.5 rounded-md text-xs font-semibold ${t.target_type === 'chatroom' ? 'bg-sky-100 dark:bg-sky-950 text-sky-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}">${t.target_type === 'chatroom' ? '群聊' : '好友'}</span>
+          </td>
+          <td class="px-6 py-4">
+            ${t.has_override ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 text-xs font-semibold">✨ 专属定制生效</span>' : '<span class="text-xs text-slate-400">全局默认</span>'}
+          </td>
+          <td class="px-6 py-4 text-xs font-mono text-slate-600 dark:text-slate-400">
+            ${t.provider ? `<span class="font-semibold text-blue-600">${t.provider}</span>` : '全局默认'}
+          </td>
+          <td class="px-6 py-4 text-xs font-mono">
+            ${t.reply_rate !== null && t.reply_rate !== undefined ? `${(t.reply_rate * 100).toFixed(0)}%` : '全局默认'}
+          </td>
+          <td class="px-6 py-4 text-right">
+            <button onclick="openOverrideModal('${t.target_id}')" class="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 text-xs font-semibold hover:bg-blue-100 transition">
+              配置专属策略 &rarr;
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function openOverrideModal(targetID) {
+      if (!targetID) return;
+      if (!allTargets || allTargets.length === 0) {
+        await loadTargets();
+      }
+
+      const cleanID = targetID.replace(/^(chatroom:|contact:|private:)/, '');
+      let t = allTargets.find(x => x.target_id === targetID || x.target_id === cleanID || (x.target_id && x.target_id.replace(/^(chatroom:|contact:|private:)/, '') === cleanID));
+
+      if (!t) {
+        const curSession = allChatSessions.find(s => (s.id || s.ID) === targetID || (s.id || s.ID) === cleanID);
+        const name = curSession ? (curSession.name || cleanID) : cleanID;
+        const isChatroom = cleanID.endsWith('@chatroom') || (curSession && curSession.type === 'chatroom');
+        t = {
+          target_id: cleanID,
+          target_type: isChatroom ? 'chatroom' : 'friend',
+          name: name,
+          remark: curSession ? curSession.name : '',
+          has_override: false,
+          custom_prompt: '',
+          provider: '',
+          reply_rate: null,
+          silence: false,
+          notes: ''
+        };
+      }
+
+      document.getElementById('modalTargetID').value = t.target_id;
+      document.getElementById('modalTargetType').value = t.target_type || 'friend';
+      document.getElementById('modalTargetName').value = t.name || t.target_id;
+      document.getElementById('modalTargetRemark').value = t.remark || '';
+
+      document.getElementById('modalTargetSubtitle').innerText = `${t.remark || t.name || t.target_id} (${t.target_id})`;
+      document.getElementById('modalPrompt').value = t.custom_prompt || '';
+      document.getElementById('modalProvider').value = t.provider || '';
+      document.getElementById('modalReplyRate').value = (t.reply_rate !== null && t.reply_rate !== undefined) ? t.reply_rate : '';
+      document.getElementById('modalSilence').checked = t.silence === true;
+      document.getElementById('modalNotes').value = t.notes || '';
+
+      document.getElementById('deleteOverrideBtn').style.display = t.has_override ? 'block' : 'none';
+      document.getElementById('overrideModal').classList.remove('hidden');
+    }
+
+    async function openCurrentChatOverrideModal() {
+      if (!activeChatSession) {
+        alert('请先在左侧列表中选择一个会话');
+        return;
+      }
+      await openOverrideModal(activeChatSession);
+    }
+
+    function updateChatSessionOverrideBadge() {
+      if (!activeChatSession) return;
+      const cleanID = activeChatSession.replace(/^(chatroom:|contact:|private:)/, '');
+      const t = allTargets.find(x => x.target_id === activeChatSession || x.target_id === cleanID || (x.target_id && x.target_id.replace(/^(chatroom:|contact:|private:)/, '') === cleanID));
+      const badge = document.getElementById('activeChatOverrideBadge');
+      const btn = document.getElementById('activeChatOverrideBtn');
+      if (t && t.has_override) {
+        if (badge) badge.classList.remove('hidden');
+        if (btn) {
+          btn.className = "px-2.5 py-1 rounded bg-blue-100 dark:bg-blue-900/50 hover:bg-blue-200 dark:hover:bg-blue-900/70 text-xs text-blue-700 dark:text-blue-300 font-semibold flex items-center space-x-1.5 transition shadow-none cursor-pointer border border-blue-300 dark:border-blue-700";
+        }
+      } else {
+        if (badge) badge.classList.add('hidden');
+        if (btn) {
+          btn.className = "px-2.5 py-1 rounded bg-[#e0edfe]/80 dark:bg-blue-950/40 hover:bg-[#bae0fd] dark:hover:bg-blue-900/60 text-xs text-[#1d4ed8] dark:text-blue-300 font-medium flex items-center space-x-1.5 transition shadow-none cursor-pointer";
+        }
+      }
+    }
+
+    function closeOverrideModal() {
+      document.getElementById('overrideModal').classList.add('hidden');
+    }
+
+    async function saveTargetOverride() {
+      const target_id = document.getElementById('modalTargetID').value;
+      const target_type = document.getElementById('modalTargetType').value;
+      const name = document.getElementById('modalTargetName').value;
+      const remark = document.getElementById('modalTargetRemark').value;
+      const custom_prompt = document.getElementById('modalPrompt').value.trim();
+      const provider = document.getElementById('modalProvider').value;
+      const rateVal = document.getElementById('modalReplyRate').value;
+      const silence = document.getElementById('modalSilence').checked;
+      const notes = document.getElementById('modalNotes').value.trim();
+
+      const payload = {
+        target_id,
+        target_type,
+        name,
+        remark,
+        custom_prompt,
+        provider,
+        silence,
+        notes
+      };
+      if (rateVal !== '') {
+        payload.reply_rate = parseFloat(rateVal);
+      }
+
+      try {
+        const res = await apiFetch('/api/targets/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          closeOverrideModal();
+          await loadTargets();
+          updateChatSessionOverrideBadge();
+          renderChatSessions(allChatSessions);
+          alert('会话专属策略已生效！');
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          alert('保存失败: ' + (errData.error || errData.message || res.statusText));
+        }
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    async function deleteTargetOverride() {
+      const target_id = document.getElementById('modalTargetID').value;
+      if (!confirm('确认移除专属策略并恢复全局配置吗？')) return;
+
+      try {
+        const res = await apiFetch('/api/targets/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_id })
+        });
+        if (res.ok) {
+          closeOverrideModal();
+          await loadTargets();
+          updateChatSessionOverrideBadge();
+          renderChatSessions(allChatSessions);
+          alert('专属策略已清除，已恢复全局配置！');
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          alert('移除失败: ' + (errData.error || errData.message || res.statusText));
+        }
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    // ----------------- Tab 5: 实时对话 (微信PC桌面风格) -----------------
+    const defaultBotAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDM2IDM2Ij48cmVjdCB3aWR0aD0iMzYiIGhlaWdodD0iMzYiIHJ4PSI0IiBmaWxsPSIjMDdjMTYwIi8+PGNpcmNsZSBjeD0iMTgiIGN5PSIxOCIgcj0iMTEiIGZpbGw9IiNmZmZmZmYiLz48Y2lyY2xlIGN4PSIxNCIgY3k9IjE2IiByPSIyIiBmaWxsPSIjMDdjMTYwIi8+PGNpcmNsZSBjeD0iMjIiIGN5PSIxNiIgcj0iMiIgZmlsbD0iIzA3YzE2MCIvPjxwYXRoIGQ9Ik0xNCAyMSBRMTggMjUgMjIgMjEiIHN0cm9rZT0iIzA3YzE2MCIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIGZpbGw9Im5vbmUiLz48L3N2Zz4=';
+    const defaultUserAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDM2IDM2Ij48cmVjdCB3aWR0aD0iMzYiIGhlaWdodD0iMzYiIHJ4PSI0IiBmaWxsPSIjZDhkOGQ4Ii8+PGNpcmNsZSBjeD0iMTgiIGN5PSIxMyIgcj0iNiIgZmlsbD0iIzk5OTk5OSIvPjxwYXRoIGQ9Ik04IDMwIEM4IDIzIDEyIDIxIDE4IDIxIEMyNCAyMSAyOCAyMyAyOCAzMCBaIiBmaWxsPSIjOTk5OTk5Ii8+PC9zdmc+';
+    const defaultGroupAvatar = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDM2IDM2Ij48cmVjdCB3aWR0aD0iMzYiIGhlaWdodD0iMzYiIHJ4PSI0IiBmaWxsPSIjY2JkNWUxIi8+PGNpcmNsZSBjeD0iMTQiIGN5PSIxMiIgcj0iNCIgZmlsbD0iIzk0YTNiOCIvPjxwYXRoIGQ9Ik03IDI1IEM3IDIwIDEwIDE4IDE0IDE4IEMxOCAxOCAyMSAyMCAyMSAyNSBaIiBmaWxsPSIjOTRhM2I4Ii8+PGNpcmNsZSBjeD0iMjMiIGN5PSIxNCIgcj0iMy41IiBmaWxsPSIjNjQ3NDhiIi8+PHBhdGggZD0iTTE4IDI1IEMxOCAyMSAyMCAxOSAyMyAxOSBDMjYgMTkgMjggMjEgMjggMjUgWiIgZmlsbD0iIzY0NzQ4YiIvPjwvc3ZnPg==';
+
+    const avatarColorPalette = ['#3b82f6', '#0ea5e9', '#0d9488', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#64748b'];
+
+    function generateLetterAvatar(name) {
+      const clean = (name || '友').trim();
+      const char = clean.charAt(clean.length > 1 ? clean.length - 1 : 0) || '友';
+      let hash = 0;
+      for (let i = 0; i < clean.length; i++) {
+        hash = clean.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      const color = avatarColorPalette[Math.abs(hash) % avatarColorPalette.length];
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36"><rect width="36" height="36" rx="4" fill="${color}"/><text x="18" y="24" font-size="15" font-weight="600" fill="#ffffff" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif">${char}</text></svg>`;
+      return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+    }
+
+    function getSpeakerAvatar(m, isGroup, speakerName, contactAvatar) {
+      if (m && m.avatar_url && m.avatar_url.trim() !== '') {
+        return m.avatar_url;
+      }
+      if (isGroup) {
+        if (speakerName && speakerName !== '对方') {
+          return generateLetterAvatar(speakerName);
+        }
+        return defaultUserAvatar;
+      }
+      return contactAvatar || defaultUserAvatar;
+    }
+
+    let botAvatarUrl = '';
+    let currentBotInfo = null;
+
+    function getBotNickname() {
+      if (currentBotInfo && currentBotInfo.nickname) return currentBotInfo.nickname;
+      const ovNick = document.getElementById('overviewNickname');
+      if (ovNick && ovNick.innerText && ovNick.innerText !== '机器人') return ovNick.innerText;
+      return 'Bot';
+    }
+
+    function getBotUsername() {
+      if (currentBotInfo && currentBotInfo.username) return currentBotInfo.username;
+      const ovUser = document.getElementById('overviewUsername');
+      if (ovUser && ovUser.innerText && ovUser.innerText !== 'wxid_unknown') return ovUser.innerText;
+      return '';
+    }
+
+    function getBotAvatar() {
+      if (botAvatarUrl) return botAvatarUrl;
+      // 1. 尝试从 overviewAvatar 读取
+      const ovImg = document.getElementById('overviewAvatar');
+      if (ovImg && ovImg.src && !ovImg.src.startsWith('data:image/svg')) {
+        botAvatarUrl = ovImg.src;
+        return botAvatarUrl;
+      }
+      // 2. 从左侧会话列表中直接提取机器人的真实微信头像
+      if (Array.isArray(allChatSessions)) {
+        const bName = getBotNickname();
+        const bId = getBotUsername();
+        const botSess = allChatSessions.find(s => 
+          (bId && s.id === bId) || 
+          (bName && s.name && s.name === bName)
+        );
+        if (botSess && botSess.avatar_url) {
+          botAvatarUrl = botSess.avatar_url;
+          return botAvatarUrl;
+        }
+      }
+      return defaultBotAvatar;
+    }
+
+    async function loadChatSessions() {
+      try {
+        const res = await apiFetch('/api/chats/sessions');
+        if (!res.ok) return;
+        allChatSessions = await res.json();
+
+        // 提取机器人头像并回填到 overviewAvatar
+        const bName = getBotNickname();
+        const bId = getBotUsername();
+        const botSess = allChatSessions.find(s => 
+          (bId && s.id === bId) || 
+          (bName && s.name && s.name === bName)
+        );
+        if (botSess && botSess.avatar_url) {
+          botAvatarUrl = botSess.avatar_url;
+          const ovImg = document.getElementById('overviewAvatar');
+          if (ovImg && (!ovImg.src || ovImg.src.startsWith('data:image/svg'))) {
+            ovImg.src = botAvatarUrl;
+          }
+        }
+
+        if (allTargets.length === 0) {
+          try { await loadTargets(); } catch (e) {}
+        }
+
+        renderChatSessions(allChatSessions);
+
+        // 如果没有选中的会话且列表有内容，默认选中第一个
+        if (!activeChatSession && allChatSessions.length > 0) {
+          selectChatSession(allChatSessions[0]);
+        }
+      } catch (e) {
+        alert('获取聊天会话失败: ' + e.message);
+      }
+    }
+
+    function renderChatSessions(sessions) {
+      const list = document.getElementById('chatSessionsList');
+      list.innerHTML = '';
+      if (sessions.length === 0) {
+        list.innerHTML = '<div class="p-6 text-center text-xs text-[#999999]">暂无会话记录</div>';
+        return;
+      }
+
+      sessions.forEach(s => {
+        const sId = s.id || s.ID;
+        const isSelected = (activeChatSession === sId);
+        const isGroup = sId.endsWith('@chatroom');
+        const defaultAv = isGroup ? defaultGroupAvatar : defaultUserAvatar;
+        const avatarSrc = s.avatar_url || defaultAv;
+
+        const cleanId = sId.replace(/^(chatroom:|contact:|private:)/, '');
+        const target = allTargets.find(t => t.target_id === sId || t.target_id === cleanId || (t.target_id && t.target_id.replace(/^(chatroom:|contact:|private:)/, '') === cleanId));
+        const hasOverride = target && target.has_override;
+
+        const item = document.createElement('div');
+        // 微信PC会话项：暗黑模式适配
+        item.className = `px-3.5 py-3 flex items-center space-x-3 cursor-pointer transition select-none ${isSelected ? 'bg-[#07c160] text-white shadow-sm' : 'hover:bg-[#dcdcdc]/80 dark:hover:bg-[#282828] text-[#191919] dark:text-[#dfdfdf]'}`;
+        item.onclick = () => selectChatSession(s);
+
+        item.innerHTML = `
+          <img class="w-10 h-10 rounded-[4px] object-cover shrink-0 bg-[#d8d8d8] dark:bg-[#333333]" src="${avatarSrc}" onerror="this.onerror=null; this.src='${defaultAv}';">
+          <div class="flex-1 min-w-0 space-y-0.5">
+            <div class="flex items-center justify-between">
+              <span class="font-medium text-[13px] truncate ${isSelected ? 'text-white font-semibold' : 'text-[#191919] dark:text-[#dfdfdf]'} flex items-center space-x-1">
+                <span class="truncate">${escapeHtml(s.name || sId)}</span>
+                ${hasOverride ? `<span class="text-[9px] px-1 py-0.2 rounded ${isSelected ? 'bg-white/20 text-white' : 'bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60'} shrink-0 font-normal">专属</span>` : ''}
+              </span>
+              <span class="text-[11px] ${isSelected ? 'text-white/80' : 'text-[#999999] dark:text-[#777777]'} shrink-0">${formatTime(s.last_time)}</span>
+            </div>
+            <p class="text-xs ${isSelected ? 'text-white/90' : 'text-[#999999] dark:text-[#888888]'} truncate leading-tight">${escapeHtml(s.last_message || '暂无消息')}</p>
+          </div>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    function filterChatSessions() {
+      const q = document.getElementById('chatSearchInput').value.toLowerCase().trim();
+      const filtered = allChatSessions.filter(s => {
+        const sId = (s.id || s.ID || '').toLowerCase();
+        const sName = (s.name || '').toLowerCase();
+        const sMsg = (s.last_message || '').toLowerCase();
+        return !q || sName.includes(q) || sId.includes(q) || sMsg.includes(q);
+      });
+      renderChatSessions(filtered);
+    }
+
+    let chatPollTimer = null;
+    let chatSessionsPollTimer = null;
+    let lastRenderedMessagesCount = -1;
+    let lastRenderedLastMsgId = '';
+    let lastRenderedLastMsgContent = '';
+    let lastRenderedCutoff = -1;
+    let lastRenderedCutoffAtEnd = null;
+
+    function startChatAutoPolling() {
+      stopChatAutoPolling();
+
+      // 每 1.5 秒检查并拉取当前活跃会话的新消息（静默无感更新，实时查看工具与对方回复）
+      chatPollTimer = setInterval(async () => {
+        if (!activeChatSession) return;
+        const tabChats = document.getElementById('tab-chats');
+        if (!tabChats || tabChats.classList.contains('hidden')) return;
+
+        try {
+          const res = await apiFetch(`/api/chats/messages?session=${encodeURIComponent(activeChatSession)}&limit=150`);
+          if (!res.ok) return;
+          const data = await res.json();
+          const msgs = data.messages || [];
+          const cutoff = data.context_cutoff || 0;
+          const cutoffAtEnd = !!data.cutoff_at_end;
+
+          const lastMsg = msgs[msgs.length - 1];
+          const lastId = lastMsg ? (lastMsg.id || '') : '';
+          const lastContent = lastMsg ? (lastMsg.content || '') : '';
+
+          // 仅在消息数量改变，最后一条消息内容/ID 变化，或者截断点状态变化时才重新渲染气泡流
+          if (msgs.length !== lastRenderedMessagesCount || lastId !== lastRenderedLastMsgId || lastContent !== lastRenderedLastMsgContent || cutoff !== lastRenderedCutoff || cutoffAtEnd !== lastRenderedCutoffAtEnd) {
+            const stream = document.getElementById('chatMessagesStream');
+            const isNearBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 150;
+            renderMessagesStream(msgs, cutoff, cutoffAtEnd);
+            if (isNearBottom) {
+              stream.scrollTop = stream.scrollHeight;
+            }
+            if (msgs.length > 0) {
+              const cur = allChatSessions.find(s => (s.id || s.ID) === activeChatSession);
+              if (cur) {
+                cur.last_message = lastContent;
+                cur.last_time = lastMsg.timestamp;
+                renderChatSessions(allChatSessions);
+              }
+            }
+          }
+        } catch (e) {}
+      }, 1500);
+
+      // 每 5 秒同步一次左侧会话列表（及时发现其他联系人新消息与排序）
+      chatSessionsPollTimer = setInterval(async () => {
+        const tabChats = document.getElementById('tab-chats');
+        if (!tabChats || tabChats.classList.contains('hidden')) return;
+        try {
+          const res = await apiFetch('/api/chats/sessions');
+          if (!res.ok) return;
+          allChatSessions = await res.json();
+          renderChatSessions(allChatSessions);
+        } catch (e) {}
+      }, 5000);
+    }
+
+    function stopChatAutoPolling() {
+      if (chatPollTimer) {
+        clearInterval(chatPollTimer);
+        chatPollTimer = null;
+      }
+      if (chatSessionsPollTimer) {
+        clearInterval(chatSessionsPollTimer);
+        chatSessionsPollTimer = null;
+      }
+    }
+
+    async function loadChatMessages(sessionId, scrollToBottom = true) {
+      const sId = sessionId || activeChatSession;
+      if (!sId) return;
+      const stream = document.getElementById('chatMessagesStream');
+      try {
+        const res = await apiFetch(`/api/chats/messages?session=${encodeURIComponent(sId)}&limit=150`);
+        if (!res.ok) {
+          if (stream && stream.innerHTML.includes('正在拉取')) {
+            stream.innerHTML = `<div class="h-full flex items-center justify-center text-xs text-rose-500">拉取对话失败 (HTTP ${res.status})</div>`;
+          }
+          return;
+        }
+        const data = await res.json();
+        renderMessagesStream(data.messages || [], data.context_cutoff || 0, !!data.cutoff_at_end);
+        if (scrollToBottom && stream) {
+          stream.scrollTop = stream.scrollHeight;
+        }
+      } catch (e) {
+        console.error('拉取会话消息失败:', e);
+        if (stream && stream.innerHTML.includes('正在拉取')) {
+          stream.innerHTML = `<div class="text-rose-500 text-xs">加载失败: ${e.message}</div>`;
+        }
+      }
+    }
+
+    async function selectChatSession(session) {
+      const sId = typeof session === 'object' ? (session.id || session.ID) : session;
+      const curSession = allChatSessions.find(s => (s.id || s.ID) === sId) || (typeof session === 'object' ? session : { id: sId });
+      activeChatSession = sId;
+      renderChatSessions(allChatSessions);
+
+      document.getElementById('activeChatTitle').innerText = curSession.name || sId;
+      document.getElementById('activeChatSub').innerText = sId;
+      document.getElementById('activeChatActions').classList.remove('hidden');
+      updateChatSessionOverrideBadge();
+      document.getElementById('chatInputArea').classList.remove('hidden');
+      setTimeout(() => {
+        const input = document.getElementById('chatMessageInput');
+        if (input) {
+          input.value = '';
+          updateChatSendButtonState();
+          input.focus();
+        }
+      }, 50);
+
+      const stream = document.getElementById('chatMessagesStream');
+      if (stream) {
+        stream.innerHTML = '<div class="h-full flex items-center justify-center text-xs text-[#999999]">正在拉取真实对话记录...</div>';
+      }
+
+      await loadChatMessages(sId, true);
+      startChatAutoPolling();
+    }
+
+    function renderMessagesStream(messages, contextCutoff = 0, cutoffAtEnd = false) {
+      const stream = document.getElementById('chatMessagesStream');
+      stream.innerHTML = '';
+
+      lastRenderedMessagesCount = messages.length;
+      lastRenderedCutoff = contextCutoff;
+      lastRenderedCutoffAtEnd = cutoffAtEnd;
+      const lastMsg = messages[messages.length - 1];
+      lastRenderedLastMsgId = lastMsg ? (lastMsg.id || '') : '';
+      lastRenderedLastMsgContent = lastMsg ? (lastMsg.content || '') : '';
+      if (messages.length === 0) {
+        stream.innerHTML = '<div class="h-full flex items-center justify-center text-xs text-[#999999]">该会话暂未记录对话内容</div>';
+        return;
+      }
+
+      const curSession = allChatSessions.find(s => (s.id || s.ID) === activeChatSession);
+      const isGroup = activeChatSession && activeChatSession.endsWith('@chatroom');
+      const contactAvatar = (curSession && curSession.avatar_url) ? curSession.avatar_url : (isGroup ? defaultGroupAvatar : defaultUserAvatar);
+      const myAvatar = getBotAvatar();
+
+      function createCutoffDivider() {
+        const div = document.createElement('div');
+        div.className = 'my-4 flex items-center justify-center select-none';
+        div.innerHTML = `
+          <div class="flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 shadow-xs">
+            <span class="text-xs">🧹</span>
+            <span class="text-[11px] font-medium text-amber-700 dark:text-amber-400">此处清空了 AI 上下文记忆，开启全新话题</span>
+          </div>
+        `;
+        return div;
+      }
+
+      let cutoffDividerInserted = false;
+
+      messages.forEach(m => {
+        // 仅当消息明确标记为截断后的第一条新消息时，在它上方插入分割线
+        if (m.is_cutoff_point && !cutoffDividerInserted) {
+          stream.appendChild(createCutoffDivider());
+          cutoffDividerInserted = true;
+        }
+
+        const isMe = m.is_self || m.role === 'assistant';
+        const msgRow = document.createElement('div');
+        let speakerName = m.sender_name || (isMe ? getBotNickname() : (curSession ? (curSession.name || '对方') : '对方'));
+
+        const timeStr = formatChatTimestamp(m.timestamp);
+
+        // 构造媒体资源完整访问 URL
+        let mediaUrl = m.media_url || '';
+        if (mediaUrl && mediaUrl.startsWith('/api/')) {
+          const curToken = token || localStorage.getItem('golem_token') || '';
+          mediaUrl += (mediaUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(curToken);
+        }
+
+        const isImage = (m.type === 'image' || (m.content && m.content.includes('[图片]'))) && mediaUrl;
+        const isVoice = m.type === 'voice' || (m.content && m.content.includes('[语音]'));
+        const dur = m.duration || 1;
+        const voiceBubbleWidth = Math.min(240, Math.max(75, 65 + dur * 4.5));
+
+        if (isMe) {
+          // 右侧：机器人/我方 (微信PC绿底气泡，暗黑模式采用深绿 #2e6b38，文字白色)
+          msgRow.className = 'flex flex-col items-end my-3 select-text';
+          
+          let bubbleHtml = '';
+          if (isImage) {
+            bubbleHtml = `
+              <div class="relative rounded-[4px] overflow-hidden max-w-[240px] max-h-[280px] shadow-sm bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                <img src="${mediaUrl}" alt="图片" class="max-w-[240px] max-h-[280px] object-cover cursor-zoom-in hover:brightness-95 transition" onclick="previewChatImage(this.src)" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'p-3 text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded\'>[图片加载失败]</div>';">
+              </div>
+            `;
+          } else if (isVoice) {
+            bubbleHtml = `
+              <div class="relative bg-[#95ec69] dark:bg-[#2e6b38] text-[#000000] dark:text-[#ffffff] px-3 py-2 rounded-[4px] text-[14px] shadow-none cursor-pointer select-none voice-bubble" style="width: ${voiceBubbleWidth}px" data-media-url="${escapeHtml(mediaUrl)}" onclick="togglePlayVoice(this)">
+                <div class="absolute -right-[5px] top-3.5 w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[5px] border-l-[#95ec69] dark:border-l-[#2e6b38]"></div>
+                <div class="flex items-center justify-end space-x-2">
+                  <span class="text-xs font-mono font-medium">${dur}"</span>
+                  <svg class="w-4 h-4 voice-wave-anim shrink-0 rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                    <path d="M4 10v4" />
+                    <path d="M8 8a6 6 0 0 1 0 8" />
+                    <path d="M12 5a10 10 0 0 1 0 14" />
+                  </svg>
+                </div>
+                ${showVoiceTranscript(m.content)}
+              </div>
+            `;
+          } else {
+            bubbleHtml = `
+              <div class="relative bg-[#95ec69] dark:bg-[#2e6b38] text-[#000000] dark:text-[#ffffff] px-3.5 py-2 rounded-[4px] text-[14px] leading-relaxed break-words max-w-[70vw] md:max-w-[500px]">
+                <div class="absolute -right-[5px] top-3.5 w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[5px] border-l-[#95ec69] dark:border-l-[#2e6b38]"></div>
+                <div>${formatMessageContent(m)}</div>
+              </div>
+            `;
+          }
+
+          msgRow.innerHTML = `
+            <div class="flex items-center space-x-2 mr-12 mb-1 select-none">
+              <span class="text-[11px] text-[#b2b2b2] dark:text-[#777777] font-mono leading-none">${timeStr}</span>
+            </div>
+            <div class="flex items-start justify-end">
+              ${bubbleHtml}
+              <img class="w-9 h-9 rounded-[4px] object-cover shrink-0 ml-3 bg-[#e0e0e0] dark:bg-[#333333]" src="${myAvatar}" alt="Bot" onerror="this.onerror=null; this.src=defaultBotAvatar;">
+            </div>
+          `;
+        } else {
+          // 左侧：联系人/群成员 (纯白底 / 暗黑模式深灰 #2e2e2e，文字浅白)
+          const av = getSpeakerAvatar(m, isGroup, speakerName, contactAvatar);
+          const showName = isGroup && speakerName && speakerName !== '对方';
+          msgRow.className = 'flex flex-col items-start my-3 select-text';
+
+          let bubbleHtml = '';
+          if (isImage) {
+            bubbleHtml = `
+              <div class="relative rounded-[4px] overflow-hidden max-w-[240px] max-h-[280px] shadow-sm bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                <img src="${mediaUrl}" alt="图片" class="max-w-[240px] max-h-[280px] object-cover cursor-zoom-in hover:brightness-95 transition" onclick="previewChatImage(this.src)" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'p-3 text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded\'>[图片加载失败]</div>';">
+              </div>
+            `;
+          } else if (isVoice) {
+            bubbleHtml = `
+              <div class="relative bg-white dark:bg-[#2e2e2e] text-[#000000] dark:text-[#dfdfdf] px-3 py-2 rounded-[4px] text-[14px] shadow-sm cursor-pointer select-none voice-bubble" style="width: ${voiceBubbleWidth}px" data-media-url="${escapeHtml(mediaUrl)}" onclick="togglePlayVoice(this)">
+                <div class="absolute -left-[5px] top-3.5 w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[5px] border-r-white dark:border-r-[#2e2e2e]"></div>
+                <div class="flex items-center space-x-2">
+                  <svg class="w-4 h-4 voice-wave-anim shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                    <path d="M4 10v4" />
+                    <path d="M8 8a6 6 0 0 1 0 8" />
+                    <path d="M12 5a10 10 0 0 1 0 14" />
+                  </svg>
+                  <span class="text-xs font-mono font-medium">${dur}"</span>
+                </div>
+                ${showVoiceTranscript(m.content)}
+              </div>
+            `;
+          } else {
+            bubbleHtml = `
+              <div class="relative bg-white dark:bg-[#2e2e2e] text-[#000000] dark:text-[#dfdfdf] px-3.5 py-2 rounded-[4px] text-[14px] leading-relaxed break-words shadow-sm max-w-[70vw] md:max-w-[500px]">
+                <div class="absolute -left-[5px] top-3.5 w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[5px] border-r-white dark:border-r-[#2e2e2e]"></div>
+                <div>${formatMessageContent(m)}</div>
+              </div>
+            `;
+          }
+
+          msgRow.innerHTML = `
+            <div class="flex items-center space-x-2 ml-12 mb-1 select-none">
+              ${showName ? `<span class="text-[11px] text-[#999999] dark:text-[#888888] font-medium leading-none">${escapeHtml(speakerName)}</span>` : ''}
+              <span class="text-[11px] text-[#b2b2b2] dark:text-[#777777] font-mono leading-none">${timeStr}</span>
+            </div>
+            <div class="flex items-start">
+              <img class="w-9 h-9 rounded-[4px] object-cover shrink-0 mr-3 bg-[#e0e0e0] dark:bg-[#333333]" src="${av}" alt="${escapeHtml(speakerName)}" onerror="this.onerror=null; this.src=defaultUserAvatar;">
+              ${bubbleHtml}
+            </div>
+          `;
+        }
+        stream.appendChild(msgRow);
+      });
+      // 如果尚未开启新对话（cutoffAtEnd 为 true，或者有截断但历史消息中未出现截断后的新消息），分割线放置在最下方！
+      if ((cutoffAtEnd || (contextCutoff > 0 && !cutoffDividerInserted)) && messages.length > 0 && !cutoffDividerInserted) {
+        stream.appendChild(createCutoffDivider());
+        cutoffDividerInserted = true;
+      }
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    function formatMessageContent(m) {
+      let content = m.content || '';
+      // 清除可能遗留的思维链标签
+      content = content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+
+      if (m.type === 'image' || content.includes('[图片]')) {
+        return `<div class="flex items-center space-x-1.5 font-medium text-[#000000] dark:text-[#dfdfdf]"><span>🖼️</span> <span>[图片消息]</span></div><div class="mt-1 text-xs text-gray-500 dark:text-gray-400">${escapeHtml(content)}</div>`;
+      }
+      if (m.type === 'voice' || content.includes('[语音]')) {
+        return `<div class="flex items-center space-x-1.5 font-medium text-[#000000] dark:text-[#dfdfdf]"><span>🎤</span> <span>[语音消息]</span></div><div class="mt-1 text-xs text-gray-500 dark:text-gray-400">${escapeHtml(content)}</div>`;
+      }
+      return escapeHtml(content).replace(/\n/g, '<br>');
+    }
+
+    function showVoiceTranscript(content) {
+      if (!content) return '';
+      let clean = content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+      clean = clean.replace(/\[\d+s\]\s*[\d\.]+KB/gi, '').trim();
+      clean = clean.replace(/对方发来了一条语音消息[，,。]?/gi, '').trim();
+      clean = clean.replace(/请倾听音频并根据你的人设自然回复[。.]?/gi, '').trim();
+      clean = clean.replace(/\[语音\]/gi, '').trim();
+      if (clean.length > 0) {
+        return `<div class="mt-1 pt-1 border-t border-black/10 dark:border-white/10 text-xs text-black/80 dark:text-white/80 font-normal break-words">${escapeHtml(clean)}</div>`;
+      }
+      return '';
+    }
+
+    // 聊天大图全屏预览
+    function previewChatImage(url) {
+      if (!url) return;
+      const modal = document.getElementById('imagePreviewModal');
+      const img = document.getElementById('imagePreviewSrc');
+      const dl = document.getElementById('imagePreviewDownload');
+      if (img) img.src = url;
+      if (dl) dl.href = url;
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeImagePreview() {
+      const modal = document.getElementById('imagePreviewModal');
+      if (modal) modal.classList.add('hidden');
+      const img = document.getElementById('imagePreviewSrc');
+      if (img) img.src = '';
+    }
+
+    // 语音播放控制
+    let currentAudio = null;
+    let currentVoiceElement = null;
+
+    function togglePlayVoice(bubbleElement, mediaUrl) {
+      if (!mediaUrl && bubbleElement) {
+        mediaUrl = bubbleElement.getAttribute('data-media-url');
+      }
+      if (!mediaUrl) {
+        alert('该语音暂无可播放的音频流');
+        return;
+      }
+
+      // 如果当前正在播放同一个语音，则暂停
+      if (currentAudio && currentVoiceElement === bubbleElement) {
+        currentAudio.pause();
+        currentAudio = null;
+        currentVoiceElement = null;
+        stopVoiceWaveAnimation(bubbleElement);
+        return;
+      }
+
+      // 如果正在播放其他语音，先停止
+      if (currentAudio) {
+        currentAudio.pause();
+        if (currentVoiceElement) {
+          stopVoiceWaveAnimation(currentVoiceElement);
+        }
+        currentAudio = null;
+        currentVoiceElement = null;
+      }
+
+      try {
+        const audio = new Audio(mediaUrl);
+        currentAudio = audio;
+        currentVoiceElement = bubbleElement;
+        startVoiceWaveAnimation(bubbleElement);
+
+        audio.onended = () => {
+          stopVoiceWaveAnimation(bubbleElement);
+          if (currentAudio === audio) {
+            currentAudio = null;
+            currentVoiceElement = null;
+          }
+        };
+
+        audio.onerror = (e) => {
+          console.warn('音频播放失败', e);
+          stopVoiceWaveAnimation(bubbleElement);
+          if (currentAudio === audio) {
+            currentAudio = null;
+            currentVoiceElement = null;
+          }
+          alert('语音加载或播放失败，可能正在解码或网络超时');
+        };
+
+        audio.play().catch(err => {
+          console.warn('播放被阻止或失败', err);
+          stopVoiceWaveAnimation(bubbleElement);
+          if (currentAudio === audio) {
+            currentAudio = null;
+            currentVoiceElement = null;
+          }
+        });
+      } catch (err) {
+        console.error('创建音频实例失败', err);
+        alert('无法播放此语音: ' + err.message);
+      }
+    }
+
+    function startVoiceWaveAnimation(elem) {
+      if (!elem) return;
+      const svg = elem.querySelector('.voice-wave-anim');
+      if (svg) {
+        svg.classList.add('animate-pulse');
+      }
+    }
+
+    function stopVoiceWaveAnimation(elem) {
+      if (!elem) return;
+      const svg = elem.querySelector('.voice-wave-anim');
+      if (svg) {
+        svg.classList.remove('animate-pulse');
+      }
+    }
+
+
+    // 常用微信 Emoji 列表
+    const wechatEmojis = [
+      '😊', '😂', '🤣', '😍', '😘', '😋', '😜', '😎', '🤩', '🥳', 
+      '😭', '😡', '🤔', '🤫', '😴', '🤮', '🤐', '😷', '🤒', '🤕', 
+      '👍', '👎', '👏', '🙌', '🤝', '🙏', '✌️', '👌', '💪', '👋',
+      '❤️', '💔', '🔥', '✨', '🎉', '🎁', '🎂', '☕', '🍺', '🍻',
+      '🐶', '🐱', '🐮', '🐷', '🐵', '🚀', '💯', '💰', '💵', '🌹'
+    ];
+
+    function initEmojiPicker() {
+      const grid = document.getElementById('emojiGrid');
+      if (!grid || grid.children.length > 0) return;
+      wechatEmojis.forEach(em => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'w-7 h-7 flex items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-[#333333] transition cursor-pointer text-lg';
+        btn.innerText = em;
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          insertEmoji(em);
+        };
+        grid.appendChild(btn);
+      });
+    }
+
+    function toggleEmojiPanel() {
+      initEmojiPicker();
+      const panel = document.getElementById('emojiPickerPanel');
+      if (!panel) return;
+      panel.classList.toggle('hidden');
+    }
+
+    function insertEmoji(emoji) {
+      const input = document.getElementById('chatMessageInput');
+      if (!input) return;
+      const start = input.selectionStart || input.value.length;
+      const end = input.selectionEnd || input.value.length;
+      const val = input.value;
+      input.value = val.substring(0, start) + emoji + val.substring(end);
+      input.selectionStart = input.selectionEnd = start + emoji.length;
+      input.focus();
+      updateChatSendButtonState();
+      const panel = document.getElementById('emojiPickerPanel');
+      if (panel) panel.classList.add('hidden');
+    }
+
+    // 点击空白处关闭表情面板
+    document.addEventListener('click', (e) => {
+      const panel = document.getElementById('emojiPickerPanel');
+      const btn = document.getElementById('emojiToggleBtn');
+      if (panel && !panel.classList.contains('hidden')) {
+        if (!panel.contains(e.target) && (!btn || !btn.contains(e.target))) {
+          panel.classList.add('hidden');
+        }
+      }
+    });
+
+    // 发送图片管理
+    let pendingSendImageData = null;
+
+    function handleChatImageSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        alert('请选择图片文件 (JPG / PNG / GIF / WebP)');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        showSendImageConfirmModal(e.target.result, file.name, (file.size / 1024).toFixed(1) + ' KB');
+      };
+      reader.readAsDataURL(file);
+      event.target.value = '';
+    }
+
+    function showSendImageConfirmModal(dataUri, fileName, fileSizeStr) {
+      pendingSendImageData = dataUri;
+      const modal = document.getElementById('sendImageConfirmModal');
+      const img = document.getElementById('sendImagePreview');
+      const info = document.getElementById('sendImageInfoText');
+      const tip = document.getElementById('sendImageTargetTip');
+      const curSession = allChatSessions.find(s => (s.id || s.ID) === activeChatSession);
+      const targetName = curSession ? (curSession.name || activeChatSession) : activeChatSession;
+
+      if (img) img.src = dataUri;
+      if (info) info.innerText = `${fileName} (${fileSizeStr})`;
+      if (tip) tip.innerText = `发送至会话：${targetName}`;
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeSendImageModal() {
+      const modal = document.getElementById('sendImageConfirmModal');
+      if (modal) modal.classList.add('hidden');
+      pendingSendImageData = null;
+    }
+
+    async function submitSendImage() {
+      if (!activeChatSession || !pendingSendImageData) return;
+      const btn = document.getElementById('submitSendImageBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin mr-1">⏳</span><span>发送中...</span>';
+
+      try {
+        const res = await apiFetch('/api/chats/send_image', {
+          method: 'POST',
+          body: JSON.stringify({
+            session: activeChatSession,
+            image: pendingSendImageData
+          })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `HTTP ${res.status}`);
+        }
+        closeSendImageModal();
+        await loadChatMessages(activeChatSession, true);
+        await loadChatSessions();
+      } catch (err) {
+        alert('发送图片失败: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+          <span>发送图片</span>
+        `;
+      }
+    }
+
+    // 发送语音管理 (TTS 转语音)
+    let defaultTTSVoiceDesign = '';
+
+    async function openSendVoiceModal() {
+      if (!activeChatSession) {
+        alert('请先在左侧选择聊天会话');
+        return;
+      }
+      const modal = document.getElementById('sendVoiceModal');
+      const txtInput = document.getElementById('sendVoiceTextInput');
+      const designInput = document.getElementById('sendVoiceDesignInput');
+      const tip = document.getElementById('voiceTargetTip');
+      const curSession = allChatSessions.find(s => (s.id || s.ID) === activeChatSession);
+      const targetName = curSession ? (curSession.name || activeChatSession) : activeChatSession;
+
+      if (tip) tip.innerText = `发送至会话：${targetName}`;
+      if (txtInput) txtInput.value = '';
+
+      if (!defaultTTSVoiceDesign) {
+        try {
+          const cfg = await apiFetch('/api/chats/tts_config');
+          if (cfg && cfg.voice_design) {
+            defaultTTSVoiceDesign = cfg.voice_design;
+          }
+        } catch (e) {
+          console.warn('获取 TTS 提示词配置失败', e);
+        }
+        if (!defaultTTSVoiceDesign) {
+          defaultTTSVoiceDesign = '一位三十多岁的成熟男性朋友。嗓音富有磁性有质感，但音调自然轻松不沉闷。说话亲切温和、随性自如，语速轻快，带有自然的口语起伏和笑意，像日常随手拿起手机给朋友发微信语音闲聊。';
+        }
+      }
+
+      if (designInput && !designInput.value) {
+        designInput.value = defaultTTSVoiceDesign;
+      }
+
+      if (modal) modal.classList.remove('hidden');
+      if (txtInput) txtInput.focus();
+    }
+
+    function closeSendVoiceModal() {
+      const modal = document.getElementById('sendVoiceModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function resetDefaultVoiceDesign() {
+      const designInput = document.getElementById('sendVoiceDesignInput');
+      if (designInput) designInput.value = defaultTTSVoiceDesign || '一位三十多岁的成熟男性朋友。嗓音富有磁性有质感，但音调自然轻松不沉闷。说话亲切温和、随性自如，语速轻快，带有自然的口语起伏和笑意，像日常随手拿起手机给朋友发微信语音闲聊。';
+    }
+
+    async function submitSendVoice() {
+      if (!activeChatSession) return;
+      const txtInput = document.getElementById('sendVoiceTextInput');
+      const designInput = document.getElementById('sendVoiceDesignInput');
+      const text = txtInput ? txtInput.value.trim() : '';
+      if (!text) {
+        alert('请输入语音内容');
+        if (txtInput) txtInput.focus();
+        return;
+      }
+
+      const btn = document.getElementById('submitSendVoiceBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="animate-spin mr-1">⏳</span><span>合成并发送中...</span>';
+
+      try {
+        const res = await apiFetch('/api/chats/send_voice', {
+          method: 'POST',
+          body: JSON.stringify({
+            session: activeChatSession,
+            text: text,
+            voice_design: designInput ? designInput.value.trim() : ''
+          })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `HTTP ${res.status}`);
+        }
+        closeSendVoiceModal();
+        await loadChatMessages(activeChatSession, true);
+        await loadChatSessions();
+      } catch (err) {
+        alert('语音发送失败: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+          <span>合成并发送</span>
+        `;
+      }
+    }
+
+    // 支持剪贴板粘贴图片直接发送
+    window.addEventListener('load', () => {
+      const chatInput = document.getElementById('chatMessageInput');
+      if (chatInput) {
+        chatInput.addEventListener('paste', function(e) {
+          const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+              const blob = items[i].getAsFile();
+              const reader = new FileReader();
+              reader.onload = function(evt) {
+                showSendImageConfirmModal(evt.target.result, '剪贴板图片.png', (blob.size / 1024).toFixed(1) + ' KB');
+              };
+              reader.readAsDataURL(blob);
+              e.preventDefault();
+              break;
+            }
+          }
+        });
+      }
+    });
+
+        function analyzeCurrentChat() {
+      if (!activeChatSession) return;
+      switchTab('ai');
+      document.getElementById('aiTargetSelect').value = activeChatSession;
+    }
+
+    let selectedClearContextMode = 'ai_memory';
+
+    function openClearContextModal() {
+      if (!activeChatSession) {
+        alert('请先在左侧选择要清理上下文的会话');
+        return;
+      }
+      const curSession = allChatSessions.find(s => (s.id || s.ID) === activeChatSession);
+      const targetName = curSession ? (curSession.name || activeChatSession) : activeChatSession;
+
+      const nameElem = document.getElementById('clearContextSessionName');
+      if (nameElem) {
+        nameElem.textContent = `${targetName} (${activeChatSession})`;
+      }
+
+      // 默认选中 AI 记忆清除
+      selectClearMode('ai_memory');
+      document.getElementById('clearContextModal').classList.remove('hidden');
+    }
+
+    function closeClearContextModal() {
+      const modal = document.getElementById('clearContextModal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function selectClearMode(mode) {
+      selectedClearContextMode = mode;
+      const radioAi = document.getElementById('radioAiMemory');
+      const radioComplete = document.getElementById('radioComplete');
+      const cardAi = document.getElementById('modeCardAiMemory');
+      const cardComplete = document.getElementById('modeCardComplete');
+      const hint = document.getElementById('clearContextHint');
+      const submitBtn = document.getElementById('submitClearContextBtn');
+
+      if (mode === 'ai_memory') {
+        if (radioAi) radioAi.checked = true;
+        if (cardAi) {
+          cardAi.className = 'relative flex items-start p-3.5 rounded-xl border-2 border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 cursor-pointer transition select-none';
+        }
+        if (cardComplete) {
+          cardComplete.className = 'relative flex items-start p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-[#242424] cursor-pointer transition select-none';
+        }
+        if (hint) hint.innerHTML = '💡 将清空大模型短期记忆，<span class="text-blue-600 dark:text-blue-400 font-medium">聊天记录完整保留</span>';
+        if (submitBtn) {
+          submitBtn.className = 'px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition shadow-md shadow-blue-600/20 flex items-center space-x-1.5 cursor-pointer';
+          submitBtn.innerHTML = '<span>确认清除 AI 记忆</span>';
+        }
+      } else {
+        if (radioComplete) radioComplete.checked = true;
+        if (cardAi) {
+          cardAi.className = 'relative flex items-start p-3.5 rounded-xl border-2 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-[#242424] cursor-pointer transition select-none';
+        }
+        if (cardComplete) {
+          cardComplete.className = 'relative flex items-start p-3.5 rounded-xl border-2 border-rose-500 bg-rose-50/50 dark:bg-rose-950/20 cursor-pointer transition select-none';
+        }
+        if (hint) hint.innerHTML = '⚠️ <span class="text-rose-600 dark:text-rose-400 font-medium">聊天记录与 AI 记忆将同时被永久删除，不可撤销</span>';
+        if (submitBtn) {
+          submitBtn.className = 'px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition shadow-md shadow-rose-600/20 flex items-center space-x-1.5 cursor-pointer';
+          submitBtn.innerHTML = '<span>确认彻底清除记录</span>';
+        }
+      }
+    }
+
+    async function submitClearContext() {
+      if (!activeChatSession) return;
+      const targetSession = activeChatSession;
+      const mode = selectedClearContextMode;
+      const submitBtn = document.getElementById('submitClearContextBtn');
+
+      if (mode === 'complete') {
+        const curSession = allChatSessions.find(s => (s.id || s.ID) === activeChatSession);
+        const targetName = curSession ? (curSession.name || activeChatSession) : activeChatSession;
+        if (!confirm(`确定要彻底删除与【${targetName}】的所有聊天记录与 AI 记忆吗？\n\n注意：此操作不可撤销！`)) {
+          return;
+        }
+      }
+
+      const origHtml = submitBtn ? submitBtn.innerHTML : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+          <svg class="animate-spin -ml-1 mr-1.5 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span>正在清理...</span>
+        `;
+      }
+
+      try {
+        const res = await apiFetch('/api/chats/clear_context', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session: targetSession,
+            mode: mode
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || '清理失败');
+        }
+
+        closeClearContextModal();
+        alert(data.message || (mode === 'complete' ? '聊天记录与 AI 记忆已彻底清除' : 'AI 记忆已成功清除，聊天记录已完整保留'));
+
+        // 重新拉取会话与消息
+        if (mode === 'complete') {
+          await loadChatMessages(targetSession, true);
+          await loadChatSessions();
+        } else {
+          await loadChatMessages(targetSession, true);
+        }
+      } catch (err) {
+        alert('清理失败: ' + err.message);
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origHtml;
+        }
+      }
+    }
+
+    function updateChatSendButtonState() {
+      const input = document.getElementById('chatMessageInput');
+      const btn = document.getElementById('chatSendBtn');
+      if (!input || !btn) return;
+      const hasText = input.value.trim().length > 0;
+      if (hasText) {
+        btn.className = 'px-6 py-1.5 rounded-[4px] text-xs font-medium bg-[#07c160] text-white hover:bg-[#06ad56] transition shadow-none flex items-center justify-center cursor-pointer';
+      } else {
+        btn.className = 'px-6 py-1.5 rounded-[4px] text-xs font-medium bg-[#e9e9e9] dark:bg-[#2c2c2c] text-[#191919] dark:text-[#777777] hover:bg-[#e2e2e2] dark:hover:bg-[#383838] transition shadow-none flex items-center justify-center cursor-default';
+      }
+    }
+
+    function handleChatInputKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendAdminChatMessage();
+      }
+    }
+
+    async function sendAdminChatMessage() {
+      if (!activeChatSession) return;
+      const input = document.getElementById('chatMessageInput');
+      const btn = document.getElementById('chatSendBtn');
+      const content = input.value.trim();
+      if (!content) return;
+
+      input.disabled = true;
+      btn.disabled = true;
+      btn.innerHTML = '<span>发送中...</span>';
+
+      try {
+        const res = await apiFetch('/api/chats/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session: activeChatSession,
+            content: content
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || '发送失败');
+        }
+
+        // 清空输入框
+        input.value = '';
+
+        // 立即在右侧聊天界面追加一条微信绿色气泡（黑色文字，直连机器人头像）
+        const stream = document.getElementById('chatMessagesStream');
+        if (stream.innerText.includes('暂未记录对话内容') || stream.innerText.includes('从左侧点击联系人')) {
+          stream.innerHTML = '';
+        }
+
+        const nowIso = new Date().toISOString();
+        const msgRow = document.createElement('div');
+        msgRow.className = 'flex flex-col items-end my-3 select-text';
+        msgRow.innerHTML = `
+          <div class="flex items-center space-x-2 mr-12 mb-1 select-none">
+            <span class="text-[11px] text-[#b2b2b2] dark:text-[#777777] font-mono leading-none">${formatChatTimestamp(nowIso)}</span>
+          </div>
+          <div class="flex items-start justify-end">
+            <div class="relative bg-[#95ec69] dark:bg-[#2e6b38] text-[#000000] dark:text-[#ffffff] px-3.5 py-2 rounded-[4px] text-[14px] leading-relaxed break-words max-w-[70vw] md:max-w-[500px]">
+              <div class="absolute -right-[5px] top-3.5 w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-l-[5px] border-l-[#95ec69] dark:border-l-[#2e6b38]"></div>
+              <div>${escapeHtml(content).replace(/\n/g, '<br>')}</div>
+            </div>
+            <img class="w-9 h-9 rounded-[4px] object-cover shrink-0 ml-3 bg-[#e0e0e0] dark:bg-[#333333]" src="${getBotAvatar()}" alt="Bot" onerror="this.onerror=null; this.src=defaultBotAvatar;">
+          </div>
+        `;
+        stream.appendChild(msgRow);
+        stream.scrollTop = stream.scrollHeight;
+
+        // 更新左侧会话列表中该 session 的最后发言与时间
+        const cur = allChatSessions.find(s => (s.id || s.ID) === activeChatSession);
+        if (cur) {
+          cur.last_message = content;
+          cur.last_time = nowIso;
+          renderChatSessions(allChatSessions);
+        }
+      } catch (e) {
+        alert('发送失败: ' + e.message);
+      } finally {
+        input.disabled = false;
+        btn.disabled = false;
+        btn.innerHTML = '<span>发送</span>';
+        updateChatSendButtonState();
+        input.focus();
+      }
+    }
+
+    // ----------------- Tab 6: 智能洞察 -----------------
+    async function loadAIView() {
+      const select = document.getElementById('aiTargetSelect');
+      select.innerHTML = '';
+      if (allTargets.length === 0) {
+        await loadTargets();
+      }
+      allTargets.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.target_id;
+        opt.innerText = `${t.remark || t.name} (${t.target_type === 'chatroom' ? '群聊' : '好友'})`;
+        select.appendChild(opt);
+      });
+      if (activeChatSession) {
+        select.value = activeChatSession;
+      }
+    }
+
+    async function startAIAnalysis() {
+      const target_id = document.getElementById('aiTargetSelect').value;
+      const type = document.getElementById('aiTypeSelect').value;
+      const prompt_hint = document.getElementById('aiPromptHint').value.trim();
+      const btn = document.getElementById('startAIBtn');
+      const card = document.getElementById('aiResultCard');
+      const content = document.getElementById('aiResultContent');
+      const badge = document.getElementById('aiModelBadge');
+
+      if (!target_id) {
+        alert('请选择目标对象');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ 正在调动 AI 智能分析中，请稍候...</span>';
+      card.classList.remove('hidden');
+      content.innerHTML = '<div class="text-slate-400 animate-pulse text-center py-8">大模型深度解析聊天记录中...</div>';
+
+      try {
+        const res = await apiFetch('/api/ai/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_id, type, prompt_hint })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          badge.innerText = data.model_used || 'AI';
+          content.innerHTML = marked.parse(data.result);
+        } else {
+          content.innerHTML = `<div class="text-rose-500">分析失败: ${data.message || data.error}</div>`;
+        }
+      } catch (e) {
+        content.innerHTML = `<div class="text-rose-500">请求异常: ${e.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>开始一键智能分析</span>';
+      }
+    }
+
+    // ----------------- Tab 7: 运行日志检索 -----------------
+    async function loadLogsView() {
+      loadLogTags();
+      queryLogs(0);
+    }
+
+    async function loadLogTags() {
+      try {
+        const res = await apiFetch('/api/logs/tags');
+        if (!res.ok) return;
+        const tags = await res.json();
+        const sel = document.getElementById('logTag');
+        sel.innerHTML = '<option value="">全部组件</option>';
+        tags.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t;
+          opt.innerText = t;
+          sel.appendChild(opt);
+        });
+      } catch (e) {}
+    }
+
+    async function queryLogs(offset = 0) {
+      logOffset = offset;
+      const kw = document.getElementById('logKeyword').value.trim();
+      const level = document.getElementById('logLevel').value;
+      const tag = document.getElementById('logTag').value;
+      const order = document.getElementById('logOrder').value;
+
+      const url = `/api/logs?keyword=${encodeURIComponent(kw)}&level=${encodeURIComponent(level)}&tag=${encodeURIComponent(tag)}&order=${encodeURIComponent(order)}&limit=${logLimit}&offset=${logOffset}`;
+      
+      try {
+        const res = await apiFetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderLogTerminal(data);
+      } catch (e) {
+        document.getElementById('logTerminal').innerHTML = `<div class="text-rose-500">加载日志失败: ${e.message}</div>`;
+      }
+    }
+
+    function renderLogTerminal(data) {
+      const term = document.getElementById('logTerminal');
+      term.innerHTML = '';
+      document.getElementById('logSummary').innerText = `匹配: ${data.filtered} 行 / 总量: ${data.total} 行`;
+
+      const pageNum = Math.floor(data.offset / data.limit) + 1;
+      const totalPages = Math.ceil(data.filtered / data.limit) || 1;
+      document.getElementById('logPageBadge').innerText = `第 ${pageNum} / ${totalPages} 页`;
+      document.getElementById('logPrevBtn').disabled = data.offset <= 0;
+      document.getElementById('logNextBtn').disabled = data.offset + data.limit >= data.filtered;
+
+      if (!data.items || data.items.length === 0) {
+        term.innerHTML = '<div class="text-slate-500 py-12 text-center">未检索到匹配的日志条目</div>';
+        return;
+      }
+
+      data.items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'py-0.5 hover:bg-slate-900 leading-tight';
+        div.innerHTML = `
+          <span class="text-slate-600 select-none mr-2 font-mono text-[10px]">${item.id}</span>
+          <span class="text-slate-500">${item.timestamp}</span>
+          <span class="${getLevelColor(item.level)} font-bold px-1 rounded">${item.level}</span>
+          <span class="text-blue-400 font-semibold">${item.tag ? '['+item.tag+']' : ''}</span>
+          <span class="text-slate-200">${highlightKeyword(escapeHtml(item.message), document.getElementById('logKeyword').value.trim())}</span>
+        `;
+        term.appendChild(div);
+      });
+    }
+
+    function highlightKeyword(text, kw) {
+      if (!kw) return text;
+      const reg = new RegExp('(' + escapeRegExp(kw) + ')', 'gi');
+      return text.replace(reg, '<mark class="bg-amber-400/30 text-amber-200 px-0.5 rounded">$1</mark>');
+    }
+
+    function logPrevPage() {
+      if (logOffset >= logLimit) queryLogs(logOffset - logLimit);
+    }
+    function logNextPage() {
+      queryLogs(logOffset + logLimit);
+    }
+
+    function toggleAutoRefresh(checked) {
+      if (checked) {
+        logAutoRefreshTimer = setInterval(() => {
+          if (currentTab === 'logs') queryLogs(logOffset);
+        }, 3000);
+      } else {
+        if (logAutoRefreshTimer) {
+          clearInterval(logAutoRefreshTimer);
+          logAutoRefreshTimer = null;
+        }
+      }
+    }
+
+    function exportLogs() {
+      window.open('/api/logs/export', '_blank');
+    }
+
+    // ----------------- Tab 8: 账号安全 -----------------
+    async function handleChangePassword() {
+      const oldPassword = document.getElementById('oldPassword').value;
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+      const errBox = document.getElementById('passwordError');
+      const succBox = document.getElementById('passwordSuccess');
+
+      errBox.classList.add('hidden');
+      succBox.classList.add('hidden');
+
+      if (newPassword !== confirmPassword) {
+        errBox.innerText = '两次输入的新密码不一致';
+        errBox.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        const res = await apiFetch('/api/auth/password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          succBox.innerText = data.message || '密码修改成功，请重新登录';
+          succBox.classList.remove('hidden');
+          setTimeout(() => handleLogout(), 1500);
+        } else {
+          errBox.innerText = data.message || data.error;
+          errBox.classList.remove('hidden');
+        }
+      } catch (e) {
+        errBox.innerText = e.message;
+        errBox.classList.remove('hidden');
+      }
+    }
+
+    // 辅助函数
+    function getLevelColor(lvl) {
+      switch (lvl) {
+        case 'ERROR': return 'text-rose-400 bg-rose-950/50';
+        case 'WARN': return 'text-amber-400 bg-amber-950/50';
+        case 'INFO': return 'text-emerald-400 bg-emerald-950/50';
+        case 'DEBUG': return 'text-slate-400 bg-slate-800';
+        default: return 'text-blue-400';
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function escapeAttr(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function escapeRegExp(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function formatChatTimestamp(ts) {
+      if (!ts) return '';
+      try {
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) {
+          const s = String(ts).replace('T', ' ');
+          return s.length >= 16 ? s.substring(5, 16) : s;
+        }
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        return `${mm}-${dd} ${hh}:${min}`;
+      } catch (e) {
+        return String(ts);
+      }
+    }
+
+    function formatTime(isoStr) {
+      return formatChatTimestamp(isoStr);
+    }
+
+    function toggleDarkMode() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('darkIcon').innerText = isDark ? '☀️' : '🌙';
+    }
+  </script>
+</body>
+</html>

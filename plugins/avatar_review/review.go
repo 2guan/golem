@@ -64,21 +64,22 @@ func (p *AvatarReviewPlugin) downloadImage(urlStr string) ([]byte, error) {
 }
 
 func (p *AvatarReviewPlugin) callVisionLLM(imageBase64, nickname string) (string, error) {
-	prompt := fmt.Sprintf(`你现在是“肉丸”（北京人，老职业电竞选手，幽默嘴碎、毒舌但有分寸感、极其接地气）。
-你的名字叫“肉丸”，平时自称“肉丸”或“我”，只有在明确遇到年轻人、学生或小孩时才可以自称“叔叔”，其它任何正常情况下绝不要自称叔叔。
+	botName := p.getBotName()
+	prompt := fmt.Sprintf(`你现在是“%s”（幽默嘴碎、毒舌但有分寸感、极其接地气）。
+你的名字叫“%s”，平时自称“%s”或“我”，只有在明确遇到年轻人、学生或小孩时才可以自称“叔叔”，其它任何正常情况下绝不要自称叔叔。
 请观察用户的微信头像，对该头像进行一次趣味锐评打分。
 
 必须严格按以下格式输出（直接输出文字，不要带任何 markdown 代码块或 json 格式）：
-🎨【肉丸 · 头像锐评报告】
+🎨【%s · 头像锐评报告】
 👤 评测对象：%s
 💯 综合评分：（0-100分，带一位小数，如 89.5 分）
 🏷️ 专属标签：（如：【微醺老干部】、【疑似网图搬运工】、【纯欲天花板】等极具网感搞笑的4字标签）
 
-🎙️ 肉丸毒舌锐评：
-（40-70字，从构图、色调、人物神态、或者如果是动物/二次元/风景的角度，用老将嘴碎风格幽默吐槽或夸奖，自称肉丸或我，不要自称叔叔）
+🎙️ %s 毒舌锐评：
+（40-70字，从构图、色调、人物神态、或者如果是动物/二次元/风景的角度，用老将嘴碎风格幽默吐槽或夸奖，自称%s或我，不要自称叔叔）
 
 💡 优化/换头像建议：
-（20-40字，给出一条无厘头或实用的穿搭/拍摄/头像升级建议）`, nickname)
+（20-40字，给出一条无厘头或实用的穿搭/拍摄/头像升级建议）`, botName, botName, botName, botName, nickname, botName, botName)
 
 	type imgURL struct {
 		URL string `json:"url"`
@@ -174,8 +175,9 @@ func (p *AvatarReviewPlugin) generateFunReview(nickname string) string {
 	}
 	tag := tags[rand.IntN(len(tags))]
 
+	botName := p.getBotName()
 	comments := []string{
-		"这头像是真的有点东西，色调稳重中透着一丝看透红尘的疲倦，眼神里写满了‘今天谁也别想让我加班’的淡然。老将肉丸看了都得给你点个赞！",
+		fmt.Sprintf("这头像是真的有点东西，色调稳重中透着一丝看透红尘的疲倦，眼神里写满了‘今天谁也别想让我加班’的淡然。%s看了都得给你点个赞！", botName),
 		"好家伙，光线抓得很刁钻，下颌线比我当年的操作思路还要清晰。不过这角度略显矜持，建议多点眼神互动，杀伤力翻倍！",
 		"气场拉满，构图非常有杂志大片内味儿。微表情里带着三分薄凉四分漫不经心，一看就是群里闷声干大事的主儿！",
 		"这头像散发着一种‘我很贵、我很酷、但我也很想喝奶茶’的奇妙反差萌。很有审美，微胖界的彭于晏甘拜下风！",
@@ -189,10 +191,10 @@ func (p *AvatarReviewPlugin) generateFunReview(nickname string) string {
 	}
 	advice := advices[rand.IntN(len(advices))]
 
-	return fmt.Sprintf("🎨【肉丸 · 头像锐评报告】\n"+
+	return fmt.Sprintf("🎨【%s · 头像锐评报告】\n"+
 		"👤 评测对象：%s\n"+
 		"💯 综合评分：%s 分\n"+
 		"🏷️ 专属标签：%s\n\n"+
-		"🎙️ 肉丸毒舌锐评：\n%s\n\n"+
-		"💡 升级优化建议：\n%s", nickname, score, tag, comment, advice)
+		"🎙️ %s 毒舌锐评：\n%s\n\n"+
+		"💡 升级优化建议：\n%s", botName, nickname, score, tag, botName, comment, advice)
 }

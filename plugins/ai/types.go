@@ -8,18 +8,27 @@ import (
 const contactTypeChatroom = contact.ContactType_CONTACT_TYPE_CHATROOM
 
 type contentPart struct {
-	Type     string    `json:"type"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *imageURL `json:"image_url,omitempty"`
+	Type       string      `json:"type"`
+	Text       string      `json:"text,omitempty"`
+	ImageURL   *imageURL   `json:"image_url,omitempty"`
+	InputAudio *inputAudio `json:"input_audio,omitempty"`
 }
 
 type imageURL struct {
 	URL string `json:"url"`
 }
 
+type inputAudio struct {
+	Data   string `json:"data"`
+	Format string `json:"format"`
+}
+
 type openAIMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
+	Role         string     `json:"role"`
+	Content      any        `json:"content"`
+	ToolCalls    []toolCall `json:"tool_calls,omitempty"`
+	ToolCallID   string     `json:"tool_call_id,omitempty"`
+	ExtraContent any        `json:"extra_content,omitempty"`
 }
 
 type incomingMessage struct {
@@ -39,6 +48,10 @@ type incomingMessage struct {
 	IsImage       bool
 	ImageData     []byte
 	ImageMimeType string
+
+	IsVoice     bool
+	VoiceData   []byte
+	VoiceFormat string
 }
 
 type quoteInfo struct {

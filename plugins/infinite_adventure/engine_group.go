@@ -214,7 +214,7 @@ func LaunchSquad(caller plugin.CallerAbility, storage *StorageManager, chatroomI
 
 	sb.WriteString(fmt.Sprintf("🔥 团队默契度：%d%% | 🎒 共享物资：%s\n\n", state.TeamBond, strings.Join(state.Inventory, "、")))
 
-	sb.WriteString("💡【全队战术抉择】（任何队员均可直接回复序号或@肉丸输入骚操作）：\n")
+	sb.WriteString("💡【全队战术抉择】（任何队员均可直接回复序号或@机器人输入自由行动）：\n")
 	for i, opt := range state.Options {
 		sb.WriteString(fmt.Sprintf("%d. %s\n", i+1, opt))
 	}

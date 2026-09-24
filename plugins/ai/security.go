@@ -26,8 +26,8 @@ var (
 
 		// 4. 中文提示词注入与越狱模式 (Chinese prompt injection / jailbreak)
 		regexp.MustCompile(`(?:忽略|无视|丢弃)(?:之前|前面|所有)?(?:的)?(?:提示词|系统提示词|系统指令|指令|设定|规则|约束|限制)`),
-		regexp.MustCompile(`(?:不要|停止|退出|解除)(?:扮演|扮演成|角色扮演).*?肉丸`),
-		regexp.MustCompile(`你现在(?:不再是|不要做).*?肉丸`),
+		regexp.MustCompile(`(?:不要|停止|退出|解除)(?:扮演|扮演成|角色扮演)`),
+		regexp.MustCompile(`你现在(?:不再是|不要做)`),
 		regexp.MustCompile(`(?:解除|突破|无视)(?:所有)?(?:安全|道德|角色|系统)(?:限制|审查|设定)`),
 		regexp.MustCompile(`(?:进入|开启)(?:开发者模式|上帝模式|无审查模式|越狱模式)`),
 		regexp.MustCompile(`(?:输出|打印|显示|复述|告诉我)(?:你的)?(?:系统提示词|system prompt|预设提示词|完整设定|初始指令)`),

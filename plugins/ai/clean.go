@@ -26,7 +26,7 @@ var (
 	leakedMetaRegexes = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(?:system\s+prompt|pre-prompt|initial\s+instructions|prompt\s+constraint)`),
 		regexp.MustCompile(`(?i)the\s+user\s+is\s+(?:trying|engaging|asking|pushing|testing|attempting)`),
-		regexp.MustCompile(`(?i)(?:as\s+肉丸|my\s+character\s+is|i\s+should\s+respond\s+(?:as|in\s+character)|let\s+me\s+respond\s+in\s+character|i\s+need\s+to\s+respond\s+in\s+character|as\s+a\s+\d+[- ]year[- ]old)`),
+		regexp.MustCompile(`(?i)(?:as\s+(?:the\s+)?character|my\s+character\s+is|i\s+should\s+respond\s+(?:as|in\s+character)|let\s+me\s+respond\s+in\s+character|i\s+need\s+to\s+respond\s+in\s+character|as\s+a\s+\d+[- ]year[- ]old)`),
 		regexp.MustCompile(`(?i)(?:looking\s+at\s+this\s+scenario|in\s+this\s+scenario|i\s+should\s+deflect|i\s+should\s+redirect)`),
 		regexp.MustCompile(`(?i)(?:stays?\s+in\s+character|staying\s+in\s+character)`),
 		regexp.MustCompile(`(?i)(?:i\s+need\s+to\s+consider|i\s+must\s+ensure|i\s+should\s+not\s+produce)`),
@@ -39,6 +39,17 @@ var (
 		regexp.MustCompile(`(?i)draft\s+\d+\s*\([^)]*\):`),
 		regexp.MustCompile(`(?i)(?:as\s+an\s+ai|i\'m\s+an\s+ai|i\s+am\s+an\s+ai)`),
 		regexp.MustCompile(`(?i)(?:persona-driven|persona\s+check)`),
+		// 模型风控拦截与拒绝回答检测（支持 MiMo/国内大模型 high risk 与拒绝回复识别）
+		regexp.MustCompile(`(?i)(?:high\s*risk|high_risk)`),
+		regexp.MustCompile(`(?i)(?:对不起|抱歉|非常抱歉|十分抱歉)[，,。\s]*(?:我(?:还)?(?:无法|不能|不可以|无法协助|无法提供|不能提供|无法生成|不能生成|无法创作|不能创作|无法满足|不能满足)|作为(?:一个)?(?:AI|人工智能|语言模型|助手)|由于安全|根据相关)`),
+		regexp.MustCompile(`(?i)(?:我(?:还)?(?:无法|不能|不可以)(?:协助|提供|生成|创作|回答|处理|参与|满足|讨论).*?(?:此类|违规|敏感|露骨|色色|成人|违法|法律法规|准则|安全|政策|不适宜))`),
+		regexp.MustCompile(`(?i)(?:违背|违反|触犯|不符合).*?(?:核心准则|安全政策|准则|政策|法律法规|道德规范|社区规范|使用条款)`),
+		regexp.MustCompile(`(?i)(?:涉及|包含).*?(?:不适宜的主题|敏感内容|违规内容|成人娱乐|色情内容|安全风险|法律风险)`),
+		regexp.MustCompile(`(?i)(?:作为一个人工智能助手|作为人工智能助手|作为一个AI助手|作为AI助手|作为一个语言模型|作为语言模型)`),
+		regexp.MustCompile(`(?i)(?:寻找成人娱乐内容|建议您通过合法和适当的渠道)`),
+		regexp.MustCompile(`(?i)(?:i\s+cannot\s+(?:generate|create|fulfill|assist\s+with|provide)|i\s+am\s+unable\s+to\s+(?:generate|create|fulfill|assist\s+with|provide))`),
+		// 拦截大模型视觉分析/说明书报告输出（如“这是一张...照片，以下是详细描述与分析”、“一、画面描述”）
+		regexp.MustCompile(`(?i)(?:这是一张.*?照片.*?详细描述与分析|以下是详细描述与分析|一、画面描述|画面描述与分析|菜系判断|构图与光线)`),
 	}
 
 	// 沉浸式亲密接招库：在亲密/情色语境下严禁幽默搞笑出戏，以 35 岁偏 1 成熟男人深情、性感、自然的真人微信口吻接招（严禁括号动作与剧本旁白）
@@ -67,12 +78,59 @@ var (
 	}
 )
 
+// 常用日常自然打圆场兜底回复（符合日常真实生活口吻）
+var naturalEverydayDeflections = []string{
+	"刚才手头赶着调个接口走神了，你刚说啥来着？",
+	"刚网卡了一下没刷出来，怎么了？",
+	"刚才切出去看报警日志了，一打岔没反应过来，你说啥？",
+	"手头测着 bug 呢刚没注意看手机，刚说到哪儿了？",
+	"刚才有点分心，没看清，你刚才问啥来着？",
+}
+
+// 图片类日常随和反馈兜底
+var naturalImageDeflections = []string{
+	"刚扫了一眼，挺有意思的啊。",
+	"随手拍的？看着还挺不错。",
+	"大晚上的发这个馋我呢这是。",
+	"看着挺诱人啊，在哪儿拍的？",
+}
+
+// isSensualContext 判断用户输入是否属于明确的调情/亲密/暧昧语境
+func isSensualContext(text string) bool {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return false
+	}
+	sensualKeywords := []string{
+		"亲亲", "亲我", "吻", "抱抱", "搂住", "脱了", "脱光", "摸摸", "摸我", "身上", "锁骨", "胸肌", "腹肌",
+		"下面", "硬了", "做爱", "上床", "开房", "操我", "操你", "要我", "想要你", "好舒服",
+		"撩", "骚", "宝贝", "乖乖", "听话", "惹火", "轻点", "想要", "求你",
+	}
+	for _, kw := range sensualKeywords {
+		if strings.Contains(t, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // getRandomSensualDeflection 随机获取一条深情、性感、不搞笑的沉浸式亲密回复
 func getRandomSensualDeflection() string {
 	if len(sensualDeflections) == 0 {
 		return "……别乱动，看着我的眼睛自己说……"
 	}
 	return sensualDeflections[rand.Intn(len(sensualDeflections))]
+}
+
+// getFallbackReply 根据当前会话与用户语境返回恰当的兜底回复，绝不在日常/排障语境下冒出油腻情话
+func getFallbackReply(userText string, isImage bool) string {
+	if isImage {
+		return naturalImageDeflections[rand.Intn(len(naturalImageDeflections))]
+	}
+	if isSensualContext(userText) {
+		return getRandomSensualDeflection()
+	}
+	return naturalEverydayDeflections[rand.Intn(len(naturalEverydayDeflections))]
 }
 
 // softenHighRiskTerms 将输入消息中直接露骨、容易触发国内云端风控拦截的动作敏感词，平滑转译为富有文学情调的暧昧描写
@@ -144,14 +202,23 @@ func cleanTextMessage(text string) string {
 	// 2. 移除音频控制标签，如 [停顿]、[吸气]
 	res = audioControlTagRegex.ReplaceAllString(res, "")
 
-	// 3. 将微信不存在的伪表情标签映射为微信原生支持的黄脸表情
-	// 微信没有 [笑] 这个表情，输出时微信不会转为表情图，而是原样显示为文字 "[笑]"
-	res = strings.ReplaceAll(res, "[笑]", "[呲牙]")
-	res = strings.ReplaceAll(res, "[轻笑]", "[偷笑]")
-	res = strings.ReplaceAll(res, "[苦笑]", "[捂脸]")
-	res = strings.ReplaceAll(res, "[冷笑]", "[坏笑]")
-	res = strings.ReplaceAll(res, "[哭笑]", "[笑哭]")
-	res = strings.ReplaceAll(res, "[哈哈]", "[大笑]")
+	// 3. 将中括号表情标签转换为真实 Unicode Emoji（优先黄脸表情）
+	res = strings.ReplaceAll(res, "[笑哭]", "😂")
+	res = strings.ReplaceAll(res, "[哭笑]", "😂")
+	res = strings.ReplaceAll(res, "[捂脸]", "🤦‍♂️")
+	res = strings.ReplaceAll(res, "[呲牙]", "😁")
+	res = strings.ReplaceAll(res, "[偷笑]", "🤭")
+	res = strings.ReplaceAll(res, "[轻笑]", "😏")
+	res = strings.ReplaceAll(res, "[坏笑]", "😏")
+	res = strings.ReplaceAll(res, "[笑]", "😄")
+	res = strings.ReplaceAll(res, "[苦笑]", "😅")
+	res = strings.ReplaceAll(res, "[冷笑]", "😏")
+	res = strings.ReplaceAll(res, "[哈哈]", "🤣")
+	res = strings.ReplaceAll(res, "[大笑]", "🤣")
+	res = strings.ReplaceAll(res, "[旺柴]", "🐶")
+	res = strings.ReplaceAll(res, "[吃瓜]", "🍉")
+	res = strings.ReplaceAll(res, "[汗]", "😓")
+	res = strings.ReplaceAll(res, "[握手]", "🤝")
 
 	// 4. 清理多余空行或行首行尾空白
 	lines := strings.Split(res, "\n")

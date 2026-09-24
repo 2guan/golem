@@ -20,9 +20,9 @@ type Config struct {
 	AutoVerify           bool   `toml:"auto_verify" comment:"是否自动通过好友申请"`
 	GreetingEnabled      bool   `toml:"greeting_enabled" comment:"通过后是否自动发送欢迎打招呼"`
 	GreetingDelaySeconds int    `toml:"greeting_delay_seconds" comment:"通过后延迟发送打招呼消息的秒数"`
-	NotifyOwner          bool   `toml:"notify_owner" comment:"通过后是否向主人(管管)发送通知"`
+	NotifyOwner          bool   `toml:"notify_owner" comment:"通过后是否向主人发送通知"`
 	KeywordFilter        string `toml:"keyword_filter" comment:"好友申请附言过滤关键词，若非空则只通过包含该关键词的申请"`
-	CustomGreeting       string `toml:"custom_greeting" comment:"自定义打招呼欢迎语，留空则使用肉丸专属欢迎语"`
+	CustomGreeting       string `toml:"custom_greeting" comment:"自定义打招呼欢迎语，留空则使用默认专属欢迎语"`
 }
 
 // VerifyMsgXML 好友验证消息 XML 结构体
@@ -53,7 +53,7 @@ func (p *AutoAcceptPlugin) GetMetadata() *plugin.Metadata {
 		Name:        "auto_accept",
 		Author:      "Golem Team",
 		Version:     "1.0.0",
-		Description: "自动通过好友申请并发送肉丸专属欢迎语与功能指引",
+		Description: "自动通过好友申请并发送专属欢迎语与功能指引",
 		Priority:    0,
 	}
 }
@@ -177,7 +177,7 @@ func (p *AutoAcceptPlugin) OnEvent(e *plugin.Event) (bool, error) {
 		"nickname", vMsg.FromNickname,
 	)
 
-	// 通知主人 (管管)
+	// 通知主人
 	if p.Config.NotifyOwner {
 		p.notifyOwnerNewFriend(vMsg)
 	}
@@ -269,14 +269,11 @@ func (p *AutoAcceptPlugin) getBotName() string {
 	if p.contact != nil {
 		if self := p.contact.GetSelf(); self != nil {
 			if nick := strings.TrimSpace(self.GetNickname()); nick != "" {
-				if strings.Contains(nick, "肉丸") {
-					return "肉丸"
-				}
 				return nick
 			}
 		}
 	}
-	return "肉丸"
+	return "Bot"
 }
 
 func (p *AutoAcceptPlugin) getAdminName(sourceNickname string) string {
@@ -293,7 +290,7 @@ func (p *AutoAcceptPlugin) getAdminName(sourceNickname string) string {
 			}
 		}
 	}
-	return "管管"
+	return "推荐人"
 }
 
 func (p *AutoAcceptPlugin) buildGreeting(nickname, sourceNickname string) string {

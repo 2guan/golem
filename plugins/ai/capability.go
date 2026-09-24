@@ -21,7 +21,7 @@ type aiChatPayload struct {
 
 // GetCapabilities 声明本插件可被其他插件调用的能力
 func (p *AiPlugin) GetCapabilities() []string {
-	return []string{"ai.chat"}
+	return []string{"ai.chat", "ai.clear_context"}
 }
 
 // OnCall 处理其他插件的调用请求
@@ -44,6 +44,23 @@ func (p *AiPlugin) OnCall(capability string, args map[string]string) (string, []
 			return "", nil, err
 		}
 		return "text", []byte(reply), nil
+	case "ai.clear_context":
+		sessionKey := strings.TrimSpace(args["session"])
+		if sessionKey == "" {
+			return "", nil, fmt.Errorf("ai.clear_context 缺少 session 参数")
+		}
+		mode := strings.TrimSpace(args["mode"])
+		clean := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(sessionKey, "chatroom:"), "private:"), "contact:")
+		keys := []string{sessionKey, clean, "private:" + clean, "chatroom:" + clean}
+		for _, k := range keys {
+			if mode == "complete" {
+				p.purgeSession(k)
+			} else {
+				p.clearContext(k)
+			}
+		}
+		slog.Info("[ai] 收到跨插件能力调用，处理会话上下文", "session", sessionKey, "mode", mode)
+		return "text", []byte("ok"), nil
 	default:
 		return "", nil, fmt.Errorf("不支持的能力: %s", capability)
 	}
@@ -90,6 +107,9 @@ func (p *AiPlugin) chatRaw(system string, messages []openAIMessage, customTimeou
 		reqPayload.Thinking = &ThinkingConfig{Type: "disabled"}
 	}
 
-	slog.Debug("[ai] ai.chat 被调用", "messages", len(full), "timeout", timeout, "thinking", reqPayload.Thinking != nil && reqPayload.Thinking.Type == "enabled")
-	return callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, reqPayload)
+	choiceMsg, err := callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, reqPayload)
+	if err != nil {
+		return "", err
+	}
+	return choiceMsg.Content, nil
 }

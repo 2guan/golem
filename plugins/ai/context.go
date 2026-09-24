@@ -39,10 +39,20 @@ func (p *AiPlugin) appendContext(key string, msg openAIMessage) {
 	if p.sessionTimes == nil {
 		p.sessionTimes = map[string]time.Time{}
 	}
+	if p.contextCutoffs == nil {
+		p.contextCutoffs = map[string]int{}
+	}
 	items := append(p.sessions[key], msg)
 	limit := p.getMaxContextMessages(key)
 	if len(items) > limit {
-		items = items[len(items)-limit:]
+		trimmed := len(items) - limit
+		items = items[trimmed:]
+		if p.contextCutoffs[key] > 0 {
+			p.contextCutoffs[key] -= trimmed
+			if p.contextCutoffs[key] < 0 {
+				p.contextCutoffs[key] = 0
+			}
+		}
 	}
 	p.sessions[key] = items
 	p.sessionTimes[key] = time.Now()
@@ -66,6 +76,8 @@ func (p *AiPlugin) slimContext(key string) {
 					textParts = append(textParts, part.Text)
 				} else if part.Type == "image_url" {
 					textParts = append(textParts, "[图片]")
+				} else if part.Type == "input_audio" {
+					textParts = append(textParts, "[语音]")
 				}
 			}
 			items[i].Content = strings.Join(textParts, " ")
@@ -87,15 +99,45 @@ func (p *AiPlugin) contextMessages(key string) []openAIMessage {
 	if len(items) == 0 {
 		return nil
 	}
+	cutoff := 0
+	if p.contextCutoffs != nil {
+		cutoff = p.contextCutoffs[key]
+	}
+	if cutoff >= len(items) {
+		return nil
+	}
+	if cutoff > 0 {
+		items = items[cutoff:]
+	}
 	return append([]openAIMessage(nil), items...)
 }
 
+// clearContext 仅清空大模型会话短期上下文记忆，完整保留历史聊天记录
 func (p *AiPlugin) clearContext(key string) {
+	p.ensureHistoryLoaded()
+	p.mu.Lock()
+	if p.contextCutoffs == nil {
+		p.contextCutoffs = map[string]int{}
+	}
+	p.contextCutoffs[key] = len(p.sessions[key])
+	if p.sessionTimes != nil {
+		delete(p.sessionTimes, key)
+	}
+	p.mu.Unlock()
+
+	p.saveHistoryAsync()
+}
+
+// purgeSession 彻底删除指定会话的所有历史记录与 AI 记忆
+func (p *AiPlugin) purgeSession(key string) {
 	p.ensureHistoryLoaded()
 	p.mu.Lock()
 	delete(p.sessions, key)
 	if p.sessionTimes != nil {
 		delete(p.sessionTimes, key)
+	}
+	if p.contextCutoffs != nil {
+		delete(p.contextCutoffs, key)
 	}
 	p.mu.Unlock()
 

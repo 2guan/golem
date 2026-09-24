@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -9,6 +10,17 @@ import (
 	"github.com/sbgayhub/golem/sdk/message"
 	"github.com/sbgayhub/golem/sdk/plugin"
 )
+
+func (p *AvatarReviewPlugin) getBotName() string {
+	if p.contact != nil {
+		if self := p.contact.GetSelf(); self != nil {
+			if name := strings.TrimSpace(self.GetNickname()); name != "" {
+				return name
+			}
+		}
+	}
+	return "机器人"
+}
 
 type Config struct {
 	BaseURL string `toml:"base_url" comment:"大模型接口地址"`
@@ -64,9 +76,10 @@ func (p *AvatarReviewPlugin) OnEvent(e *plugin.Event) (bool, error) {
 
 	switch cleanText {
 	case "头像评测帮助", "头像帮助":
-		p.sendText(receiver, "🎨【头像锐评家】用法：\n\n"+
-			"直接发送【评测头像】/【锐评头像】/【头像打分】（可 @肉丸）：\n"+
-			"肉丸会调取你的专属高清头像，从构图、色调、气质等多维度进行 0-100 分毒舌鉴赏与改造建议！")
+		botName := p.getBotName()
+		p.sendText(receiver, fmt.Sprintf("🎨【头像锐评家】用法：\n\n"+
+			"直接发送【评测头像】/【锐评头像】/【头像打分】（可 @%s）：\n"+
+			"我会调取你的专属高清头像，从构图、色调、气质等多维度进行 0-100 分毒舌鉴赏与改造建议！", botName))
 		return true, nil
 
 	case "评测头像", "锐评头像", "看头像", "头像打分", "测头像", "打分头像", "我的头像", "看看头像":

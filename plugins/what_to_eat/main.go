@@ -68,12 +68,12 @@ func (p *WhatToEatPlugin) OnEvent(e *plugin.Event) (bool, error) {
 
 	// 1. 帮助菜单
 	if cleanText == "吃什么帮助" || cleanText == "美食帮助" {
-		p.sendText(receiver, "🍲【肉丸老饕食堂 · 使用指南】\n\n"+
+		p.sendText(receiver, "🍲【老饕食堂 · 使用指南】\n\n"+
 			"1. 发送【今天吃什么】/【吃什么】：自动根据当前饭点（早餐/午餐/下午茶/晚餐/夜宵）推荐招牌美食！\n"+
 			"2. 发送【换一个】/【换道菜】：不合口味随时再换，自动规避近期重复菜品；\n"+
 			"3. 偏好定制：发送【吃什么 减脂】/【吃什么 清淡】/【吃什么 爆辣】/【来点喝的】；\n"+
 			"4. 避坑排除：发送【不想吃面】/【不吃辣】/【不想喝奶茶】精准避雷；\n"+
-			"5. 私房定制：发送【吃什么 胃难受】/【吃什么 预算20】肉丸当场量身定制专属食谱！")
+			"5. 私房定制：发送【吃什么 胃难受】/【吃什么 预算20】当场量身定制专属食谱！")
 		return true, nil
 	}
 
@@ -82,7 +82,7 @@ func (p *WhatToEatPlugin) OnEvent(e *plugin.Event) (bool, error) {
 		mealTime := GetCurrentMealTime(time.Now())
 		dish, ok := p.engine.PickDish(sessionID, mealTime, nil, nil)
 		if !ok {
-			p.sendText(receiver, "⚠️ 哎哟喂，肉丸这会儿把这顿的拿手菜都给你翻了一遍了！来点【吃什么 减脂】或指定口味换个思路呗？")
+			p.sendText(receiver, "⚠️ 哎哟喂，后厨这会儿把这顿的拿手菜都给你翻了一遍了！来点【吃什么 减脂】或指定口味换个思路呗？")
 			return true, nil
 		}
 		card := p.engine.FormatDishCard(dish, mealTime, true)
@@ -149,7 +149,7 @@ func (p *WhatToEatPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	}
 
 	if isComplex && p.caller != nil {
-		p.sendText(receiver, "👨‍🍳 肉丸正在翻老饕食谱，为您琢磨专属搭配...")
+		p.sendText(receiver, "👨‍🍳 正在翻老饕食谱，为您琢磨专属搭配...")
 		go func() {
 			reply, err := RecommendAI(p.caller, cleanText, mealTime)
 			if err != nil {
@@ -203,7 +203,7 @@ func (p *WhatToEatPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	}
 
 	if !ok {
-		p.sendText(receiver, "⚠️ 哎呀，你这要求太刁钻，肉丸后厨库存见底啦！发【吃什么】让肉丸随缘给你来一道？")
+		p.sendText(receiver, "⚠️ 哎呀，你这要求太刁钻，后厨库存见底啦！发【吃什么】随缘给你来一道？")
 		return true, nil
 	}
 

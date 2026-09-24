@@ -22,16 +22,16 @@ func TestHistory_IsolationAndPersistenceAcrossRestart(t *testing.T) {
 		MaxContextMessages: 10,
 	}
 
-	sessionA := "private:wxid_tino"
-	sessionB := "private:wxid_guan"
+	sessionA := "private:wxid_user_a"
+	sessionB := "private:wxid_user_b"
 	sessionGroup := "chatroom:12345678@chatroom"
 
-	// 用户 A (Tino) 发送消息
-	p1.appendContext(sessionA, openAIMessage{Role: "user", Content: "你好肉丸，我是Tino"})
-	p1.appendContext(sessionA, openAIMessage{Role: "assistant", Content: "你好Tino，今天过得怎么样？"})
+	// 用户 A 发送消息
+	p1.appendContext(sessionA, openAIMessage{Role: "user", Content: "你好，我是用户A"})
+	p1.appendContext(sessionA, openAIMessage{Role: "assistant", Content: "你好用户A，今天过得怎么样？"})
 
-	// 用户 B (管管) 发送消息
-	p1.appendContext(sessionB, openAIMessage{Role: "user", Content: "肉丸，今晚去推胸吗？"})
+	// 用户 B 发送消息
+	p1.appendContext(sessionB, openAIMessage{Role: "user", Content: "今晚一起去运动吗？"})
 	p1.appendContext(sessionB, openAIMessage{Role: "assistant", Content: "好嘞，老时间老地方见！"})
 
 	// 群聊 发送消息
@@ -43,10 +43,10 @@ func TestHistory_IsolationAndPersistenceAcrossRestart(t *testing.T) {
 	msgsB := p1.contextMessages(sessionB)
 	msgsGroup := p1.contextMessages(sessionGroup)
 
-	if len(msgsA) != 2 || msgsA[0].Content != "你好肉丸，我是Tino" {
+	if len(msgsA) != 2 || msgsA[0].Content != "你好，我是用户A" {
 		t.Fatalf("sessionA messages mismatch: %v", msgsA)
 	}
-	if len(msgsB) != 2 || msgsB[0].Content != "肉丸，今晚去推胸吗？" {
+	if len(msgsB) != 2 || msgsB[0].Content != "今晚一起去运动吗？" {
 		t.Fatalf("sessionB messages mismatch: %v", msgsB)
 	}
 	if len(msgsGroup) != 2 || msgsGroup[0].Content != "群友: 今天天气真好" {
@@ -77,14 +77,14 @@ func TestHistory_IsolationAndPersistenceAcrossRestart(t *testing.T) {
 	if len(restoredA) != 2 {
 		t.Fatalf("expected 2 messages for sessionA after restart, got %d", len(restoredA))
 	}
-	if restoredA[0].Content != "你好肉丸，我是Tino" || restoredA[1].Content != "你好Tino，今天过得怎么样？" {
+	if restoredA[0].Content != "你好，我是用户A" || restoredA[1].Content != "你好用户A，今天过得怎么样？" {
 		t.Errorf("sessionA content mismatch: %v", restoredA)
 	}
 
 	if len(restoredB) != 2 {
 		t.Fatalf("expected 2 messages for sessionB after restart, got %d", len(restoredB))
 	}
-	if restoredB[0].Content != "肉丸，今晚去推胸吗？" || restoredB[1].Content != "好嘞，老时间老地方见！" {
+	if restoredB[0].Content != "今晚一起去运动吗？" || restoredB[1].Content != "好嘞，老时间老地方见！" {
 		t.Errorf("sessionB content mismatch: %v", restoredB)
 	}
 

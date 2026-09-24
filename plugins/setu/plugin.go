@@ -94,7 +94,7 @@ func (p *SetuPlugin) OnEvent(e *plugin.Event) (bool, error) {
 		return false, nil
 	}
 
-	// 剥离可能存在的 @前缀或后缀（如 "@肉丸叔叔\u2005来点帅哥"）
+	// 剥离可能存在的 @前缀或后缀（如 "@机器人\u2005来点帅哥"）
 	text = cleanCommandText(text)
 	if text == "" {
 		return false, nil
@@ -155,7 +155,7 @@ func (p *SetuPlugin) OnEvent(e *plugin.Event) (bool, error) {
 // cleanCommandText 剥离群聊中可能存在的 @机器人的昵称 前缀与后缀
 func cleanCommandText(content string) string {
 	text := strings.TrimSpace(content)
-	// 剥离开头的 @xxx（如 @肉丸叔叔\u2005）
+	// 剥离开头的 @xxx（如 @机器人\u2005）
 	for strings.HasPrefix(text, "@") {
 		idx := strings.IndexAny(text, " \t\r\n\u2005\u00a0:：,，")
 		if idx > 0 {

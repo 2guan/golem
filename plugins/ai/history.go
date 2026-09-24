@@ -15,8 +15,9 @@ const (
 )
 
 type sessionHistoryEntry struct {
-	UpdatedAt time.Time       `json:"updated_at"`
-	Messages  []openAIMessage `json:"messages"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+	Messages      []openAIMessage `json:"messages"`
+	ContextCutoff int             `json:"context_cutoff,omitempty"`
 }
 
 type historyData struct {
@@ -71,6 +72,9 @@ func (p *AiPlugin) loadHistory() {
 	if p.sessionTimes == nil {
 		p.sessionTimes = map[string]time.Time{}
 	}
+	if p.contextCutoffs == nil {
+		p.contextCutoffs = map[string]int{}
+	}
 
 	now := time.Now()
 	expireDuration := time.Duration(p.getHistoryExpireHours()) * time.Hour
@@ -88,11 +92,25 @@ func (p *AiPlugin) loadHistory() {
 
 		limit := p.getMaxContextMessages(key)
 		msgs := entry.Messages
+		cutoff := entry.ContextCutoff
 		if len(msgs) > limit {
-			msgs = msgs[len(msgs)-limit:]
+			trimmed := len(msgs) - limit
+			msgs = msgs[trimmed:]
+			cutoff -= trimmed
+			if cutoff < 0 {
+				cutoff = 0
+			}
 		}
 
 		p.sessions[key] = msgs
+		if cutoff > len(msgs) {
+			cutoff = len(msgs)
+		}
+		if cutoff > 0 {
+			p.contextCutoffs[key] = cutoff
+		} else {
+			delete(p.contextCutoffs, key)
+		}
 		if !entry.UpdatedAt.IsZero() {
 			p.sessionTimes[key] = entry.UpdatedAt
 		} else {
@@ -112,17 +130,17 @@ func (p *AiPlugin) loadHistory() {
 
 // saveHistoryAsync 异步保存历史会话至本地文件（极速快照+后台安全原子写入）
 func (p *AiPlugin) saveHistoryAsync() {
-	filePath, snapshot, timesSnapshot, expireDuration, seq := p.snapshotHistory()
-	go p.persistHistorySnapshot(filePath, snapshot, timesSnapshot, expireDuration, seq)
+	filePath, snapshot, timesSnapshot, cutoffsSnapshot, expireDuration, seq := p.snapshotHistory()
+	go p.persistHistorySnapshot(filePath, snapshot, timesSnapshot, cutoffsSnapshot, expireDuration, seq)
 }
 
 // saveHistorySync 同步保存历史会话至本地文件
 func (p *AiPlugin) saveHistorySync() {
-	filePath, snapshot, timesSnapshot, expireDuration, seq := p.snapshotHistory()
-	p.persistHistorySnapshot(filePath, snapshot, timesSnapshot, expireDuration, seq)
+	filePath, snapshot, timesSnapshot, cutoffsSnapshot, expireDuration, seq := p.snapshotHistory()
+	p.persistHistorySnapshot(filePath, snapshot, timesSnapshot, cutoffsSnapshot, expireDuration, seq)
 }
 
-func (p *AiPlugin) snapshotHistory() (string, map[string][]openAIMessage, map[string]time.Time, time.Duration, uint64) {
+func (p *AiPlugin) snapshotHistory() (string, map[string][]openAIMessage, map[string]time.Time, map[string]int, time.Duration, uint64) {
 	filePath := p.getHistoryFile()
 	expireDuration := time.Duration(p.getHistoryExpireHours()) * time.Hour
 
@@ -140,13 +158,17 @@ func (p *AiPlugin) snapshotHistory() (string, map[string][]openAIMessage, map[st
 	for k, v := range p.sessionTimes {
 		timesSnapshot[k] = v
 	}
+	cutoffsSnapshot := make(map[string]int, len(p.contextCutoffs))
+	for k, v := range p.contextCutoffs {
+		cutoffsSnapshot[k] = v
+	}
 	p.mu.Unlock()
 
-	return filePath, snapshot, timesSnapshot, expireDuration, seq
+	return filePath, snapshot, timesSnapshot, cutoffsSnapshot, expireDuration, seq
 }
 
 // persistHistorySnapshot 安全原子写入历史文件
-func (p *AiPlugin) persistHistorySnapshot(filePath string, sessions map[string][]openAIMessage, times map[string]time.Time, expireDuration time.Duration, seq uint64) {
+func (p *AiPlugin) persistHistorySnapshot(filePath string, sessions map[string][]openAIMessage, times map[string]time.Time, cutoffs map[string]int, expireDuration time.Duration, seq uint64) {
 	p.historyWriteMu.Lock()
 	defer p.historyWriteMu.Unlock()
 
@@ -173,9 +195,18 @@ func (p *AiPlugin) persistHistorySnapshot(filePath string, sessions map[string][
 			continue
 		}
 
+		cutoff := 0
+		if cutoffs != nil {
+			cutoff = cutoffs[key]
+			if cutoff > len(msgs) {
+				cutoff = len(msgs)
+			}
+		}
+
 		data.Sessions[key] = &sessionHistoryEntry{
-			UpdatedAt: updatedAt,
-			Messages:  msgs,
+			UpdatedAt:     updatedAt,
+			Messages:      msgs,
+			ContextCutoff: cutoff,
 		}
 	}
 

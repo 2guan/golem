@@ -12,39 +12,73 @@ import (
 )
 
 func (p *AiPlugin) buildIncoming(msg *message.Message, self *contact.SelfInfo) (incomingMessage, bool) {
-	isImage := false
-	if msg.GetType() != nil && msg.GetType().GetCode() == message.TypeImage.Code {
-		isImage = true
-	}
-
-	text := messageContent(msg)
-	if strings.TrimSpace(text) == "" {
-		if isImage {
-			text = "请描述并分析这张图片的内容。"
-		} else {
-			return incomingMessage{}, false
-		}
-	}
 	sender := msg.GetSender()
 	if sender == nil || sender.GetUsername() == "" {
 		return incomingMessage{}, false
 	}
 
+	isImage := false
+	isVoice := false
+	if msg.GetType() != nil {
+		switch msg.GetType().GetCode() {
+		case message.TypeImage.Code:
+			isImage = true
+		case message.TypeVoice.Code:
+			isVoice = true
+		}
+	}
+
+	isChatroom := sender.GetType() == contactTypeChatroom
+	speakerName := ""
+	speakerID := ""
+	chatroomName := ""
+	if isChatroom {
+		speakerName = displayMember(msg.GetMember())
+		speakerID = msg.GetMember().GetUsername()
+		chatroomName = displayContact(sender)
+	} else {
+		speakerName = displayContact(sender)
+		speakerID = sender.GetUsername()
+	}
+
+	rawText := messageContent(msg)
+	text := strings.TrimSpace(rawText)
+
+	if isVoice {
+		if isChatroom {
+			text = fmt.Sprintf("[群成员 %s 发送了一条语音消息，请倾听音频并根据群聊情境自然交流]", speakerName)
+		} else {
+			text = "对方发来了一条语音消息，请倾听音频并根据你的人设自然回复。"
+		}
+	} else if isImage {
+		// 如果文本为空，或者只包含图片分辨率/体积（如 [157 x 210] 68.38KB），统一使用明确的图片描述
+		if text == "" || (strings.HasPrefix(text, "[") && strings.Contains(text, "KB")) {
+			if isChatroom {
+				text = fmt.Sprintf("[群成员 %s 发送了一张图片]", speakerName)
+			} else {
+				text = "[对方发来了一张照片/图片，请像微信好友一样随口自然聊两句，严禁输出任何图片分析报告或清单]"
+			}
+		}
+	} else if text == "" {
+		return incomingMessage{}, false
+	}
+
 	in := incomingMessage{
-		Receiver:   sender,
-		Text:       strings.TrimSpace(text),
-		IsChatroom: sender.GetType() == contactTypeChatroom,
-		Quote:      extractQuote(msg),
-		RawMsg:     msg,
-		IsImage:    isImage,
+		Receiver:     sender,
+		Text:         text,
+		IsChatroom:   isChatroom,
+		Quote:        extractQuote(msg),
+		RawMsg:       msg,
+		IsImage:      isImage,
+		IsVoice:      isVoice,
+		SessionKey:   "private:" + sender.GetUsername(),
+		SpeakerName:  speakerName,
+		SpeakerID:    speakerID,
+		ChatroomName: chatroomName,
 	}
 	var extraIdentities []string
 	if in.IsChatroom {
 		in.SessionKey = "chatroom:" + sender.GetUsername()
-		in.ChatroomName = displayContact(sender)
-		in.SpeakerName = displayMember(msg.GetMember())
-		in.SpeakerID = msg.GetMember().GetUsername()
-
 		if p.chatroom != nil && self != nil {
 			if member := p.chatroom.GetMember(sender.GetUsername(), self.GetUsername()); member != nil {
 				if member.DisplayName != "" {
@@ -55,10 +89,6 @@ func (p *AiPlugin) buildIncoming(msg *message.Message, self *contact.SelfInfo) (
 				}
 			}
 		}
-	} else {
-		in.SessionKey = "private:" + sender.GetUsername()
-		in.SpeakerName = displayContact(sender)
-		in.SpeakerID = sender.GetUsername()
 	}
 	in.MentionedBot = isMentionedBot(msg, self, extraIdentities...)
 	in.QuotedBot = isQuotedBot(in.Quote, self, extraIdentities...)
@@ -202,9 +232,6 @@ func selfIdentities(self *contact.SelfInfo, extraIdentities ...string) []string 
 	for _, extra := range extraIdentities {
 		add(extra)
 	}
-	// 默认人设别名（确保当微信个人昵称与人设不同时，群友@人设名依然能够正确响应）
-	add("肉丸叔叔")
-	add("肉丸")
 
 	return identities
 }

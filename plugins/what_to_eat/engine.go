@@ -145,19 +145,19 @@ func (e *Engine) PickDish(sessionID string, mealTime MealTime, includeTags, excl
 func (e *Engine) FormatDishCard(dish *Dish, mealTime MealTime, isReroll bool) string {
 	rerollHeader := ""
 	if isReroll {
-		rerollHeader = "🔄 【肉丸老饕挑剔换菜】：\n得嘞，刚才那道入不了法眼是吧？肉丸给您重新端上一盘：\n\n"
+		rerollHeader = "🔄 【老饕挑剔换菜】：\n得嘞，刚才那道入不了法眼是吧？给您重新端上一盘：\n\n"
 	}
 
 	tagsStr := strings.Join(dish.Tags, " · ")
-	return fmt.Sprintf("%s🍲【肉丸老饕食堂 · 今日专属餐盘】\n\n"+
+	return fmt.Sprintf("%s🍲【老饕食堂 · 今日专属餐盘】\n\n"+
 		"⏰ 饭点时空：%s\n"+
 		"🍽️ 今日招牌：【%s】\n"+
 		"🏷️ 风格属性：%s\n"+
 		"🔥 罪恶评级：%s\n\n"+
 		"📖【菜品档案】：\n%s\n\n"+
-		"🥢【肉丸老饕私房秘籍】：\n%s\n\n"+
+		"🥢【老饕私房秘籍】：\n%s\n\n"+
 		"💡 还不合胃口？发【换一个】随时再换，或发【不想吃面/想吃清淡/吃什么 减脂】精准点菜！",
-		rerollHeader, MealTimeTitle(mealTime), dish.Name, tagsStr, dish.Calories, dish.Description, dish.MeatballTip)
+		rerollHeader, MealTimeTitle(mealTime), dish.Name, tagsStr, dish.Calories, dish.Description, dish.ChefTip)
 }
 
 // RecommendAI 当有复杂自定义需求时调用 ai.chat 定制
@@ -166,17 +166,17 @@ func RecommendAI(caller plugin.CallerAbility, userDemand string, mealTime MealTi
 		return "", fmt.Errorf("caller not available")
 	}
 
-	systemPrompt := fmt.Sprintf(`你是肉丸（35岁北京人，前电竞职业选手，95kg微胖但注重生活品质的美食饕餮，嘴碎幽默但懂吃懂生活。平时自称“肉丸”或“我”，只有在对方明确是年轻学生或小孩时才可以自称“叔叔”，其余情况绝不自称叔叔）。
+	systemPrompt := fmt.Sprintf(`你是一位注重生活品质的美食饕餮（嘴碎幽默但懂吃懂生活）。
 现在是【%s】时间段。
 玩家向你提出专门的美食需求：“%s”。
 
-请以肉丸本人的第一人称口吻（自称肉丸），为他量身推荐1-2种最地道贴合的美食搭配！
+请以老饕第一人称口吻，为他量身推荐1-2种最地道贴合的美食搭配！
 格式要求：
-🍲【肉丸老饕专属定制菜单】
+🍲【老饕专属定制菜单】
 🍽️ 推荐美味：菜品名称
 🏷️ 风味标签：标签1 · 标签2
 📖 为何推荐：幽默风趣地说明为何这道菜完美契合他当下的需求（50-80字）
-🥢 私房吃法：肉丸独家讲究吃法或避坑指南（30-60字）
+🥢 私房吃法：独家讲究吃法或避坑指南（30-60字）
 
 字数控制在200字以内，语气地道生动像熟人老大哥，不要官腔。`, MealTimeTitle(mealTime), userDemand)
 

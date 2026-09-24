@@ -152,7 +152,7 @@ func TestCleanMention(t *testing.T) {
 			expectedHad: true,
 		},
 		{
-			input:       "@肉丸\u2005 开启冒险 街角便利店",
+			input:       "@机器人\u2005 开启冒险 街角便利店",
 			expectedTxt: "开启冒险 街角便利店",
 			expectedHad: true,
 		},
@@ -264,8 +264,8 @@ func TestPairAdventureFreeTurns(t *testing.T) {
 	state := &GroupAdventureState{
 		ChatroomID: cID,
 		Mode:       GroupModePair,
-		PairUser1:  "doubleguan",
-		PairNick1:  "管管",
+		PairUser1:  "wxid_player_a",
+		PairNick1:  "小李",
 		PairUser2:  "Hengguan",
 		PairNick2:  "横贯",
 		TurnCount:  1,
@@ -280,17 +280,17 @@ func TestPairAdventureFreeTurns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if !strings.Contains(resp, "当前故事正由 @管管 与 @横贯 推进中") {
+	if !strings.Contains(resp, "当前故事正由 @小李 与 @横贯 推进中") {
 		t.Errorf("expected third party reminder, got: %s", resp)
 	}
 
-	// 2. 管管发言，直接推动剧情
-	resp, err = ProcessGroupAction(nil, sm, state, "doubleguan", "管管", "我把外套脱下来递给他")
+	// 2. 小李发言，直接推动剧情
+	resp, err = ProcessGroupAction(nil, sm, state, "wxid_player_a", "小李", "我把外套脱下来递给他")
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	if !strings.Contains(resp, "🎬【管管 的行动】") {
-		t.Errorf("expected banner 🎬【管管 的行动】, got: %s", resp)
+	if !strings.Contains(resp, "🎬【小李 的行动】") {
+		t.Errorf("expected banner 🎬【小李 的行动】, got: %s", resp)
 	}
 	if strings.Contains(resp, "第 2 回合") || strings.Contains(resp, "随身物品") {
 		t.Errorf("expected no round number or inventory, got: %s", resp)
@@ -331,8 +331,8 @@ func TestPairAdventureHeartbreakEnding(t *testing.T) {
 	state := &GroupAdventureState{
 		ChatroomID: cID,
 		Mode:       GroupModePair,
-		PairUser1:  "doubleguan",
-		PairNick1:  "管管",
+		PairUser1:  "wxid_player_a",
+		PairNick1:  "小李",
 		PairUser2:  "Hengguan",
 		PairNick2:  "横贯",
 		TeamBond:   15,
@@ -344,7 +344,7 @@ func TestPairAdventureHeartbreakEnding(t *testing.T) {
 	// 本地兜底或AI返回时，假设产生负向心动度导致 TeamBond <= 10
 	// 模拟触发散场终局
 	state.TeamBond = 8
-	resp, err := ProcessGroupAction(nil, sm, state, "doubleguan", "管管", "算了吧，话不投机，我走了")
+	resp, err := ProcessGroupAction(nil, sm, state, "wxid_player_a", "小李", "算了吧，话不投机，我走了")
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -365,8 +365,8 @@ func TestPairAdventureHeartbreakEnding(t *testing.T) {
 func TestExtractTurnOutputByRegex(t *testing.T) {
 	// 用户报错日志中的真实大模型产出（含 partner_words 内未转义双引号、attr_updates 为字符串数组）
 	raw := "```json\n" + `{
-  "story": "管管无声地侧身靠近，将那卷受潮的硝化棉导火索和半壶冷凝水轻轻塞进横贯手中，动作稳得像在交接手术器械。两人的肩膀几乎相抵，在这狭窄的通道里形成一个短暂的支撑三角。滴水声忽然密集起来，头顶传来一声低沉的岩层呻吟。",
-  "partner_words": "横贯迅速接过物资塞进医疗包，同时用空出的手稳住管管的背囊带："水省着喝，导火索……也许能用来做标记。你专心前面，背后交给我。"",
+  "story": "小李无声地侧身靠近，将那卷受潮的硝化棉导火索和半壶冷凝水轻轻塞进横贯手中，动作稳得像在交接手术器械。两人的肩膀几乎相抵，在这狭窄的通道里形成一个短暂的支撑三角。滴水声忽然密集起来，头顶传来一声低沉的岩层呻吟。",
+  "partner_words": "横贯迅速接过物资塞进医疗包，同时用空出的手稳住小李的背囊带："水省着喝，导火索……也许能用来做标记。你专心前面，背后交给我。"",
   "health_delta": 0,
   "bond_delta": 7,
   "heart_rate": 95,
@@ -383,7 +383,7 @@ func TestExtractTurnOutputByRegex(t *testing.T) {
 		t.Fatalf("extractTurnOutputByRegex returned nil for raw json")
 	}
 
-	if !strings.Contains(out.Story, "管管无声地侧身靠近") {
+	if !strings.Contains(out.Story, "小李无声地侧身靠近") {
 		t.Errorf("story extracted incorrectly: %s", out.Story)
 	}
 	if !strings.Contains(out.PartnerWords, "横贯迅速接过物资") {
@@ -404,7 +404,7 @@ func TestExtractTurnOutputByRegex(t *testing.T) {
 	if strings.Contains(sanitized, "```") || strings.Contains(sanitized, "\"story\"") {
 		t.Errorf("sanitized story still contains raw code block: %s", sanitized)
 	}
-	if !strings.Contains(sanitized, "管管无声地侧身靠近") {
+	if !strings.Contains(sanitized, "小李无声地侧身靠近") {
 		t.Errorf("sanitized story does not contain story content: %s", sanitized)
 	}
 }

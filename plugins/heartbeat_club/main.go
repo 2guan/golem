@@ -82,7 +82,7 @@ func (p *HeartbeatClubPlugin) handleChatroomEvent(receiver *contact.Contact, tex
 			"2. 🍸【微醺大冒险】：发送【微醺大冒险】或【酒吧摇骰】；\n"+
 			"3. 🎽【突袭查寝】：发送【宿管查寝】查看本寝室荷尔蒙纪要；\n"+
 			"4. 💘【契合测算】：发送【契合度 @某人】测算双人性张力契合指数！\n\n"+
-			"💡 私聊肉丸发送【心跳沉浸馆】，可开启 1V1 专属电影级沉浸互动剧场（铁馆/酒吧/宿舍）！")
+			"💡 私聊发送【心跳沉浸馆】，可开启 1V1 专属电影级沉浸互动剧场（铁馆/酒吧/宿舍）！")
 		return true, nil
 
 	case strings.Contains(text, "掰手腕") || strings.Contains(text, "比拼身材") || strings.Contains(text, "身材比拼"):
@@ -120,9 +120,9 @@ func (p *HeartbeatClubPlugin) handlePrivateEvent(receiver *contact.Contact, text
 	case "心跳俱乐部", "心跳沉浸馆", "心动俱乐部", "沉浸馆", "心跳帮助":
 		p.sendText(receiver, "🔥【心跳沉浸馆 · 私聊专属 1V1 剧场】\n\n"+
 			"请选择你想进入的心动场景：\n\n"+
-			"1. 🏋️‍♂️ 发送【去健身房】：进入热气与汗水弥漫的铁馆更衣室，让微壮私教肉丸贴身保驾；\n"+
-			"2. 🍸 发送【去小酒馆】：进入暖光爵士清吧，看主理人肉丸微挽衬衫为你摇晃古典杯；\n"+
-			"3. 🎽 发送【回宿舍】：回到熄灯断电后的体校男寝，挤进糙汉室友肉丸温暖的被窝；\n\n"+
+			"1. 🏋️‍♂️ 发送【去健身房】：进入热气与汗水弥漫的铁馆更衣室，让微壮私教贴身保驾；\n"+
+			"2. 🍸 发送【去小酒馆】：进入暖光爵士清吧，看主理人微挽衬衫为你摇晃古典杯；\n"+
+			"3. 🎽 发送【回宿舍】：回到熄灯断电后的体校男寝，挤进糙汉室友温暖的被窝；\n\n"+
 			"💡 进入后，你可以自由打字输入你想做的事情，AI 会根据你的动作推进剧情！随时输入【离开场景】可退出。")
 		return true, nil
 
@@ -149,7 +149,7 @@ func (p *HeartbeatClubPlugin) handlePrivateEvent(receiver *contact.Contact, text
 
 	case "离开场景", "离开", "退出", "结束互动", "退出场景", "退出心跳", "退出沉浸馆", "退出俱乐部", "结束场景", "退出游戏", "结束":
 		if p.sessions.EndSolo(userID) {
-			p.sendText(receiver, "🚪【已离开场景】\n肉丸朝你挥了挥手：“回神了？下回想找刺激或者想喝两杯，随时再来找我。”\n（发送【心跳沉浸馆】可随时再次进入）")
+			p.sendText(receiver, "🚪【已离开场景】\n对方朝你挥了挥手：“回神了？下回想找刺激或者想喝两杯，随时再来找我。”\n（发送【心跳沉浸馆】可随时再次进入）")
 			return true, nil
 		}
 		if text == "离开场景" || text == "退出场景" || text == "退出心跳" || text == "退出沉浸馆" || text == "退出俱乐部" || text == "结束场景" {

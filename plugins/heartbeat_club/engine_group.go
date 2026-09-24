@@ -8,7 +8,7 @@ import (
 // HandleArmWrestle 处理群内【掰手腕 / 比拼身材】
 func HandleArmWrestle(userA, userB string) string {
 	if userB == "" || userA == userB {
-		userB = "肉丸"
+		userB = "神秘群友"
 	}
 
 	powerA := rand.IntN(40) + 60 // 60-99
@@ -37,9 +37,9 @@ func HandleArmWrestle(userA, userB string) string {
 	penalty := penalties[rand.IntN(len(penalties))]
 
 	reviews := []string{
-		"肉丸在旁一边喝着蛋白粉一边打量：“好家伙，这两副身板较起劲来，连我都想上去加一组大重量了！”",
-		"肉丸挑了挑眉：“这力量感真绝了，青筋暴起的样子够man，胜负就在毫厘之间啊！”",
-		"肉丸抱臂笑道：“别死撑了，手心都出汗了吧？赶紧分出胜负，待会儿一起冲凉去！”",
+		"教练在旁一边喝着蛋白粉一边打量：“好家伙，这两副身板较起劲来，连我都想上去加一组大重量了！”",
+		"裁判挑了挑眉：“这力量感真绝了，青筋暴起的样子够man，胜负就在毫厘之间啊！”",
+		"裁判抱臂笑道：“别死撑了，手心都出汗了吧？赶紧分出胜负，待会儿一起冲凉去！”",
 	}
 	review := reviews[rand.IntN(len(reviews))]
 
@@ -51,7 +51,7 @@ func HandleArmWrestle(userA, userB string) string {
 		"• %s 荷尔蒙战力：%d 点\n\n"+
 		"🏆 最终胜者：👑【%s】以绝对力量制霸全场！\n"+
 		"⚠️ 败者大冒险：%s\n\n"+
-		"🎙️ 肉丸老爹锐评：\n%s",
+		"🎙️ 裁判锐评：\n%s",
 		userA, userB, sceneDesc, userA, powerA, userB, powerB, winner, penalty, review)
 }
 
@@ -72,7 +72,7 @@ func HandleBarDare(senderName string) string {
 		"坦白局：在群里坦白你最无法抗拒男人的哪一个瞬间（如：穿白背心、喉结滚动、手臂青筋暴起）。",
 		"大冒险：发送一张你相册里最帅、最具荷尔蒙张力（哪怕是肌肉线条或侧脸）的私藏图/表情包！",
 		"挑选一位群友，隔空对视3秒，并评价他的身材或气质最像哪种烈酒！",
-		"向肉丸发送一句微醺试探情话，看看能不能把这位老江湖撩到脸红心跳！",
+		"向调酒师发送一句微醺试探情话，看看能不能把这位老江湖撩到脸红心跳！",
 	}
 	dare := dares[rand.IntN(len(dares))]
 
@@ -81,7 +81,7 @@ func HandleBarDare(senderName string) string {
 		"🎲 骰子点数：%d 点（微醺度爆表！）\n\n"+
 		"🍷 今夜特供特调：\n%s\n\n"+
 		"🔥 心跳大冒险挑战：\n%s\n\n"+
-		"🎙️ 调酒师肉丸寄语：\n“酒杯一碰，心事落地。既然骰子摇出来了，可别想耍赖蒙混过关啊！”",
+		"🎙️ 调酒师寄语：\n“酒杯一碰，心事落地。既然骰子摇出来了，可别想耍赖蒙混过关啊！”",
 		senderName, dice, drink, dare)
 }
 
@@ -97,7 +97,7 @@ func HandleDormInspection(senderName string) string {
 
 	scores := rand.IntN(30) + 70 // 70-99
 	return fmt.Sprintf("🎽【体校男生宿舍 · 深夜突击查寝通报】\n\n"+
-		"🚨 巡查干事：【肉丸】\n"+
+		"🚨 巡查干事：【宿管】\n"+
 		"🏠 重点核查寝室：【%s 与他的好室友们】\n\n"+
 		"📋 现场抓包纪要：\n%s\n\n"+
 		"📈 本寝荷尔蒙超标指数：%d / 100\n"+
@@ -108,7 +108,7 @@ func HandleDormInspection(senderName string) string {
 // HandleCompatibility 处理【契合度 @某人】
 func HandleCompatibility(userA, userB string) string {
 	if userB == "" || userA == userB {
-		userB = "肉丸"
+		userB = "神秘群友"
 	}
 
 	score := rand.IntN(45) + 55 // 55 - 99%
@@ -133,6 +133,6 @@ func HandleCompatibility(userA, userB string) string {
 		"• 🌡️ 体温共鸣度：%d%%\n"+
 		"• ⚡ 眼神带电率：%d%%\n"+
 		"• 🎽 湿水球衣互穿率：%d%%\n\n"+
-		"🎙️ 肉丸老将撮合点评：\n“这两位站一块儿，光是气场碰撞就够写三万字心动大戏了。别端着了，赶快约个时间铁馆开练或者酒馆碰一杯！”",
+		"🎙️ 撮合点评：\n“这两位站一块儿，光是气场碰撞就够写三万字心动大戏了。别端着了，赶快约个时间铁馆开练或者酒馆碰一杯！”",
 		userA, userB, score, verdict, tempMatch, electric, jersey)
 }

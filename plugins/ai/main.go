@@ -14,10 +14,11 @@ import (
 )
 
 type cachedImage struct {
-	Data      []byte
-	MimeType  string
-	Time      time.Time
-	SpeakerID string
+	Data        []byte
+	MimeType    string
+	Time        time.Time
+	SpeakerID   string
+	SpeakerName string
 }
 
 // AiPlugin AI 插件主结构
@@ -35,7 +36,8 @@ type AiPlugin struct {
 	owner           *contact.Contact
 	mu              sync.Mutex
 	sessions        map[string][]openAIMessage
-	sessionTimes     map[string]time.Time
+	sessionTimes    map[string]time.Time
+	contextCutoffs  map[string]int
 	historyOnce      sync.Once
 	historyWriteMu   sync.Mutex
 	historySeq       uint64
@@ -69,9 +71,10 @@ func newAiPlugin() (*AiPlugin, error) {
 		ConfigAbility: plugin.ConfigAbility[Config]{
 			Config: defaultConfig(),
 		},
-		sessions:     map[string][]openAIMessage{},
-		sessionTimes: map[string]time.Time{},
-		recentImages: map[string]*cachedImage{},
+		sessions:       map[string][]openAIMessage{},
+		sessionTimes:   map[string]time.Time{},
+		contextCutoffs: map[string]int{},
+		recentImages:   map[string]*cachedImage{},
 	}
 	p.ensureHistoryLoaded()
 	if err := registerCommands(p); err != nil {

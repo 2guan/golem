@@ -82,6 +82,17 @@ func (p *DailyGossipPlugin) pushAllChatrooms() {
 	}
 }
 
+func (p *DailyGossipPlugin) getBotName() string {
+	if p.contact != nil {
+		if self := p.contact.GetSelf(); self != nil {
+			if name := strings.TrimSpace(self.GetNickname()); name != "" {
+				return name
+			}
+		}
+	}
+	return "机器人"
+}
+
 func (p *DailyGossipPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	msg := e.Payload.(*plugin.Event_Message).Message
 	if msg == nil {
@@ -120,7 +131,7 @@ func (p *DailyGossipPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	case "八卦帮助", "吃瓜帮助":
 		p.sendText(receiver, "🗞️【群聊八卦晚报说明】\n\n"+
 			"1. 发送【今日八卦】/【群八卦】/【吃瓜日报】：随时生成并查看本群今日专属八卦吃瓜报！\n"+
-			"2. 每晚 22:00 肉丸会自动为全天聊过天的小群排版推送当天的吃瓜晚报！")
+			"2. 每晚 22:00 会自动为全天聊过天的小群排版推送当天的吃瓜晚报！")
 		return true, nil
 
 	case "今日八卦", "群八卦", "吃瓜日报", "八卦日报", "吃瓜晚报", "群报":

@@ -65,22 +65,23 @@ func (p *InfiniteAdventurePlugin) getBotName() string {
 			}
 		}
 	}
-	return "肉丸"
+	return "Bot"
 }
 
 func (p *InfiniteAdventurePlugin) isBot(nameOrID string) bool {
 	if nameOrID == "" {
 		return false
 	}
-	if nameOrID == "肉丸" || nameOrID == "肉丸叔叔" {
-		return true
-	}
 	if p.contact != nil {
 		if self := p.contact.GetSelf(); self != nil {
-			if nameOrID == self.GetUsername() || nameOrID == self.GetNickname() {
+			if nameOrID == self.GetUsername() || nameOrID == self.GetNickname() || nameOrID == self.GetAlias() {
 				return true
 			}
 		}
+	}
+	botName := p.getBotName()
+	if botName != "" && botName != "Bot" && nameOrID == botName {
+		return true
 	}
 	return false
 }
@@ -515,9 +516,9 @@ func (p *InfiniteAdventurePlugin) sendHelp(receiver *contact.Contact, isChatroom
 			"   ② 群友发送【上车】加入队伍（2~5人）；\n"+
 			"   ③ 队长发送【发车】立即启航，并肩推进！\n\n"+
 			"3. 🎮 行动方式：\n"+
-			"   直接回复选项序号（1/2/3），或【@肉丸 输入自由行动】推进故事！\n"+
+			"   直接回复选项序号（1/2/3），或【@机器人 输入自由行动】推进故事！\n"+
 			"   随时发送【小队状态】或【解散队伍】。\n\n"+
-			"💡 私聊肉丸发送【开启冒险 [一句话设定]】可开启 1V1 专属电影级私密故事！")
+			"💡 私聊机器人发送【开启冒险 [一句话设定]】可开启 1V1 专属电影级私密故事！")
 		return
 	}
 

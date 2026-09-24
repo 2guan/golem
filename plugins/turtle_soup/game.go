@@ -53,7 +53,7 @@ func (m *GameManager) StartGame(sessionID string) (*Story, string) {
 	welcome := fmt.Sprintf("🍲【海龟汤 · 第 %d 案：%s】\n\n"+
 		"📜【汤面】：\n%s\n\n"+
 		"💡【玩法说明】：\n"+
-		"大家可以自由提问（如：是他杀吗？死者是人类吗？），肉丸会回答【是】/【不是】/【与此无关】。\n"+
+		"大家可以自由提问（如：是他杀吗？死者是人类吗？），我会回答【是】/【不是】/【与此无关】。\n"+
 		"卡壳了可发【海龟汤提示】，猜不出发【看汤底】揭晓真相！",
 		story.ID, story.Title, story.Surface)
 
@@ -74,10 +74,10 @@ func (m *GameManager) StartCustomStory(sessionID string, story *Story) (*Story, 
 		Solved:         false,
 	}
 
-	welcome := fmt.Sprintf("🍲【肉丸私房海龟汤 · %s】\n\n"+
+	welcome := fmt.Sprintf("🍲【私房海龟汤 · %s】\n\n"+
 		"📜【汤面】：\n%s\n\n"+
 		"💡【玩法说明】：\n"+
-		"这可是肉丸独家压箱底的私房好汤！大家可自由提问（如：是他杀吗？死者是人类吗？），肉丸会回答【是】/【不是】/【与此无关】。\n"+
+		"这可是独家压箱底的私房好汤！大家可自由提问（如：是他杀吗？死者是人类吗？），我会回答【是】/【不是】/【与此无关】。\n"+
 		"卡壳了可发【海龟汤提示】，猜不出发【看汤底】揭晓真相！",
 		story.Title, story.Surface)
 
@@ -210,7 +210,8 @@ func (p *TurtleSoupPlugin) judgeQuestion(session *GameSession, question, speaker
 }
 
 func (p *TurtleSoupPlugin) judgeByAI(story *Story, question, speakerName string) (string, error) {
-	systemPrompt := fmt.Sprintf(`你现在是海龟汤推理派对的主持人“肉丸”（北京人，老电竞职业选手，幽默嘴碎但极有分寸感。自称“肉丸”或“我”，只有在对方明确是年轻学生小孩时才可以自称“叔叔”，其余情况绝不自称叔叔）。
+	botName := p.getBotName()
+	systemPrompt := fmt.Sprintf(`你现在是海龟汤推理派对的主持人“%s”（幽默嘴碎但极有分寸感。自称“%s”或“我”，只有在对方明确是年轻学生小孩时才可以自称“叔叔”，其余情况绝不自称叔叔）。
 当前题目《%s》：
 【汤面】：%s
 【汤底（绝对真相）】：%s
@@ -223,8 +224,8 @@ func (p *TurtleSoupPlugin) judgeByAI(story *Story, question, speakerName string)
    - 【与此无关】：如果玩家提的问题对还原案情没有实质帮助；
    - 【关键线索！】：如果切中了案件的关键转折或破案要害；
    - 【破案了！】：如果玩家基本还原了汤底的核心真相。
-2. 标签后面可附带一句 10-25 字的肉丸语气点评（鼓励、调侃或吐槽，切勿直接剧透关键细节）。
-3. 如果判定是【破案了！】，请在后面公布【真相揭秘】：附带完整汤底并宣布游戏获胜。`, story.Title, story.Surface, story.Bottom)
+2. 标签后面可附带一句 10-25 字的语气点评（鼓励、调侃或吐槽，切勿直接剧透关键细节）。
+3. 如果判定是【破案了！】，请在后面公布【真相揭秘】：附带完整汤底并宣布游戏获胜。`, botName, botName, story.Title, story.Surface, story.Bottom)
 
 	type openAIMsg struct {
 		Role    string `json:"role"`
@@ -272,5 +273,5 @@ func fallbackJudge(story *Story, question string) string {
 	if strings.Contains(q, "梦") || strings.Contains(q, "做梦") {
 		return "【不是】全都是现实中发生的真实经历。"
 	}
-	return "【与此无关】肉丸觉得这个方向离核心稍微有点偏，换个角度试试？"
+	return "【与此无关】感觉这个方向离核心稍微有点偏，换个角度试试？"
 }

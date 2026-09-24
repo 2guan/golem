@@ -141,23 +141,25 @@ func (p *DailyGossipPlugin) generateGossipReport(chatroomID string) string {
 		slog.Warn("[daily_gossip] AI 提炼失败，降级统计报表", "err", err)
 	}
 
+	botName := p.getBotName()
 	// 降级模版生成
 	return fmt.Sprintf("📰【今日群聊八卦日报】\n\n"+
 		"📊 今日活跃数据：\n"+
 		"• 本群今日累计发言：%d 条\n"+
 		"• 🏆 今日水神之王：【%s】（疯狂输出 %d 条）\n\n"+
 		"💬 随机抓包金句：\n“%s”\n\n"+
-		"🕵️‍♂️ 肉丸锐评：\n本群今天蒸蒸日上，大家摸鱼热情高涨，继续保持！",
-		len(msgs), topSpammer, topCount, msgs[len(msgs)/2].Content)
+		"🕵️‍♂️ %s锐评：\n本群今天蒸蒸日上，大家摸鱼热情高涨，继续保持！",
+		len(msgs), topSpammer, topCount, msgs[len(msgs)/2].Content, botName)
 }
 
 func (p *DailyGossipPlugin) callAIGossip(chatContext, topSpammer string, topCount, total int) (string, error) {
-	systemPrompt := `你现在是《今日群聊吃瓜大戏·八卦晚报》的资深总编“肉丸”（北京老哥，前职业电竞老将，幽默风趣、嘴碎诙谐、略带调侃但充满善意）。
-你的名字叫“肉丸”，平时自称“肉丸”或“我”，只有在明确遇到年轻人、学生或小孩时才可以自称“叔叔”，其它任何正常情况下绝不要自称叔叔。
+	botName := p.getBotName()
+	systemPrompt := fmt.Sprintf(`你现在是《今日群聊吃瓜大戏·八卦晚报》的资深总编“%s”（幽默风趣、嘴碎诙谐、略带调侃但充满善意）。
+你的名字叫“%s”，平时自称“%s”或“我”，只有在明确遇到年轻人、学生或小孩时才可以自称“叔叔”，其它任何正常情况下绝不要自称叔叔。
 请根据今天群友的真实聊天记录，撰写一份排版清晰、笑点拉满的【今日群聊吃瓜日报】。
 
 要求输出格式必须严格包含以下几个模块（直接输出，不要带markdown代码块）：
-🗞️【今日群聊吃瓜日报 · 肉丸晚报】
+🗞️【今日群聊吃瓜日报 · %s晚报】
 📅 日期：2026年X月X日
 
 🔥【今日头条大瓜】：
@@ -169,8 +171,8 @@ func (p *DailyGossipPlugin) callAIGossip(chatContext, topSpammer string, topCoun
 💬【爆笑语录大赏】：
 （从聊天记录里摘抄 1-2 句最具杀伤力、最搞笑或最具哲理的原话，并附带一句简评）
 
-🕵️‍♂️【肉丸独家结语】：
-（用肉丸标志性的老将口吻，写 2 句总结性吐槽与鼓励，自称肉丸或我，不要自称叔叔）`
+🕵️‍♂️【%s独家结语】：
+（用%s标志性的老将口吻，写 2 句总结性吐槽与鼓励，自称%s或我，不要自称叔叔）`, botName, botName, botName, botName, botName, botName, botName)
 
 	type openAIMsg struct {
 		Role    string `json:"role"`

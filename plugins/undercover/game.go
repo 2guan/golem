@@ -189,8 +189,8 @@ func (m *GameManager) StartGame(chatroomID, hostID string) (*Game, []*Player, st
 		sb.WriteString(fmt.Sprintf("%d号：%s\n", p.Index, p.Nickname))
 	}
 
-	sb.WriteString("\n⚠️ 肉丸正在给每位玩家【私聊发送专属词语】，请大家查收私聊窗口！\n" +
-		"（如未收到私聊，请确认已添加肉丸好友）\n\n" +
+	sb.WriteString("\n⚠️ 机器人正在给每位玩家【私聊发送专属词语】，请大家查收私聊窗口！\n" +
+		"（如未收到私聊，请确认已添加机器人好友）\n\n" +
 		"🗣️【游戏规则】：\n" +
 		"请大家按顺序依次在群里发一句话描述自己的词语，不要直接说出词汇本身！\n" +
 		"全员描述完毕后，发【进入投票】开始抓卧底！")

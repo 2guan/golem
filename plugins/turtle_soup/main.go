@@ -33,6 +33,17 @@ func (p *TurtleSoupPlugin) GetSubscriptions() []string {
 	}
 }
 
+func (p *TurtleSoupPlugin) getBotName() string {
+	if p.contact != nil {
+		if self := p.contact.GetSelf(); self != nil {
+			if name := strings.TrimSpace(self.GetNickname()); name != "" {
+				return name
+			}
+		}
+	}
+	return "AI 主持人"
+}
+
 func (p *TurtleSoupPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	msg := e.Payload.(*plugin.Event_Message).Message
 	if msg == nil {
@@ -64,10 +75,10 @@ func (p *TurtleSoupPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	switch cleanText {
 	case "海龟汤帮助":
 		p.sendText(receiver, fmt.Sprintf("🍲【海龟汤玩法指南】\n\n"+
-			"📚 当前题库储备：%d 道经典名案 + 肉丸独家私房好汤（随时现熬）！\n\n"+
+			"📚 当前题库储备：%d 道经典名案 + AI 独家私房好汤（随时现熬）！\n\n"+
 			"1. 发送【来碗海龟汤】/【开局海龟汤】：随机抽取一碗经典故事名案；\n"+
-			"2. 发送【肉丸私房汤】/【来碗新汤】：肉丸当场现熬一碗未公开过的独家密案；\n"+
-			"3. 玩家自由提问（如：死者是自杀吗？），肉丸会根据汤底判定【是】/【不是】/【与此无关】/【关键线索！】；\n"+
+			"2. 发送【私房海龟汤】/【来碗新汤】：当场现熬一碗未公开过的独家密案；\n"+
+			"3. 玩家自由提问（如：死者是自杀吗？），主持人会根据汤底判定【是】/【不是】/【与此无关】/【关键线索！】；\n"+
 			"4. 思考受阻时发【海龟汤提示】：获取渐进线索；\n"+
 			"5. 最终还原真相发【看汤底】：揭晓全部故事细节！", len(p.manager.stories)))
 		return true, nil
@@ -77,14 +88,14 @@ func (p *TurtleSoupPlugin) OnEvent(e *plugin.Event) (bool, error) {
 		p.sendText(receiver, welcome)
 		return true, nil
 
-	case "肉丸私房汤", "来碗私房汤", "来碗独家汤", "来碗新汤", "新汤", "来碗原创海龟汤", "原创海龟汤", "新海龟汤":
-		p.sendText(receiver, "⏳ 肉丸正在翻箱倒柜琢磨一碗绝密私房汤，稍等片刻...")
+	case "私房海龟汤", "私房汤", "来碗私房汤", "来碗独家汤", "来碗新汤", "新汤", "来碗原创海龟汤", "原创海龟汤", "新海龟汤":
+		p.sendText(receiver, "⏳ 正在翻箱倒柜琢磨一碗绝密私房汤，稍等片刻...")
 		go func() {
 			story, err := p.generateAIStory(120)
 			if err != nil {
 				slog.Warn("[turtle_soup] 私房出题超时或失败，降级题库随机", "err", err)
 				_, welcome := p.manager.StartGame(sessionID)
-				p.sendText(receiver, "⚠️ 刚才那碗太烧脑没熬好，肉丸先给你端一碗经典名案垫垫：\n\n"+welcome)
+				p.sendText(receiver, "⚠️ 刚才那碗太烧脑没熬好，先给你端一碗经典名案垫垫：\n\n"+welcome)
 				return
 			}
 			_, welcome := p.manager.StartCustomStory(sessionID, story)

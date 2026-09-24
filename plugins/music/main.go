@@ -48,7 +48,7 @@ func (m *MusicPlugin) GetSubscriptions() []string {
 
 func extractSongName(content string) string {
 	text := strings.TrimSpace(content)
-	// 1. 剥离可能存在的 @前缀（如 "@肉丸叔叔\u2005" 或 "@机器人 "）
+	// 1. 剥离可能存在的 @前缀（如 "@某某\u2005" 或 "@机器人 "）
 	if strings.HasPrefix(text, "@") {
 		if idx := strings.IndexAny(text, " \t\r\n\u2005\u00a0"); idx > 0 {
 			text = strings.TrimSpace(text[idx:])

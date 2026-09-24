@@ -14,7 +14,7 @@ type HistoryMsg struct {
 
 // PartnerProfile 冒险搭档人设
 type PartnerProfile struct {
-	Name        string `json:"name"`        // 姓名（如：陆沉、严策、雷蒙德、肉丸等）
+	Name        string `json:"name"`        // 姓名（如：陆沉、严策、雷蒙德等）
 	Age         int    `json:"age"`         // 年龄
 	Identity    string `json:"identity"`    // 身份（如：前特战老兵、义体佣兵、落魄剑修、巡林员）
 	Appearance  string `json:"appearance"`  // 外貌与身材（如：185cm，肩宽窄腰，手臂有旧疤，微哑低音）

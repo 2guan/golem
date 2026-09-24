@@ -482,6 +482,18 @@ func (p *AiPlugin) synthesizeSpeech(text string, customVoiceDesign string) ([]by
 }
 
 // sendVoice 发送原生微信语音消息
+func (p *AiPlugin) botDisplayName() string {
+	if self := p.selfForEvent(); self != nil {
+		if strings.TrimSpace(self.Nickname) != "" {
+			return strings.TrimSpace(self.Nickname)
+		}
+		if strings.TrimSpace(self.Username) != "" {
+			return strings.TrimSpace(self.Username)
+		}
+	}
+	return "Bot"
+}
+
 func (p *AiPlugin) sendVoice(receiver *contact.Contact, silkData []byte, durationMs int) error {
 	if p.message == nil {
 		return errors.New("message ability is not injected")
@@ -503,6 +515,10 @@ func (p *AiPlugin) sendVoice(receiver *contact.Contact, silkData []byte, duratio
 		Data:     &message.Message_Voice{Voice: voice},
 	}
 	_, err := p.message.Send(msg)
+	if err == nil {
+		selfName := p.botDisplayName()
+		slog.Info(fmt.Sprintf("%s -> %s: [语音] (%.1fs)", selfName, receiver.GetNickname(), float64(durationMs)/1000.0))
+	}
 	return err
 }
 
@@ -526,10 +542,13 @@ func (p *AiPlugin) sendSplitText(receiver *contact.Contact, content string) erro
 		parts = []string{parts[0], secondPart}
 	}
 
+	selfName := p.botDisplayName()
+
 	for i, t := range parts {
 		if err := p.sendText(receiver, t); err != nil {
 			return err
 		}
+		slog.Info(fmt.Sprintf("%s -> %s: [文本] %s", selfName, receiver.GetNickname(), t))
 		if i < len(parts)-1 {
 			// 两段之间的中间打字间隔：更充足的真人打字呼吸感（2.5s ~ 4.5s）
 			charCount := len([]rune(t))
@@ -544,10 +563,10 @@ func (p *AiPlugin) sendSplitText(receiver *contact.Contact, content string) erro
 }
 
 // handleAIReply 综合处理文本与语音发送：发语音时不发相同文本，发文本时不发相同语音
-func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userText string) error {
+func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userText string, isVoiceInbound bool) error {
 	reply = stripThinkingContent(reply)
-	if isLeakedReasoningOrRefusal(reply) {
-		reply = getRandomSensualDeflection()
+	if isLeakedReasoningOrRefusal(reply) || strings.TrimSpace(reply) == "" {
+		reply = getFallbackReply(userText, false)
 	}
 
 	ttsCfg := p.configSnapshot().TTS
@@ -600,12 +619,12 @@ func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userTe
 		}
 
 		// 合成并发送语音（不发送相同文本）
-		userWantsCustomVoice := hasCustomVoiceRequest(userText)
 		for _, task := range tasks {
-			if task.text == "" {
+			if strings.TrimSpace(task.text) == "" {
 				continue
 			}
 			finalDesign := task.design
+			userWantsCustomVoice := hasCustomVoiceRequest(userText)
 			if !userWantsCustomVoice {
 				// 除非用户特意要求装扮/模仿别的角色，否则严格忽略模型生成的临时 design，使用系统默认角色
 				finalDesign = ""
@@ -634,8 +653,8 @@ func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userTe
 		return nil
 	}
 
-	// 3. 回复中未包含 <voice> 标签：检查用户是否要求发语音
-	if hasVoiceIntent(userText) {
+	// 3. 回复中未包含 <voice> 标签：检查是否为语音交互或用户要求发语音
+	if isVoiceInbound || hasVoiceIntent(userText) {
 		voiceDesign := ""
 		userWantsCustomVoice := hasCustomVoiceRequest(userText)
 		if userWantsCustomVoice {
@@ -646,7 +665,7 @@ func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userTe
 		if logDesign == "" {
 			logDesign = "[默认配置角色] " + strings.TrimSpace(ttsCfg.VoiceDesign)
 		}
-		slog.Info("[ai] 用户明确要求语音，转为语音发送", "voice_design", logDesign, "custom_requested", userWantsCustomVoice, "text_len", len(cleanText))
+		slog.Info("[ai] 语音交互或用户明确要求语音，转为语音发送", "inbound_voice", isVoiceInbound, "voice_design", logDesign, "custom_requested", userWantsCustomVoice, "text_len", len(cleanText))
 		silkData, durMs, err := p.synthesizeSpeech(cleanText, voiceDesign)
 		if err != nil {
 			slog.Error("[ai] 语音合成失败，降级发送文本", "err", err)
