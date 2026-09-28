@@ -238,6 +238,224 @@ func (p *DashboardPlugin) handlePluginsConfig(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, list)
 }
 
+// ----------------- Model Management Handlers -----------------
+
+func (p *DashboardPlugin) handleModelsConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	resp, err := p.configMgr.ReadModelsConfig()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "获取模型配置失败: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (p *DashboardPlugin) handleModelsSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req SaveModelsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "解析请求参数失败: "+err.Error())
+		return
+	}
+	if len(req.Providers) == 0 {
+		writeError(w, http.StatusBadRequest, "必须至少保留一个大模型配置")
+		return
+	}
+	if err := p.configMgr.SaveModelsConfig(req); err != nil {
+		writeError(w, http.StatusInternalServerError, "保存模型配置失败: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "模型配置与调用顺序保存成功"})
+}
+
+func (p *DashboardPlugin) handleModelTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req TestModelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "解析请求参数失败: "+err.Error())
+		return
+	}
+	latency, err := p.configMgr.TestModelConnection(req)
+	if err != nil {
+		writeJSON(w, http.StatusOK, TestModelResponse{
+			OK:        false,
+			LatencyMS: latency,
+			Model:     req.Model,
+			Error:     err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, TestModelResponse{
+		OK:        true,
+		LatencyMS: latency,
+		Model:     req.Model,
+	})
+}
+
+func (p *DashboardPlugin) handleGetFullTTSConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	resp, err := p.configMgr.ReadTTSConfig()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "获取 TTS 配置失败: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (p *DashboardPlugin) handleSaveTTSConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req SaveTTSConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "解析请求参数失败: "+err.Error())
+		return
+	}
+	if err := p.configMgr.SaveTTSConfig(req); err != nil {
+		writeError(w, http.StatusInternalServerError, "保存 TTS 配置失败: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "TTS 语音模型配置保存成功"})
+}
+
+func (p *DashboardPlugin) handleTestTTS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req TestTTSRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "解析请求参数失败: "+err.Error())
+		return
+	}
+	dataURI, latency, err := p.configMgr.SynthesizeTestAudio(req)
+	if err != nil {
+		writeJSON(w, http.StatusOK, TestTTSResponse{
+			OK:        false,
+			LatencyMS: latency,
+			Error:     err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, TestTTSResponse{
+		OK:        true,
+		LatencyMS: latency,
+		AudioData: dataURI,
+	})
+}
+
+func (p *DashboardPlugin) handleUploadTTSSample(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	// 限制 12MB 上传大小
+	r.Body = http.MaxBytesReader(w, r.Body, 12*1024*1024)
+	if err := r.ParseMultipartForm(12 * 1024 * 1024); err != nil {
+		writeError(w, http.StatusBadRequest, "解析上传文件失败或文件过大(最大支持 10MB): "+err.Error())
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "缺少上传音频文件 (file 字段)")
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext != ".wav" && ext != ".mp3" && ext != ".m4a" && ext != ".ogg" && ext != ".flac" && ext != ".aac" {
+		writeError(w, http.StatusBadRequest, "仅支持上传 WAV、MP3、M4A、OGG、FLAC 音频格式")
+		return
+	}
+
+	dataDir := p.Config.DataDir
+	if dataDir == "" {
+		dataDir = "data"
+	}
+	sampleDir := filepath.Join(dataDir, "tts_samples")
+	if err := os.MkdirAll(sampleDir, 0755); err != nil {
+		writeError(w, http.StatusInternalServerError, "创建样本存储目录失败: "+err.Error())
+		return
+	}
+
+	filename := fmt.Sprintf("sample_%d%s", time.Now().Unix(), ext)
+	savePath := filepath.Join(sampleDir, filename)
+
+	out, err := os.Create(savePath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "保存文件失败: "+err.Error())
+		return
+	}
+	defer out.Close()
+
+	size, err := io.Copy(out, file)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "写入文件内容失败: "+err.Error())
+		return
+	}
+
+	dataURI := LoadAudioFileAsDataURI(savePath)
+
+	writeJSON(w, http.StatusOK, UploadSampleAudioResponse{
+		Path:     savePath,
+		DataURI:  dataURI,
+		Filename: header.Filename,
+		Size:     size,
+	})
+}
+
+// ----------------- Prompts Management Handlers -----------------
+
+func (p *DashboardPlugin) handleGetPromptsConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	resp, err := p.configMgr.ReadPromptsConfig()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "获取提示词配置失败: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (p *DashboardPlugin) handleSavePromptsConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+	var req SavePromptsConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "解析请求参数失败: "+err.Error())
+		return
+	}
+	if len(req.Prompts) == 0 {
+		writeError(w, http.StatusBadRequest, "提示词库不能为空，至少保留一个提示词")
+		return
+	}
+	if err := p.configMgr.SavePromptsConfig(req); err != nil {
+		writeError(w, http.StatusInternalServerError, "保存提示词配置失败: "+err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "提示词配置保存成功"})
+}
+
+
 func (p *DashboardPlugin) handlePluginToggle(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")

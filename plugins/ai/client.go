@@ -122,29 +122,79 @@ func (p *AiPlugin) resolveFallbackProvider(sessionKey string) (*Provider, error)
 	return prov, nil
 }
 
-func (p *AiPlugin) chat(sessionKey string) (string, error) {
-	prov, err := p.resolveProvider(sessionKey)
-	if err != nil {
-		return "", err
-	}
+// resolveProvidersInOrder 解析调用链中按优先级排序的 provider 列表
+func (p *AiPlugin) resolveProvidersInOrder(sessionKey string) []*Provider {
+	config := p.configSnapshot()
+	var order []string
 
-	reply, err := p.chatWithProvider(sessionKey, prov)
-	// 如果主力通道失败或返回风控拦截（如 high risk），尝试无缝切换到备用 provider (Plan B)
-	if err != nil || reply == "" || isLeakedReasoningOrRefusal(reply) {
-		fallbackProv, fbErr := p.resolveFallbackProvider(sessionKey)
-		if fbErr == nil && fallbackProv != nil {
-			slog.Info("[ai] 主力通道触发风控或候选模型均不可用，自动切换到备用 provider 请求", "fallback_provider_model", fallbackProv.Model, "session", sessionKey)
-			fbReply, fbChatErr := p.chatWithProvider(sessionKey, fallbackProv)
-			if fbChatErr == nil && strings.TrimSpace(fbReply) != "" && !isLeakedReasoningOrRefusal(fbReply) {
-				return strings.TrimSpace(fbReply), nil
-			}
-			slog.Warn("[ai] 备用 provider 请求亦未成功", "err", fbChatErr)
+	// 如果当前会话有专属的 active_provider 覆盖，将其放在最高优先级
+	sessionActive := p.getActiveProvider(sessionKey)
+
+	if len(config.ProviderOrder) > 0 {
+		order = append(order, config.ProviderOrder...)
+	} else {
+		if config.ActiveProvider != "" {
+			order = append(order, config.ActiveProvider)
+		}
+		if config.FallbackProvider != "" && config.FallbackProvider != config.ActiveProvider {
+			order = append(order, config.FallbackProvider)
 		}
 	}
 
-	if err != nil {
+	if sessionActive != "" {
+		filtered := []string{sessionActive}
+		for _, name := range order {
+			if name != sessionActive {
+				filtered = append(filtered, name)
+			}
+		}
+		order = filtered
+	}
+
+	var result []*Provider
+	seen := make(map[string]bool)
+	for _, name := range order {
+		name = strings.TrimSpace(name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		if prov, ok := config.Providers[name]; ok && prov != nil {
+			if strings.TrimSpace(prov.BaseURL) != "" && strings.TrimSpace(prov.APIKey) != "" && strings.TrimSpace(prov.Model) != "" {
+				result = append(result, prov)
+			}
+		}
+	}
+	return result
+}
+
+func (p *AiPlugin) chat(sessionKey string) (string, error) {
+	providers := p.resolveProvidersInOrder(sessionKey)
+	if len(providers) == 0 {
+		prov, err := p.resolveProvider(sessionKey)
+		if err != nil {
+			return "", err
+		}
+		providers = []*Provider{prov}
+	}
+
+	var lastErr error
+	for idx, prov := range providers {
+		if idx > 0 {
+			slog.Info("[ai] 前序通道不可用或触发风控，自动顺位降级切换模型", "rank", idx+1, "model", prov.Model, "session", sessionKey)
+		}
+		reply, err := p.chatWithProvider(sessionKey, prov)
+		if err == nil && reply != "" && !isLeakedReasoningOrRefusal(reply) {
+			return strings.TrimSpace(reply), nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+	}
+
+	if lastErr != nil {
 		// 如果是因为风控拦截或敏感话题受限/配额耗尽，兜底使用沉浸式亲密回复，绝不报错破坏体验
-		errMsg := err.Error()
+		errMsg := lastErr.Error()
 		if isLeakedReasoningOrRefusal(errMsg) || strings.Contains(errMsg, "high risk") || strings.Contains(errMsg, "429") || strings.Contains(errMsg, "RESOURCE_EXHAUSTED") {
 			lastText := ""
 			isImg := false
@@ -162,13 +212,13 @@ func (p *AiPlugin) chat(sessionKey string) (string, error) {
 					}
 				}
 			}
-			slog.Warn("[ai] 触发风控或配额耗尽且通道不可用，使用拟人化智能兜底", "err", err, "is_image", isImg, "text", lastText)
+			slog.Warn("[ai] 候选模型均不可用或触发风控，使用拟人化智能兜底", "err", lastErr, "is_image", isImg, "text", lastText)
 			return getFallbackReply(lastText, isImg), nil
 		}
-		return "", err
+		return "", lastErr
 	}
 
-	return reply, nil
+	return "", errors.New("所有配置模型均未返回有效回复")
 }
 
 func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, error) {

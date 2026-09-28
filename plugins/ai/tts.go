@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,9 +30,32 @@ type TTSConfig struct {
 	BaseURL         string `toml:"base_url,omitempty" comment:"TTS 接口地址，为空时复用 active provider"`
 	APIKey          string `toml:"api_key,omitempty" comment:"TTS APIKey，为空时复用 active provider"`
 	Mode            string `toml:"mode,omitempty" comment:"兼容保留"`
+	SampleAudioPath string `toml:"sample_audio_path,omitempty" comment:"VoiceClone 声音克隆参考音频路径"`
 	SilkEncoderPath string `toml:"silk_encoder_path,omitempty" comment:"silk_v3_encoder 路径"`
 	FFmpegPath      string `toml:"ffmpeg_path,omitempty" comment:"ffmpeg 路径"`
 	FFprobePath     string `toml:"ffprobe_path,omitempty" comment:"ffprobe 路径"`
+}
+
+func loadAudioFileAsDataURL(path string) string {
+	if path == "" {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	mime := "audio/wav"
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".mp3" {
+		mime = "audio/mp3"
+	} else if ext == ".ogg" {
+		mime = "audio/ogg"
+	} else if ext == ".m4a" {
+		mime = "audio/mp4"
+	} else if ext == ".flac" {
+		mime = "audio/flac"
+	}
+	return fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(b))
 }
 
 type mimoAudioParam struct {
@@ -179,11 +203,46 @@ func isFillerText(text string) bool {
 	return t == ""
 }
 
-// sanitizeVoiceText 清理语音文本格式并限制长度
+// 允许的微动作与情绪音频标签白名单集合（小米 MiMo TTS 官方原生支持的微动作与微情绪）
+var allowedAudioEmotions = map[string]bool{
+	"[笑]":  true,
+	"[轻笑]": true,
+	"[冷笑]": true,
+	"[苦笑]": true,
+	"[低笑]": true,
+	"[大笑]": true,
+	"[叹气]": true,
+	"[叹息]": true,
+	"[停顿]": true,
+	"[吸气]": true,
+	"[呼气]": true,
+	"[微喘]": true,
+	"[喘息]": true,
+	"[喘气]": true,
+	"[咳嗽]": true,
+	"[清嗓]": true,
+}
+
+var bracketPattern = regexp.MustCompile(`\[([^\[\]]{1,20})\]`)
+
+// sanitizeVoiceText 清理语音文本格式并限制长度：保留动作情绪标签（[笑]、[轻笑]、[停顿]等），剔除非台词的剧本动作旁白
 func sanitizeVoiceText(text string) string {
 	cleanText := strings.TrimSpace(text)
+	// 1. 剔除圆括号内的纯剧本动作神态描写（如 (低头靠近)、（顺势揽住你的腰）等非声音剧本旁白）
+	cleanText = actionNarrationRegex.ReplaceAllString(cleanText, "")
+	cleanText = stageDirectionRegex.ReplaceAllString(cleanText, "")
+
+	// 2. 中括号标签处理：保留合法的微动作与微情绪音频标签（如 [轻笑]、[停顿] 等），剔除非法的外部设定标签
+	cleanText = bracketPattern.ReplaceAllStringFunc(cleanText, func(match string) string {
+		if allowedAudioEmotions[match] {
+			return match
+		}
+		return ""
+	})
+
 	cleanText = strings.ReplaceAll(cleanText, "\n\n", "，")
 	cleanText = strings.ReplaceAll(cleanText, "\n", "，")
+	cleanText = strings.Trim(cleanText, "，, ")
 	runes := []rune(cleanText)
 	if len(runes) > 300 {
 		cleanText = string(runes[:300]) + "..."
@@ -287,8 +346,8 @@ func (p *AiPlugin) requestTTSAudio(endpoint, apiKey string, reqBody mimoTTSReque
 	return choice.Message.Audio.Data, nil
 }
 
-// synthesizeSpeech 调用小米 MiMo TTS 合成语音并转码为腾讯微信 SILK 格式
-func (p *AiPlugin) synthesizeSpeech(text string, customVoiceDesign string) ([]byte, int, error) {
+// synthesizeSpeech 调用小米 MiMo TTS 合成语音并转码为腾讯微信 SILK 格式（严格使用 Web 后端配置的 voice_design）
+func (p *AiPlugin) synthesizeSpeech(text string) ([]byte, int, error) {
 	config := p.configSnapshot()
 	ttsCfg := config.TTS
 
@@ -326,20 +385,26 @@ func (p *AiPlugin) synthesizeSpeech(text string, customVoiceDesign string) ([]by
 		voiceName = "白桦"
 	}
 
-	// 构造消息列表
-	design := strings.TrimSpace(customVoiceDesign)
-	if design == "" {
-		design = strings.TrimSpace(ttsCfg.VoiceDesign)
-	}
+	// 严格使用 Web 后端配置的 VoiceDesign 提示词，彻底杜绝文本模型传入任何临时提示词
+	design := strings.TrimSpace(ttsCfg.VoiceDesign)
 	if design == "" {
 		design = "一位三十多岁的成熟男性朋友。嗓音富有磁性有质感，但音调自然轻松不沉闷。说话亲切温和、随性自如，语速轻快，带有自然的口语起伏和笑意，像日常随手拿起手机给朋友发微信语音闲聊。"
 	}
 
+	isVoiceDesign := strings.Contains(strings.ToLower(model), "voicedesign")
+	isVoiceClone := strings.Contains(strings.ToLower(model), "voiceclone")
+
 	var messages []openAIMessage
-	if design != "" {
-		messages = []openAIMessage{
-			{Role: "user", Content: design},
-			{Role: "assistant", Content: text},
+	if isVoiceDesign || isVoiceClone {
+		if design != "" {
+			messages = []openAIMessage{
+				{Role: "user", Content: design},
+				{Role: "assistant", Content: text},
+			}
+		} else {
+			messages = []openAIMessage{
+				{Role: "assistant", Content: text},
+			}
 		}
 	} else {
 		messages = []openAIMessage{
@@ -354,7 +419,12 @@ func (p *AiPlugin) synthesizeSpeech(text string, customVoiceDesign string) ([]by
 			Format: "wav",
 		},
 	}
-	if model == "mimo-v2.5-tts" {
+	if isVoiceClone {
+		sampleDataURL := loadAudioFileAsDataURL(ttsCfg.SampleAudioPath)
+		if sampleDataURL != "" {
+			reqBody.Audio.Voice = sampleDataURL
+		}
+	} else if !isVoiceDesign && voiceName != "" {
 		reqBody.Audio.Voice = voiceName
 	}
 
@@ -618,28 +688,19 @@ func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userTe
 			time.Sleep(300 * time.Millisecond)
 		}
 
-		// 合成并发送语音（不发送相同文本）
+		// 合成并发送语音（100% 严格使用 Web 后端配置的 voice_design，绝不接受文本大模型传入任何提示词）
 		for _, task := range tasks {
 			if strings.TrimSpace(task.text) == "" {
 				continue
 			}
-			finalDesign := task.design
-			userWantsCustomVoice := hasCustomVoiceRequest(userText)
-			if !userWantsCustomVoice {
-				// 除非用户特意要求装扮/模仿别的角色，否则严格忽略模型生成的临时 design，使用系统默认角色
-				finalDesign = ""
-			} else if finalDesign == "" {
-				// 用户特意要求了角色/音色，但模型未输出 design，从用户文本提取
-				finalDesign = extractVoiceDesign(userText)
-			}
 
 			cleanText := sanitizeVoiceText(task.text)
-			logDesign := finalDesign
-			if logDesign == "" {
-				logDesign = "[默认配置角色] " + strings.TrimSpace(ttsCfg.VoiceDesign)
+			if cleanText == "" {
+				continue
 			}
-			slog.Info("[ai] 模型决策发送语音", "text", cleanText, "voice_design", logDesign, "custom_requested", userWantsCustomVoice)
-			silkData, durMs, err := p.synthesizeSpeech(cleanText, finalDesign)
+
+			slog.Info("[ai] 模型决策发送语音（严格使用 Web 后端提示词）", "text", cleanText, "voice_design", strings.TrimSpace(ttsCfg.VoiceDesign))
+			silkData, durMs, err := p.synthesizeSpeech(cleanText)
 			if err != nil {
 				slog.Error("[ai] 语音合成失败，降级发送文本", "err", err)
 				_ = p.sendText(receiver, task.text)
@@ -655,18 +716,12 @@ func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userTe
 
 	// 3. 回复中未包含 <voice> 标签：检查是否为语音交互或用户要求发语音
 	if isVoiceInbound || hasVoiceIntent(userText) {
-		voiceDesign := ""
-		userWantsCustomVoice := hasCustomVoiceRequest(userText)
-		if userWantsCustomVoice {
-			voiceDesign = extractVoiceDesign(userText)
-		}
 		cleanText := sanitizeVoiceText(reply)
-		logDesign := voiceDesign
-		if logDesign == "" {
-			logDesign = "[默认配置角色] " + strings.TrimSpace(ttsCfg.VoiceDesign)
+		if cleanText == "" {
+			cleanText = reply
 		}
-		slog.Info("[ai] 语音交互或用户明确要求语音，转为语音发送", "inbound_voice", isVoiceInbound, "voice_design", logDesign, "custom_requested", userWantsCustomVoice, "text_len", len(cleanText))
-		silkData, durMs, err := p.synthesizeSpeech(cleanText, voiceDesign)
+		slog.Info("[ai] 语音交互或用户明确要求语音，转为语音发送（严格使用 Web 后端提示词）", "inbound_voice", isVoiceInbound, "voice_design", strings.TrimSpace(ttsCfg.VoiceDesign), "text_len", len(cleanText))
+		silkData, durMs, err := p.synthesizeSpeech(cleanText)
 		if err != nil {
 			slog.Error("[ai] 语音合成失败，降级发送文本", "err", err)
 			return p.sendSplitText(receiver, reply)

@@ -1,12 +1,19 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
@@ -611,6 +618,11 @@ func (cm *ConfigManager) ListPlugins() ([]PluginConfigItem, error) {
 
 	var list []PluginConfigItem
 	for name, section := range root {
+		// AI 智能对话大模型独立为左侧专用模型配置菜单，不在插件管理中显示
+		if name == "ai" {
+			continue
+		}
+
 		meta, hasMeta := PluginMetaMap[name]
 		title := name
 		desc := "暂无插件描述"
@@ -671,13 +683,7 @@ func (cm *ConfigManager) ListPlugins() ([]PluginConfigItem, error) {
 	}
 
 	sort.Slice(list, func(i, j int) bool {
-		// 置顶 ai 和 dashboard
-		if list[i].Name == "ai" {
-			return true
-		}
-		if list[j].Name == "ai" {
-			return false
-		}
+		// 置顶 dashboard
 		if list[i].Name == "dashboard" {
 			return true
 		}
@@ -933,3 +939,818 @@ func (cm *ConfigManager) RemoveTargetOverrideFromAIConfig(targetID string) error
 
 	return os.WriteFile(cm.pluginsConfig, newData, 0644)
 }
+
+// ----------------- 大模型多厂商配置与调用排序管理 -----------------
+
+// GetModelPresets 返回主流厂商与模型预设列表
+func GetModelPresets() []ModelPreset {
+	return []ModelPreset{
+		{
+			ID:           "xiaomi",
+			Name:         "小米 (Xiaomi MiMo)",
+			BaseURL:      "https://token-plan-cn.xiaomimimo.com/v1",
+			DefaultModel: "mimo-v2.6-flash",
+			Models:       []string{"mimo-v2.6-flash", "mimo-v2.5"},
+		},
+		{
+			ID:           "gemini",
+			Name:         "谷歌 (Google Gemini)",
+			BaseURL:      "https://generativelanguage.googleapis.com/v1beta/openai",
+			DefaultModel: "gemini-3.5-flash-lite",
+			Models:       []string{"gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro", "gemma-4-31b-it"},
+		},
+		{
+			ID:           "deepseek",
+			Name:         "深度求索 (DeepSeek)",
+			BaseURL:      "https://api.deepseek.com",
+			DefaultModel: "deepseek-chat",
+			Models:       []string{"deepseek-chat", "deepseek-reasoner"},
+		},
+		{
+			ID:           "openai",
+			Name:         "OpenAI (ChatGPT)",
+			BaseURL:      "https://api.openai.com/v1",
+			DefaultModel: "gpt-4o-mini",
+			Models:       []string{"gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1", "o3-mini"},
+		},
+		{
+			ID:           "moonshot",
+			Name:         "月之暗面 (Moonshot / Kimi)",
+			BaseURL:      "https://api.moonshot.cn/v1",
+			DefaultModel: "moonshot-v1-8k",
+			Models:       []string{"moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"},
+		},
+		{
+			ID:           "zhipu",
+			Name:         "智谱清言 (Zhipu GLM)",
+			BaseURL:      "https://open.bigmodel.cn/api/paas/v4",
+			DefaultModel: "glm-4-flash",
+			Models:       []string{"glm-4-flash", "glm-4-plus", "glm-4-air", "glm-4-long"},
+		},
+		{
+			ID:           "siliconflow",
+			Name:         "硅基流动 (SiliconFlow)",
+			BaseURL:      "https://api.siliconflow.cn/v1",
+			DefaultModel: "deepseek-ai/DeepSeek-V3",
+			Models:       []string{"deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-72B-Instruct"},
+		},
+		{
+			ID:           "aliyun",
+			Name:         "阿里百炼 (Qwen 通义千问)",
+			BaseURL:      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+			DefaultModel: "qwen-plus",
+			Models:       []string{"qwen-plus", "qwen-turbo", "qwen-max"},
+		},
+		{
+			ID:           "ollama",
+			Name:         "本地大模型 (Ollama)",
+			BaseURL:      "http://localhost:11434/v1",
+			DefaultModel: "qwen2.5:7b",
+			Models:       []string{"qwen2.5:7b", "llama3.1:8b", "deepseek-r1:8b"},
+		},
+		{
+			ID:           "custom",
+			Name:         "自定义 (OpenAI 兼容接口)",
+			BaseURL:      "",
+			DefaultModel: "",
+			Models:       []string{},
+		},
+	}
+}
+
+func guessDisplayName(key, baseURL, model string) string {
+	lowerKey := strings.ToLower(key)
+	lowerURL := strings.ToLower(baseURL)
+	lowerModel := strings.ToLower(model)
+
+	if strings.Contains(lowerKey, "xiaomi") || strings.Contains(lowerURL, "xiaomimimo") || strings.Contains(lowerModel, "mimo") {
+		return "小米 (Xiaomi MiMo)"
+	}
+	if strings.Contains(lowerKey, "gemini") || strings.Contains(lowerURL, "googleapis") || strings.Contains(lowerModel, "gemini") || strings.Contains(lowerModel, "gemma") {
+		return "谷歌 (Google Gemini)"
+	}
+	if strings.Contains(lowerKey, "deepseek") || strings.Contains(lowerURL, "deepseek") || strings.Contains(lowerModel, "deepseek") {
+		return "深度求索 (DeepSeek)"
+	}
+	if strings.Contains(lowerKey, "openai") || strings.Contains(lowerURL, "openai.com") || strings.Contains(lowerModel, "gpt") {
+		return "OpenAI (ChatGPT)"
+	}
+	if strings.Contains(lowerKey, "moonshot") || strings.Contains(lowerURL, "moonshot") || strings.Contains(lowerModel, "moonshot") {
+		return "月之暗面 (Moonshot / Kimi)"
+	}
+	if strings.Contains(lowerKey, "zhipu") || strings.Contains(lowerURL, "bigmodel") || strings.Contains(lowerModel, "glm") {
+		return "智谱清言 (Zhipu GLM)"
+	}
+	if strings.Contains(lowerKey, "silicon") || strings.Contains(lowerURL, "siliconflow") {
+		return "硅基流动 (SiliconFlow)"
+	}
+	if strings.Contains(lowerKey, "aliyun") || strings.Contains(lowerURL, "aliyuncs") || strings.Contains(lowerModel, "qwen") {
+		return "阿里百炼 (通义千问)"
+	}
+	if strings.Contains(lowerKey, "ollama") || strings.Contains(lowerURL, "11434") {
+		return "本地大模型 (Ollama)"
+	}
+	return key
+}
+
+// ReadModelsConfig 读取所有大模型配置、调用链排序与预设
+func (cm *ConfigManager) ReadModelsConfig() (*ModelsConfigResponse, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := os.ReadFile(cm.pluginsConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	var root map[string]any
+	if err := toml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("解析 plugins/config.toml 失败: %w", err)
+	}
+
+	resp := &ModelsConfigResponse{
+		Providers: make(map[string]ProviderConfigItem),
+		Presets:   GetModelPresets(),
+	}
+
+	aiSec, ok := root["ai"].(map[string]any)
+	if !ok {
+		return resp, nil
+	}
+	aiCfg, ok := aiSec["config"].(map[string]any)
+	if !ok {
+		return resp, nil
+	}
+
+	if ap, ok := aiCfg["active_provider"].(string); ok {
+		resp.ActiveProvider = ap
+	}
+	if fp, ok := aiCfg["fallback_provider"].(string); ok {
+		resp.FallbackProvider = fp
+	}
+
+	// 读取 provider_order
+	if po, ok := aiCfg["provider_order"].([]any); ok {
+		for _, item := range po {
+			if s, ok := item.(string); ok && s != "" {
+				resp.ProviderOrder = append(resp.ProviderOrder, s)
+			}
+		}
+	}
+
+	// 读取 providers
+	if provs, ok := aiCfg["providers"].(map[string]any); ok {
+		for key, val := range provs {
+			pm, ok := val.(map[string]any)
+			if !ok {
+				continue
+			}
+			item := ProviderConfigItem{
+				Name: key,
+			}
+			if u, ok := pm["base_url"].(string); ok {
+				item.BaseURL = u
+			}
+			if k, ok := pm["api_key"].(string); ok {
+				item.APIKey = k
+			}
+			if m, ok := pm["model"].(string); ok {
+				item.Model = m
+			}
+			if dn, ok := pm["display_name"].(string); ok && dn != "" {
+				item.DisplayName = dn
+			} else {
+				item.DisplayName = guessDisplayName(key, item.BaseURL, item.Model)
+			}
+			if fbm, ok := pm["fallback_models"].([]any); ok {
+				for _, fb := range fbm {
+					if s, ok := fb.(string); ok && s != "" {
+						item.FallbackModels = append(item.FallbackModels, s)
+					}
+				}
+			}
+			if t, ok := pm["http_timeout_seconds"].(int64); ok {
+				item.HTTPTimeoutSeconds = int(t)
+			}
+			if temp, ok := pm["temperature"].(float64); ok {
+				item.Temperature = &temp
+			}
+			if pp, ok := pm["presence_penalty"].(float64); ok {
+				item.PresencePenalty = &pp
+			}
+			resp.Providers[key] = item
+		}
+	}
+
+	// 若未显式配置 provider_order，自动从 active_provider、fallback_provider 建立顺序
+	if len(resp.ProviderOrder) == 0 {
+		seen := make(map[string]bool)
+		if resp.ActiveProvider != "" && resp.Providers[resp.ActiveProvider].Name != "" {
+			resp.ProviderOrder = append(resp.ProviderOrder, resp.ActiveProvider)
+			seen[resp.ActiveProvider] = true
+		}
+		if resp.FallbackProvider != "" && !seen[resp.FallbackProvider] && resp.Providers[resp.FallbackProvider].Name != "" {
+			resp.ProviderOrder = append(resp.ProviderOrder, resp.FallbackProvider)
+			seen[resp.FallbackProvider] = true
+		}
+		for k := range resp.Providers {
+			if !seen[k] {
+				resp.ProviderOrder = append(resp.ProviderOrder, k)
+				seen[k] = true
+			}
+		}
+	}
+
+	return resp, nil
+}
+
+// SaveModelsConfig 保存大模型提供方配置与调用顺序链
+func (cm *ConfigManager) SaveModelsConfig(req SaveModelsRequest) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := os.ReadFile(cm.pluginsConfig)
+	if err != nil {
+		return err
+	}
+
+	var root map[string]any
+	if err := toml.Unmarshal(data, &root); err != nil {
+		return fmt.Errorf("解析 plugins/config.toml 失败: %w", err)
+	}
+
+	aiSec, ok := root["ai"].(map[string]any)
+	if !ok {
+		aiSec = make(map[string]any)
+		root["ai"] = aiSec
+	}
+	aiCfg, ok := aiSec["config"].(map[string]any)
+	if !ok {
+		aiCfg = make(map[string]any)
+		aiSec["config"] = aiCfg
+	}
+
+	// 构建 providers map
+	provsMap := make(map[string]any)
+	for key, item := range req.Providers {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		pm := map[string]any{
+			"base_url": strings.TrimSpace(item.BaseURL),
+			"api_key":  strings.TrimSpace(item.APIKey),
+			"model":    strings.TrimSpace(item.Model),
+		}
+		if len(item.FallbackModels) > 0 {
+			pm["fallback_models"] = item.FallbackModels
+		}
+		if item.HTTPTimeoutSeconds > 0 {
+			pm["http_timeout_seconds"] = item.HTTPTimeoutSeconds
+		}
+		if item.Temperature != nil {
+			pm["temperature"] = *item.Temperature
+		}
+		if item.PresencePenalty != nil {
+			pm["presence_penalty"] = *item.PresencePenalty
+		}
+		provsMap[key] = pm
+	}
+
+	aiCfg["providers"] = provsMap
+	aiCfg["provider_order"] = req.ProviderOrder
+
+	if len(req.ProviderOrder) > 0 {
+		aiCfg["active_provider"] = req.ProviderOrder[0]
+		if len(req.ProviderOrder) > 1 {
+			aiCfg["fallback_provider"] = req.ProviderOrder[1]
+		} else {
+			aiCfg["fallback_provider"] = ""
+		}
+	}
+
+	newData, err := toml.Marshal(root)
+	if err != nil {
+		return fmt.Errorf("序列化 TOML 失败: %w", err)
+	}
+
+	return os.WriteFile(cm.pluginsConfig, newData, 0644)
+}
+
+// TestModelConnection 快速向指定的 BaseURL 与 Model 发起 ping 测试
+func (cm *ConfigManager) TestModelConnection(req TestModelRequest) (int64, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/")
+	if baseURL == "" {
+		return 0, errors.New("缺少 base_url")
+	}
+	if strings.TrimSpace(req.APIKey) == "" {
+		return 0, errors.New("缺少 api_key")
+	}
+	if strings.TrimSpace(req.Model) == "" {
+		return 0, errors.New("缺少 model 名称")
+	}
+
+	endpoint := baseURL + "/chat/completions"
+	payload := map[string]any{
+		"model": req.Model,
+		"messages": []map[string]string{
+			{"role": "user", "content": "ping"},
+		},
+		"max_tokens": 5,
+	}
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return 0, err
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return 0, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+req.APIKey)
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	start := time.Now()
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return 0, fmt.Errorf("连接失败: %w", err)
+	}
+	defer resp.Body.Close()
+	latency := time.Since(start).Milliseconds()
+
+	respBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return latency, fmt.Errorf("接口返回 HTTP %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	return latency, nil
+}
+
+// ----------------- TTS 语音模型独立配置管理 -----------------
+
+// GetTTSPresets 获取 TTS 预设配置方案
+func GetTTSPresets() []TTSPreset {
+	return []TTSPreset{
+		{
+			ID:            "mimo_voicedesign",
+			Name:          "小米 MiMo VoiceDesign (自然拟人人声/人设设计)",
+			Type:          "mimo_voicedesign",
+			BaseURL:       "https://token-plan-cn.xiaomimimo.com/v1",
+			DefaultModel:  "mimo-v2.5-tts-voicedesign",
+			DefaultVoice:  "",
+			DefaultDesign: "一位三十多岁的成熟男性朋友。嗓音富有磁性有质感，但音调自然轻松不沉闷。说话亲切温和、随性自如，语速轻快，带有自然的口语起伏和笑意，像日常随手拿起手机给朋友发微信语音闲聊。",
+			SupportedVoices: []string{},
+		},
+		{
+			ID:            "mimo_standard",
+			Name:          "小米 MiMo 标准发音人 (稳定预置音色)",
+			Type:          "mimo_standard",
+			BaseURL:       "https://token-plan-cn.xiaomimimo.com/v1",
+			DefaultModel:  "mimo-v2.5-tts",
+			DefaultVoice:  "白桦",
+			DefaultDesign: "",
+			SupportedVoices: []string{
+				"冰糖", "茉莉", "苏打", "白桦",
+				"云雀", "赤竹", "冷杉", "青黛",
+				"Mia", "Chloe", "Milo", "Dean",
+				"mimo_default",
+			},
+		},
+		{
+			ID:            "mimo_voiceclone",
+			Name:          "小米 MiMo VoiceClone (克隆复刻自定义人声音色)",
+			Type:          "mimo_voiceclone",
+			BaseURL:       "https://token-plan-cn.xiaomimimo.com/v1",
+			DefaultModel:  "mimo-v2.5-tts-voiceclone",
+			DefaultVoice:  "",
+			DefaultDesign: "日常微信语音交流，语气温和随性自然",
+			SupportedVoices: []string{},
+		},
+		{
+			ID:            "openai",
+			Name:          "OpenAI TTS (Speech API)",
+			Type:          "openai",
+			BaseURL:       "https://api.openai.com/v1",
+			DefaultModel:  "tts-1",
+			DefaultVoice:  "alloy",
+			DefaultDesign: "",
+			SupportedVoices: []string{"alloy", "echo", "fable", "onyx", "nova", "shimmer"},
+		},
+		{
+			ID:            "custom",
+			Name:          "自定义兼容接口",
+			Type:          "custom",
+			BaseURL:       "",
+			DefaultModel:  "",
+			DefaultVoice:  "",
+			DefaultDesign: "",
+			SupportedVoices: []string{},
+		},
+	}
+}
+
+// LoadAudioFileAsDataURI 将本地音频文件读取并转换为 Base64 Data URL (供 VoiceClone 或前端试听)
+func LoadAudioFileAsDataURI(path string) string {
+	if path == "" {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	mime := "audio/wav"
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".mp3" {
+		mime = "audio/mp3"
+	} else if ext == ".ogg" {
+		mime = "audio/ogg"
+	} else if ext == ".m4a" {
+		mime = "audio/mp4"
+	} else if ext == ".flac" {
+		mime = "audio/flac"
+	}
+	return fmt.Sprintf("data:%s;base64,%s", mime, base64.StdEncoding.EncodeToString(b))
+}
+
+// ReadTTSConfig 读取当前 TTS 模型完整配置与预设
+func (cm *ConfigManager) ReadTTSConfig() (*TTSFullConfigResponse, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := os.ReadFile(cm.pluginsConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	var root map[string]any
+	if err := toml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("解析 plugins/config.toml 失败: %w", err)
+	}
+
+	resp := &TTSFullConfigResponse{
+		Enable:          true,
+		Model:           "mimo-v2.5-tts-voicedesign",
+		VoiceDesign:     "一位三十多岁的成熟男性朋友。嗓音富有磁性有质感，但音调自然轻松不沉闷。说话亲切温和、随性自如，语速轻快，带有自然的口语起伏和笑意，像日常随手拿起手机给朋友发微信语音闲聊。",
+		Voice:           "白桦",
+		SilkEncoderPath: "/Volumes/GuanMac/Code/Golem/tools/silk_v3_encoder",
+		FFmpegPath:      "/opt/homebrew/bin/ffmpeg",
+		FFprobePath:     "/opt/homebrew/bin/ffprobe",
+		Presets:         GetTTSPresets(),
+	}
+
+	aiSec, ok := root["ai"].(map[string]any)
+	if !ok {
+		return resp, nil
+	}
+	aiCfg, ok := aiSec["config"].(map[string]any)
+	if !ok {
+		return resp, nil
+	}
+
+	// 尝试从 providers.xiaomi 获取兜底密钥和端点
+	var fallbackBaseURL, fallbackAPIKey string
+	if provs, ok := aiCfg["providers"].(map[string]any); ok {
+		if xm, ok := provs["xiaomi"].(map[string]any); ok {
+			fallbackBaseURL, _ = xm["base_url"].(string)
+			fallbackAPIKey, _ = xm["api_key"].(string)
+		}
+	}
+
+	if ttsSec, ok := aiCfg["tts"].(map[string]any); ok {
+		if en, ok := ttsSec["enable"].(bool); ok {
+			resp.Enable = en
+		}
+		if m, ok := ttsSec["model"].(string); ok && m != "" {
+			resp.Model = m
+		}
+		if vd, ok := ttsSec["voice_design"].(string); ok {
+			resp.VoiceDesign = vd
+		}
+		if v, ok := ttsSec["voice"].(string); ok {
+			resp.Voice = v
+		}
+		if u, ok := ttsSec["base_url"].(string); ok && u != "" {
+			resp.BaseURL = u
+		}
+		if k, ok := ttsSec["api_key"].(string); ok && k != "" {
+			resp.APIKey = k
+		}
+		if se, ok := ttsSec["silk_encoder_path"].(string); ok && se != "" {
+			resp.SilkEncoderPath = se
+		}
+		if sap, ok := ttsSec["sample_audio_path"].(string); ok {
+			resp.SampleAudioPath = sap
+			if sap != "" {
+				if fi, err := os.Stat(sap); err == nil {
+					resp.SampleAudioName = filepath.Base(sap)
+					resp.SampleAudioSize = fi.Size()
+					if fi.Size() <= 12*1024*1024 {
+						resp.SampleAudioData = LoadAudioFileAsDataURI(sap)
+					}
+				}
+			}
+		}
+		if ff, ok := ttsSec["ffmpeg_path"].(string); ok && ff != "" {
+			resp.FFmpegPath = ff
+		}
+		if fp, ok := ttsSec["ffprobe_path"].(string); ok && fp != "" {
+			resp.FFprobePath = fp
+		}
+	}
+
+	if resp.BaseURL == "" {
+		resp.BaseURL = fallbackBaseURL
+	}
+	if resp.APIKey == "" {
+		resp.APIKey = fallbackAPIKey
+	}
+
+	return resp, nil
+}
+
+// SaveTTSConfig 保存 TTS 模型各项配置到 plugins/config.toml
+func (cm *ConfigManager) SaveTTSConfig(req SaveTTSConfigRequest) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := os.ReadFile(cm.pluginsConfig)
+	if err != nil {
+		return err
+	}
+
+	var root map[string]any
+	if err := toml.Unmarshal(data, &root); err != nil {
+		return fmt.Errorf("解析 plugins/config.toml 失败: %w", err)
+	}
+
+	aiSec, ok := root["ai"].(map[string]any)
+	if !ok {
+		aiSec = make(map[string]any)
+		root["ai"] = aiSec
+	}
+	aiCfg, ok := aiSec["config"].(map[string]any)
+	if !ok {
+		aiCfg = make(map[string]any)
+		aiSec["config"] = aiCfg
+	}
+
+	ttsMap := map[string]any{
+		"enable":            req.Enable,
+		"model":             strings.TrimSpace(req.Model),
+		"voice_design":      strings.TrimSpace(req.VoiceDesign),
+		"voice":             strings.TrimSpace(req.Voice),
+		"base_url":          strings.TrimSpace(req.BaseURL),
+		"api_key":           strings.TrimSpace(req.APIKey),
+		"sample_audio_path": strings.TrimSpace(req.SampleAudioPath),
+		"silk_encoder_path": strings.TrimSpace(req.SilkEncoderPath),
+		"ffmpeg_path":       strings.TrimSpace(req.FFmpegPath),
+		"ffprobe_path":      strings.TrimSpace(req.FFprobePath),
+	}
+
+	aiCfg["tts"] = ttsMap
+
+	newData, err := toml.Marshal(root)
+	if err != nil {
+		return fmt.Errorf("序列化 TOML 失败: %w", err)
+	}
+
+	return os.WriteFile(cm.pluginsConfig, newData, 0644)
+}
+
+// SynthesizeTestAudio 在线合成测试音频并返回 Base64 Data URI 与耗时
+func (cm *ConfigManager) SynthesizeTestAudio(req TestTTSRequest) (string, int64, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(req.BaseURL), "/")
+	if baseURL == "" {
+		return "", 0, errors.New("缺少 base_url")
+	}
+	if strings.TrimSpace(req.APIKey) == "" {
+		return "", 0, errors.New("缺少 api_key")
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		text = "嗨，收到你的消息了，这会儿刚好得空，听听看我这个声音怎么样？"
+	}
+
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		model = "mimo-v2.5-tts-voicedesign"
+	}
+
+	start := time.Now()
+
+	// 1. OpenAI 语音格式
+	if strings.HasSuffix(baseURL, "/audio/speech") || model == "tts-1" || model == "tts-1-hd" {
+		endpoint := baseURL
+		if !strings.HasSuffix(endpoint, "/audio/speech") {
+			endpoint = baseURL + "/audio/speech"
+		}
+		voice := req.Voice
+		if voice == "" {
+			voice = "alloy"
+		}
+		payload := map[string]any{
+			"model": model,
+			"input": text,
+			"voice": voice,
+		}
+		jsonBytes, err := json.Marshal(payload)
+		if err != nil {
+			return "", 0, err
+		}
+		httpReq, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(jsonBytes))
+		if err != nil {
+			return "", 0, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+req.APIKey)
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return "", 0, fmt.Errorf("调用 OpenAI TTS 失败: %w", err)
+		}
+		defer resp.Body.Close()
+		latency := time.Since(start).Milliseconds()
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			return "", latency, fmt.Errorf("接口返回 HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+		}
+		dataURI := fmt.Sprintf("data:audio/mp3;base64,%s", base64.StdEncoding.EncodeToString(bodyBytes))
+		return dataURI, latency, nil
+	}
+
+	// 2. 小米 MiMo 格式
+	endpoint := baseURL + "/chat/completions"
+	type reqMsg struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	var msgs []reqMsg
+	isVoiceDesign := strings.Contains(strings.ToLower(model), "voicedesign")
+	isVoiceClone := strings.Contains(strings.ToLower(model), "voiceclone")
+
+	if isVoiceDesign || isVoiceClone {
+		design := strings.TrimSpace(req.VoiceDesign)
+		if design != "" {
+			msgs = append(msgs, reqMsg{Role: "user", Content: design})
+		}
+	}
+	msgs = append(msgs, reqMsg{Role: "assistant", Content: text})
+
+	audioParam := map[string]string{
+		"format": "wav",
+	}
+
+	if isVoiceClone {
+		sampleDataURI := strings.TrimSpace(req.SampleAudioData)
+		if sampleDataURI == "" && req.SampleAudioPath != "" {
+			sampleDataURI = LoadAudioFileAsDataURI(req.SampleAudioPath)
+		}
+		if sampleDataURI == "" {
+			return "", 0, errors.New("VoiceClone 声音克隆模型需要提供参考音频样本，请在配置页面中上传或选择语音样本")
+		}
+		audioParam["voice"] = sampleDataURI
+	} else if !isVoiceDesign {
+		// MiMo VoiceDesign 模型由 messages 中的设计提示词决定音色，严禁携带 audio.voice 参数；
+		// 仅标准预设发音人模型（如 mimo-v2.5-tts）需要 audio.voice
+		voiceName := strings.TrimSpace(req.Voice)
+		if voiceName == "" {
+			voiceName = "白桦"
+		}
+		audioParam["voice"] = voiceName
+	}
+
+	reqPayload := map[string]any{
+		"model":    model,
+		"messages": msgs,
+		"audio":    audioParam,
+	}
+
+	wavBytes, err := requestTTSAudio(endpoint, req.APIKey, reqPayload)
+	if err != nil && isVoiceDesign {
+		// voicedesign 失败时尝试自动降级到预设发音人 mimo-v2.5-tts
+		fallbackVoice := strings.TrimSpace(req.Voice)
+		if fallbackVoice == "" {
+			fallbackVoice = "白桦"
+		}
+		fallbackPayload := map[string]any{
+			"model": "mimo-v2.5-tts",
+			"messages": []reqMsg{
+				{Role: "assistant", Content: text},
+			},
+			"audio": map[string]string{
+				"format": "wav",
+				"voice":  fallbackVoice,
+			},
+		}
+		if fbWav, fbErr := requestTTSAudio(endpoint, req.APIKey, fallbackPayload); fbErr == nil {
+			wavBytes = fbWav
+			err = nil
+		}
+	}
+
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return "", latency, err
+	}
+
+	dataURI := fmt.Sprintf("data:audio/wav;base64,%s", base64.StdEncoding.EncodeToString(wavBytes))
+	return dataURI, latency, nil
+}
+
+// ReadPromptsConfig 读取提示词与人设配置
+func (cm *ConfigManager) ReadPromptsConfig() (*PromptsConfigResponse, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := os.ReadFile(cm.pluginsConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	var root map[string]any
+	if err := toml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("解析 plugins/config.toml 失败: %w", err)
+	}
+
+	resp := &PromptsConfigResponse{
+		ActivePrompt: "default",
+		Prompts:      make(map[string]string),
+	}
+
+	aiSec, ok := root["ai"].(map[string]any)
+	if !ok {
+		return resp, nil
+	}
+	aiCfg, ok := aiSec["config"].(map[string]any)
+	if !ok {
+		return resp, nil
+	}
+
+	if ap, ok := aiCfg["active_prompt"].(string); ok && ap != "" {
+		resp.ActivePrompt = ap
+	}
+
+	if promptsMap, ok := aiCfg["prompts"].(map[string]any); ok {
+		for k, v := range promptsMap {
+			if s, ok := v.(string); ok {
+				resp.Prompts[k] = s
+			}
+		}
+	}
+
+	return resp, nil
+}
+
+// SavePromptsConfig 保存提示词与人设配置到 plugins/config.toml
+func (cm *ConfigManager) SavePromptsConfig(req SavePromptsConfigRequest) error {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	data, err := os.ReadFile(cm.pluginsConfig)
+	if err != nil {
+		return err
+	}
+
+	var root map[string]any
+	if err := toml.Unmarshal(data, &root); err != nil {
+		return fmt.Errorf("解析 plugins/config.toml 失败: %w", err)
+	}
+
+	aiSec, ok := root["ai"].(map[string]any)
+	if !ok {
+		aiSec = make(map[string]any)
+		root["ai"] = aiSec
+	}
+	aiCfg, ok := aiSec["config"].(map[string]any)
+	if !ok {
+		aiCfg = make(map[string]any)
+		aiSec["config"] = aiCfg
+	}
+
+	if req.ActivePrompt != "" {
+		aiCfg["active_prompt"] = strings.TrimSpace(req.ActivePrompt)
+	}
+
+	promptsMap := make(map[string]any)
+	for k, v := range req.Prompts {
+		trimmedKey := strings.TrimSpace(k)
+		if trimmedKey != "" {
+			promptsMap[trimmedKey] = v
+		}
+	}
+	aiCfg["prompts"] = promptsMap
+
+	newData, err := toml.Marshal(root)
+	if err != nil {
+		return fmt.Errorf("序列化 TOML 失败: %w", err)
+	}
+
+	return os.WriteFile(cm.pluginsConfig, newData, 0644)
+}
+

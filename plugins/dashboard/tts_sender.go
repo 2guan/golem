@@ -28,6 +28,7 @@ type TTSConfig struct {
 	Voice           string `toml:"voice"`
 	BaseURL         string `toml:"base_url"`
 	APIKey          string `toml:"api_key"`
+	SampleAudioPath string `toml:"sample_audio_path"`
 	SilkEncoderPath string `toml:"silk_encoder_path"`
 	FFmpegPath      string `toml:"ffmpeg_path"`
 	FFprobePath     string `toml:"ffprobe_path"`
@@ -133,16 +134,22 @@ func (p *DashboardPlugin) synthesizeAndSendVoice(targetID, text, customVoiceDesi
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	}
-	var msgs []reqMsg
-	if voiceDesign != "" {
-		msgs = append(msgs, reqMsg{Role: "user", Content: voiceDesign})
-	}
-	msgs = append(msgs, reqMsg{Role: "assistant", Content: text})
-
 	model := strings.TrimSpace(cfg.Model)
 	if model == "" {
 		model = "mimo-v2.5-tts-voicedesign"
 	}
+	isVoiceDesign := strings.Contains(strings.ToLower(model), "voicedesign")
+	isVoiceClone := strings.Contains(strings.ToLower(model), "voiceclone")
+
+	var msgs []reqMsg
+	if isVoiceDesign || isVoiceClone {
+		if voiceDesign == "" {
+			voiceDesign = "一位三十多岁的成熟男性朋友。嗓音富有磁性有质感，但音调自然轻松不沉闷。说话亲切温和、随性自如，语速轻快，带有自然的口语起伏和笑意，像日常随手拿起手机给朋友发微信语音闲聊。"
+		}
+		msgs = append(msgs, reqMsg{Role: "user", Content: voiceDesign})
+	}
+	msgs = append(msgs, reqMsg{Role: "assistant", Content: text})
+
 	voiceName := strings.TrimSpace(cfg.Voice)
 	if voiceName == "" {
 		voiceName = "白桦"
@@ -151,7 +158,13 @@ func (p *DashboardPlugin) synthesizeAndSendVoice(targetID, text, customVoiceDesi
 	audioParam := map[string]string{
 		"format": "wav",
 	}
-	if model == "mimo-v2.5-tts" {
+	if isVoiceClone {
+		sampleDataURI := LoadAudioFileAsDataURI(cfg.SampleAudioPath)
+		if sampleDataURI == "" {
+			return 0, "", errors.New("VoiceClone 声音克隆模型缺少有效参考音频样本，请在后台上传")
+		}
+		audioParam["voice"] = sampleDataURI
+	} else if !isVoiceDesign {
 		audioParam["voice"] = voiceName
 	}
 

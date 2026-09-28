@@ -124,3 +124,131 @@ type AIAnalyzeResponse struct {
 	Result    string `json:"result"`
 	ModelUsed string `json:"model_used"`
 }
+
+// ----------------- Model Management Types -----------------
+
+type ProviderConfigItem struct {
+	Name               string   `json:"name"`
+	DisplayName        string   `json:"display_name"`
+	BaseURL            string   `json:"base_url"`
+	APIKey             string   `json:"api_key"`
+	Model              string   `json:"model"`
+	FallbackModels     []string `json:"fallback_models,omitempty"`
+	HTTPTimeoutSeconds int      `json:"http_timeout_seconds,omitempty"`
+	Temperature        *float64 `json:"temperature,omitempty"`
+	PresencePenalty    *float64 `json:"presence_penalty,omitempty"`
+}
+
+type ModelPreset struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	BaseURL      string   `json:"base_url"`
+	DefaultModel string   `json:"default_model"`
+	Models       []string `json:"models"`
+}
+
+type ModelsConfigResponse struct {
+	ActiveProvider   string                        `json:"active_provider"`
+	FallbackProvider string                        `json:"fallback_provider"`
+	ProviderOrder    []string                      `json:"provider_order"`
+	Providers        map[string]ProviderConfigItem `json:"providers"`
+	Presets          []ModelPreset                 `json:"presets"`
+}
+
+type SaveModelsRequest struct {
+	ProviderOrder []string                      `json:"provider_order"`
+	Providers     map[string]ProviderConfigItem `json:"providers"`
+}
+
+type TestModelRequest struct {
+	BaseURL string `json:"base_url"`
+	APIKey  string `json:"api_key"`
+	Model   string `json:"model"`
+}
+
+type TestModelResponse struct {
+	OK        bool   `json:"ok"`
+	LatencyMS int64  `json:"latency_ms"`
+	Model     string `json:"model"`
+	Error     string `json:"error,omitempty"`
+}
+
+// ----------------- TTS Voice Model Types -----------------
+
+type TTSPreset struct {
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Type            string   `json:"type"` // "mimo_voicedesign" | "mimo_standard" | "openai" | "custom"
+	BaseURL         string   `json:"base_url"`
+	DefaultModel    string   `json:"default_model"`
+	DefaultVoice    string   `json:"default_voice"`
+	DefaultDesign   string   `json:"default_design"`
+	SupportedVoices []string `json:"supported_voices"`
+}
+
+type TTSFullConfigResponse struct {
+	Enable          bool        `json:"enable"`
+	Model           string      `json:"model"`
+	VoiceDesign     string      `json:"voice_design"`
+	Voice           string      `json:"voice"`
+	BaseURL         string      `json:"base_url"`
+	APIKey          string      `json:"api_key"`
+	SampleAudioPath string      `json:"sample_audio_path"`
+	SampleAudioData string      `json:"sample_audio_data,omitempty"`
+	SampleAudioName string      `json:"sample_audio_name,omitempty"`
+	SampleAudioSize int64       `json:"sample_audio_size,omitempty"`
+	SilkEncoderPath string      `json:"silk_encoder_path"`
+	FFmpegPath      string      `json:"ffmpeg_path"`
+	FFprobePath     string      `json:"ffprobe_path"`
+	Presets         []TTSPreset `json:"presets"`
+}
+
+type SaveTTSConfigRequest struct {
+	Enable          bool   `json:"enable"`
+	Model           string `json:"model"`
+	VoiceDesign     string `json:"voice_design"`
+	Voice           string `json:"voice"`
+	BaseURL         string `json:"base_url"`
+	APIKey          string `json:"api_key"`
+	SampleAudioPath string `json:"sample_audio_path"`
+	SilkEncoderPath string `json:"silk_encoder_path"`
+	FFmpegPath      string `json:"ffmpeg_path"`
+	FFprobePath     string `json:"ffprobe_path"`
+}
+
+type TestTTSRequest struct {
+	BaseURL         string `json:"base_url"`
+	APIKey          string `json:"api_key"`
+	Model           string `json:"model"`
+	Voice           string `json:"voice"`
+	VoiceDesign     string `json:"voice_design"`
+	SampleAudioPath string `json:"sample_audio_path,omitempty"`
+	SampleAudioData string `json:"sample_audio_data,omitempty"`
+	Text            string `json:"text"`
+}
+
+type TestTTSResponse struct {
+	OK        bool   `json:"ok"`
+	LatencyMS int64  `json:"latency_ms"`
+	AudioData string `json:"audio_data,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+type UploadSampleAudioResponse struct {
+	Path     string `json:"path"`
+	DataURI  string `json:"data_uri"`
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+}
+
+type PromptsConfigResponse struct {
+	ActivePrompt string            `json:"active_prompt"`
+	Prompts      map[string]string `json:"prompts"`
+}
+
+type SavePromptsConfigRequest struct {
+	ActivePrompt string            `json:"active_prompt"`
+	Prompts      map[string]string `json:"prompts"`
+}
+
+

@@ -351,4 +351,27 @@ func TestShouldAttachRecentImage(t *testing.T) {
 	}
 }
 
+func TestSanitizeVoiceText(t *testing.T) {
+	// 1. 保留合法微动作微情绪标签 [轻笑]、[停顿]、[叹气]
+	input := "[轻笑] 怎么着，文字还不够，非得听我亲口说啊？[停顿] 行吧……这一天到晚满脑子都是你。"
+	output := sanitizeVoiceText(input)
+	if !strings.Contains(output, "[轻笑]") || !strings.Contains(output, "[停顿]") {
+		t.Errorf("expected [轻笑] and [停顿] to be preserved, got: %s", output)
+	}
+
+	// 2. 剔除小说式剧本动作与其它角色设定标签
+	input2 := "（眼神温柔，低头凑近你的耳边）[低笑] 乖一点…… [模仿蜡笔小新] 听到没有？"
+	output2 := sanitizeVoiceText(input2)
+	if strings.Contains(output2, "低头凑近") {
+		t.Errorf("expected novel action narration to be stripped, got: %s", output2)
+	}
+	if strings.Contains(output2, "模仿蜡笔小新") {
+		t.Errorf("expected other persona tag to be stripped, got: %s", output2)
+	}
+	if !strings.Contains(output2, "[低笑]") {
+		t.Errorf("expected [低笑] to be preserved, got: %s", output2)
+	}
+}
+
+
 

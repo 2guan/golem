@@ -252,3 +252,43 @@ func TestChat_FallbackFromXiaomiToGeminiOnHighRiskAndRefusal(t *testing.T) {
 	}
 }
 
+func TestResolveProvidersInOrder(t *testing.T) {
+	ai := &AiPlugin{
+		sessions: map[string][]openAIMessage{},
+	}
+	ai.Config = Config{
+		Providers: map[string]*Provider{
+			"p1": {BaseURL: "https://p1.com", APIKey: "k1", Model: "m1"},
+			"p2": {BaseURL: "https://p2.com", APIKey: "k2", Model: "m2"},
+			"p3": {BaseURL: "https://p3.com", APIKey: "k3", Model: "m3"},
+		},
+		ProviderOrder: []string{"p3", "p1", "p2"},
+	}
+
+	// 1. 全局顺序
+	provs := ai.resolveProvidersInOrder("normal-session")
+	if len(provs) != 3 {
+		t.Fatalf("expected 3 providers, got %d", len(provs))
+	}
+	if provs[0].Model != "m3" || provs[1].Model != "m1" || provs[2].Model != "m2" {
+		t.Errorf("order mismatch: got [%s, %s, %s]", provs[0].Model, provs[1].Model, provs[2].Model)
+	}
+
+	// 2. 会话级专属覆盖，将指定 provider 置顶
+	sessionKey := "custom-session"
+	p2Name := "p2"
+	ai.Config.SessionConfigs = map[string]*SessionConfig{
+		sessionKey: {
+			ActiveProvider: &p2Name,
+		},
+	}
+	provs = ai.resolveProvidersInOrder(sessionKey)
+	if len(provs) != 3 {
+		t.Fatalf("expected 3 providers, got %d", len(provs))
+	}
+	if provs[0].Model != "m2" {
+		t.Errorf("expected session override model m2 at first rank, got %s", provs[0].Model)
+	}
+}
+
+
