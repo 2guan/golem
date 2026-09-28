@@ -1,6 +1,7 @@
 # Golem 🤖
 
 <p align="center">
+  <a href="https://github.com/sbgayhub/golem"><img src="https://img.shields.io/badge/Forked%20From-sbgayhub%2Fgolem-2ea44f?style=flat-square&logo=github" alt="Forked from sbgayhub/golem"></a>
   <img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat-square&logo=go" alt="Go Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square" alt="Platform">
@@ -9,7 +10,14 @@
 
 **Golem** 是一个高性能、高扩展性的微信机器人插件系统与大模型交互框架。底层基于 `hashicorp/go-plugin` 实现进程级解耦与热更新能力，内置现代化 Web 运维控制台、多厂商大模型容灾调度、原生微信语音条克隆合成（TTS Voice Clone / Voice Design）以及人设提示词编排管理。
 
+> [!NOTE]
+> **开源致谢与上游溯源**：
+> 本项目 Fork 并基于上游优秀开源项目 [sbgayhub/golem](https://github.com/sbgayhub/golem) 持续演进与增强。在此衷心感谢原作者与开源社区构建的坚实微内核与插件架构基石！
+> 
+> **本分支主要增强**：集成现代化 Web 运维控制台、大模型调用顺位容灾流水线（Failover Pipeline）、微信原生 Silk 语音条零样本声音克隆（Zero-Shot Voice Clone）、Voice Design 自然语言音色设计、以及全局系统提示词/人设库可视化管理系统。
+
 > [!IMPORTANT]
+
 > **免责声明**：本项目仅供学习、研究与个人交流使用。请严格遵守当地法律法规及微信服务协议，严禁将本项目用于群发营销、电信诈骗、传播不良信息或任何非法用途。作者不对使用本项目产生的任何后果承担法律责任。
 
 ---
@@ -203,8 +211,16 @@ func main() {
 - 提交 Bug 或功能建议：[GitHub Issues](https://github.com/sbgayhub/golem/issues)
 - 遵循 Go 代码规范（`gofmt`）并保证单元测试通过。
 
+## 💖 开源致谢与上游项目 (Upstream)
+
+本项目基于上游开源项目发展而来，特此致谢：
+- **上游官方仓库**：[sbgayhub/golem](https://github.com/sbgayhub/golem)
+- **协议**：MIT License
+- 感谢上游作者 [@sbgayhub](https://github.com/sbgayhub) 及开源社区贡献者们无私分享的高质量微内核通信与插件架构！
+
 ---
 
 ## 📄 开源许可证
 
 本项目基于 [MIT License](LICENSE) 协议开源。
+
