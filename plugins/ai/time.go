@@ -30,8 +30,8 @@ func formatTimeGap(lastTime, now time.Time) string {
 		return ""
 	}
 	diff := now.Sub(lastTime)
-	// 短时间内连续聊天（如 1 小时内，或者深夜熬夜跨午夜且间隔小于 3 小时），不插入时间分割提示
-	if diff < 1*time.Hour || (diff < 3*time.Hour && now.Hour() < 6 && lastTime.Hour() >= 21) {
+	// 短时间内连续聊天（如 4 小时内，或者深夜熬夜跨午夜且间隔小于 4 小时），不插入时间分割提示
+	if diff < 4*time.Hour || (diff < 4*time.Hour && now.Hour() < 6 && lastTime.Hour() >= 21) {
 		return ""
 	}
 

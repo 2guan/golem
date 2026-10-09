@@ -21,7 +21,7 @@ type aiChatPayload struct {
 
 // GetCapabilities 声明本插件可被其他插件调用的能力
 func (p *AiPlugin) GetCapabilities() []string {
-	return []string{"ai.chat", "ai.clear_context"}
+	return []string{"ai.chat", "ai.clear_context", "ai.record_interaction"}
 }
 
 // OnCall 处理其他插件的调用请求
@@ -61,6 +61,36 @@ func (p *AiPlugin) OnCall(capability string, args map[string]string) (string, []
 		}
 		slog.Info("[ai] 收到跨插件能力调用，处理会话上下文", "session", sessionKey, "mode", mode)
 		return "text", []byte("ok"), nil
+	case "ai.record_interaction":
+		sessionKey := strings.TrimSpace(args["session"])
+		if sessionKey == "" {
+			return "", nil, fmt.Errorf("ai.record_interaction 缺少 session 参数")
+		}
+		if !strings.HasPrefix(sessionKey, "chatroom:") && !strings.HasPrefix(sessionKey, "private:") {
+			if strings.HasSuffix(sessionKey, "@chatroom") {
+				sessionKey = "chatroom:" + sessionKey
+			} else {
+				sessionKey = "private:" + sessionKey
+			}
+		}
+
+		userText := strings.TrimSpace(args["user_text"])
+		speakerName := strings.TrimSpace(args["speaker_name"])
+		assistantText := strings.TrimSpace(args["assistant_text"])
+		mediaURL := strings.TrimSpace(args["media_url"])
+
+		if userText != "" {
+			formattedUser := userText
+			if strings.HasPrefix(sessionKey, "chatroom:") && speakerName != "" {
+				formattedUser = fmt.Sprintf("%s: %s", speakerName, userText)
+			}
+			p.appendContext(sessionKey, openAIMessage{Role: "user", Content: formattedUser})
+		}
+		if assistantText != "" {
+			p.appendContext(sessionKey, openAIMessage{Role: "assistant", Content: assistantText, MediaURL: mediaURL})
+		}
+		slog.Info("[ai] 记录跨插件互动上下文", "session", sessionKey, "user", userText, "assistant", assistantText, "media_url", mediaURL)
+		return "text", []byte("ok"), nil
 	default:
 		return "", nil, fmt.Errorf("不支持的能力: %s", capability)
 	}
@@ -72,6 +102,14 @@ func (p *AiPlugin) chatRaw(system string, messages []openAIMessage, customTimeou
 	prov, err := p.resolveProvider("")
 	if err != nil {
 		return "", err
+	}
+
+	provName := p.getActiveProvider("")
+	if provName == "" {
+		provName = config.ActiveProvider
+	}
+	if provName == "" {
+		provName = "default"
 	}
 
 	full := make([]openAIMessage, 0, len(messages)+1)
@@ -107,9 +145,15 @@ func (p *AiPlugin) chatRaw(system string, messages []openAIMessage, customTimeou
 		reqPayload.Thinking = &ThinkingConfig{Type: "disabled"}
 	}
 
+	callStart := time.Now()
+	slog.Info("[ai] 正在处理跨插件大模型请求", "provider", provName, "model", prov.Model, "messages_count", len(full))
+
 	choiceMsg, err := callOpenAI(ctx, http.DefaultClient, prov.BaseURL, prov.APIKey, reqPayload)
+	callDuration := time.Since(callStart).Round(time.Millisecond)
 	if err != nil {
+		slog.Warn("[ai] 跨插件大模型请求失败", "provider", provName, "model", prov.Model, "duration", callDuration.String(), "err", err)
 		return "", err
 	}
+	slog.Info("[ai] ✅ 跨插件大模型请求成功", "provider", provName, "model", prov.Model, "duration", callDuration.String(), "reply_length", len(choiceMsg.Content))
 	return choiceMsg.Content, nil
 }

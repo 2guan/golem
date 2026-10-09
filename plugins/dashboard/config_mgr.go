@@ -818,7 +818,7 @@ func (cm *ConfigManager) SavePluginRawToml(name string, rawToml string) error {
 }
 
 // SaveTargetOverrideToAIConfig 同步目标专属配置到 plugins/config.toml
-func (cm *ConfigManager) SaveTargetOverrideToAIConfig(targetID string, customPrompt string, provider string, replyRate *float64, silence *bool) error {
+func (cm *ConfigManager) SaveTargetOverrideToAIConfig(targetID string, customNickname string, customPrompt string, provider string, replyRate *float64, silence *bool) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -862,6 +862,12 @@ func (cm *ConfigManager) SaveTargetOverrideToAIConfig(targetID string, customPro
 	if !ok {
 		sessItem = make(map[string]any)
 		sessConfigs[targetSessKey] = sessItem
+	}
+
+	if customNickname != "" {
+		sessItem["custom_nickname"] = customNickname
+	} else {
+		delete(sessItem, "custom_nickname")
 	}
 
 	if customPrompt != "" {

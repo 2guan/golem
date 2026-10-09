@@ -28,6 +28,7 @@ type AiPlugin struct {
 	message  message.Ability
 	cdn      cdn.Ability
 	chatroom chatroom.Ability
+	caller   plugin.CallerAbility
 
 	configMu        sync.RWMutex
 	sessionConfigMu sync.RWMutex

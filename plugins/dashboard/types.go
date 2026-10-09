@@ -19,6 +19,7 @@ type TargetOverride struct {
 	TargetType  string    `json:"target_type"`            // "friend" 或 "chatroom"
 	Name        string    `json:"name"`                   // 昵称或群名
 	Remark      string    `json:"remark"`                 // 备注名
+	CustomNickname string `json:"custom_nickname,omitempty"` // 专属定制称呼
 	CustomPrompt string   `json:"custom_prompt,omitempty"`// 专属提示词
 	Provider    string    `json:"provider,omitempty"`     // 专属模型提供方 (如 "gemini", "xiaomi")
 	Model       string    `json:"model,omitempty"`        // 专属模型名

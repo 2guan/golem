@@ -61,6 +61,28 @@ func (p *AiPlugin) appendContext(key string, msg openAIMessage) {
 	p.saveHistoryAsync()
 }
 
+// updateLastAssistantMedia 更新会话最后一条 assistant 消息的 MediaURL
+func (p *AiPlugin) updateLastAssistantMedia(key, mediaURL string) {
+	if key == "" || mediaURL == "" {
+		return
+	}
+	p.ensureHistoryLoaded()
+	p.mu.Lock()
+	msgs := p.sessions[key]
+	updated := false
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "assistant" {
+			msgs[i].MediaURL = mediaURL
+			updated = true
+			break
+		}
+	}
+	p.mu.Unlock()
+	if updated {
+		p.saveHistoryAsync()
+	}
+}
+
 // slimContext 将指定会话中消息的图片 Base64 替换为精简占位符，防止后续轮次重复发送巨量 Base64 数据
 func (p *AiPlugin) slimContext(key string) {
 	p.ensureHistoryLoaded()

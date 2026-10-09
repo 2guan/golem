@@ -561,6 +561,7 @@ func (p *DashboardPlugin) handleTargets(w http.ResponseWriter, r *http.Request) 
 	for tID, ov := range overrides {
 		if item, ok := targetMap[tID]; ok {
 			item["has_override"] = true
+			item["custom_nickname"] = ov.CustomNickname
 			item["custom_prompt"] = ov.CustomPrompt
 			item["provider"] = ov.Provider
 			item["reply_rate"] = ov.ReplyRate
@@ -568,16 +569,17 @@ func (p *DashboardPlugin) handleTargets(w http.ResponseWriter, r *http.Request) 
 			item["notes"] = ov.Notes
 		} else {
 			targetMap[tID] = map[string]any{
-				"target_id":     tID,
-				"target_type":   ov.TargetType,
-				"name":          ov.Name,
-				"remark":        ov.Remark,
-				"has_override":  true,
-				"custom_prompt": ov.CustomPrompt,
-				"provider":      ov.Provider,
-				"reply_rate":    ov.ReplyRate,
-				"silence":       ov.Silence,
-				"notes":         ov.Notes,
+				"target_id":       tID,
+				"target_type":     ov.TargetType,
+				"name":            ov.Name,
+				"remark":          ov.Remark,
+				"has_override":    true,
+				"custom_nickname": ov.CustomNickname,
+				"custom_prompt":   ov.CustomPrompt,
+				"provider":        ov.Provider,
+				"reply_rate":      ov.ReplyRate,
+				"silence":         ov.Silence,
+				"notes":           ov.Notes,
 			}
 		}
 	}
@@ -614,7 +616,7 @@ func (p *DashboardPlugin) handleTargetSave(w http.ResponseWriter, r *http.Reques
 	}
 
 	// 同步写回 plugins/config.toml 的 [ai.config.session_configs]
-	if err := p.configMgr.SaveTargetOverrideToAIConfig(req.TargetID, req.CustomPrompt, req.Provider, req.ReplyRate, req.Silence); err != nil {
+	if err := p.configMgr.SaveTargetOverrideToAIConfig(req.TargetID, req.CustomNickname, req.CustomPrompt, req.Provider, req.ReplyRate, req.Silence); err != nil {
 		writeError(w, http.StatusInternalServerError, "同步至 AI 配置失败: "+err.Error())
 		return
 	}

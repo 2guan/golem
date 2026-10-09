@@ -71,47 +71,59 @@ func (p *TurtleSoupPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	}
 
 	cleanText, wasMentioned := cleanMention(rawText)
+	cmd := strings.ToLower(cleanText)
 
-	switch cleanText {
-	case "海龟汤帮助":
-		p.sendText(receiver, fmt.Sprintf("🍲【海龟汤玩法指南】\n\n"+
-			"📚 当前题库储备：%d 道经典名案 + AI 独家私房好汤（随时现熬）！\n\n"+
-			"1. 发送【来碗海龟汤】/【开局海龟汤】：随机抽取一碗经典故事名案；\n"+
-			"2. 发送【私房海龟汤】/【来碗新汤】：当场现熬一碗未公开过的独家密案；\n"+
-			"3. 玩家自由提问（如：死者是自杀吗？），主持人会根据汤底判定【是】/【不是】/【与此无关】/【关键线索！】；\n"+
-			"4. 思考受阻时发【海龟汤提示】：获取渐进线索；\n"+
-			"5. 最终还原真相发【看汤底】：揭晓全部故事细节！", len(p.manager.stories)))
+	speakerName := "探长"
+	if msg.Member != nil && msg.Member.DisplayName != "" {
+		speakerName = msg.Member.DisplayName
+	} else if msg.Member != nil && msg.Member.Nickname != "" {
+		speakerName = msg.Member.Nickname
+	} else if msg.Sender != nil && msg.Sender.Nickname != "" {
+		speakerName = msg.Sender.Nickname
+	}
+
+	// 1. 优先匹配带提示词/主题的 AI 私房海龟汤指令（如：私房海龟汤 温馨爱情 / AI海龟汤 职场复仇）
+	if isAIStory, topic := parseAIStoryCmd(cleanText); isAIStory {
+		p.startAIGame(sessionID, receiver, cleanText, speakerName, topic)
+		return true, nil
+	}
+
+	switch cmd {
+	case "海龟汤帮助", "海龟汤玩法":
+		helpText := fmt.Sprintf("🍲【海龟汤玩法指南】\n\n"+
+			"📚 当前题库储备：%d 道经典名案 + AI 现场熬制全新好汤！\n\n"+
+			"1. 发送【来碗海龟汤】/【开局海龟汤】：默认由 AI 现场熬制一碗全新好汤（生成失败自动回退经典题库）；\n"+
+			"2. 发送【私房海龟汤】/【AI海龟汤】：支持定制主题（如【私房海龟汤 温馨爱情】、【AI海龟汤 职场商战】）；\n"+
+			"3. 发送【经典海龟汤】：直接从经典名案题库随机开局；\n"+
+			"4. 玩家自由提问（如：死者是自杀吗？），主持人会根据汤底判定【是】/【不是】/【与此无关】/【关键线索！】；\n"+
+			"5. 思考受阻时发【海龟汤提示】：获取渐进线索；\n"+
+			"6. 最终还原真相发【看汤底】：揭晓全部故事细节！", len(p.manager.stories))
+		p.sendText(receiver, helpText)
 		return true, nil
 
 	case "来碗海龟汤", "开局海龟汤", "海龟汤", "换一碗海龟汤":
-		_, welcome := p.manager.StartGame(sessionID)
-		p.sendText(receiver, welcome)
+		// 默认调用大模型生成海龟汤，生成失败时自动降级使用本地题库
+		p.startAIGame(sessionID, receiver, cleanText, speakerName, "")
 		return true, nil
 
-	case "私房海龟汤", "私房汤", "来碗私房汤", "来碗独家汤", "来碗新汤", "新汤", "来碗原创海龟汤", "原创海龟汤", "新海龟汤":
-		p.sendText(receiver, "⏳ 正在翻箱倒柜琢磨一碗绝密私房汤，稍等片刻...")
-		go func() {
-			story, err := p.generateAIStory(120)
-			if err != nil {
-				slog.Warn("[turtle_soup] 私房出题超时或失败，降级题库随机", "err", err)
-				_, welcome := p.manager.StartGame(sessionID)
-				p.sendText(receiver, "⚠️ 刚才那碗太烧脑没熬好，先给你端一碗经典名案垫垫：\n\n"+welcome)
-				return
-			}
-			_, welcome := p.manager.StartCustomStory(sessionID, story)
-			p.sendText(receiver, welcome)
-		}()
+	case "经典海龟汤", "题库海龟汤", "随机经典汤":
+		_, welcome := p.manager.StartGame(sessionID)
+		p.sendText(receiver, welcome)
+		p.recordToAI(sessionID, cleanText, speakerName, welcome)
 		return true, nil
 
 	case "海龟汤提示", "要提示", "给个提示":
 		tip := p.manager.GetClue(sessionID)
 		p.sendText(receiver, tip)
+		p.recordToAI(sessionID, cleanText, speakerName, tip)
 		return true, nil
 
 	case "看汤底", "放弃海龟汤", "揭晓汤底", "结束海龟汤":
 		story, ok := p.manager.EndGame(sessionID)
 		if !ok {
-			p.sendText(receiver, "当前没有进行中的海龟汤，发送【来碗海龟汤】开始新游戏！")
+			msgReply := "当前没有进行中的海龟汤，发送【来碗海龟汤】开始新游戏！"
+			p.sendText(receiver, msgReply)
+			p.recordToAI(sessionID, cleanText, speakerName, msgReply)
 			return true, nil
 		}
 		reveal := fmt.Sprintf("📖【海龟汤真相揭底 · %s】\n\n"+
@@ -119,6 +131,7 @@ func (p *TurtleSoupPlugin) OnEvent(e *plugin.Event) (bool, error) {
 			"🍲 完整汤底：\n%s\n\n"+
 			"本轮海龟汤结束，想再玩发送【来碗海龟汤】随时再开！", story.Title, story.Surface, story.Bottom)
 		p.sendText(receiver, reveal)
+		p.recordToAI(sessionID, cleanText, speakerName, reveal)
 		return true, nil
 	}
 
@@ -127,15 +140,6 @@ func (p *TurtleSoupPlugin) OnEvent(e *plugin.Event) (bool, error) {
 	if session != nil {
 		// 如果是疑问句，或者显式 @了机器人，或者包含常见海龟汤提问关键字
 		if wasMentioned || isLikelyQuestion(cleanText) {
-			speakerName := "探长"
-			if msg.Member != nil && msg.Member.DisplayName != "" {
-				speakerName = msg.Member.DisplayName
-			} else if msg.Member != nil && msg.Member.Nickname != "" {
-				speakerName = msg.Member.Nickname
-			} else if msg.Sender != nil && msg.Sender.Nickname != "" {
-				speakerName = msg.Sender.Nickname
-			}
-
 			// 异步判定，避免阻塞总线与并发提问
 			go func() {
 				reply := p.judgeQuestion(session, cleanText, speakerName)
@@ -143,12 +147,57 @@ func (p *TurtleSoupPlugin) OnEvent(e *plugin.Event) (bool, error) {
 					p.manager.EndGame(sessionID)
 				}
 				p.sendText(receiver, reply)
+				p.recordToAI(sessionID, cleanText, speakerName, reply)
 			}()
 			return true, nil
 		}
 	}
 
 	return false, nil
+}
+
+func (p *TurtleSoupPlugin) startAIGame(sessionID string, receiver *contact.Contact, cleanText, speakerName, topic string) {
+	waitMsg := "🍲 收到！正在现场现熬一碗新鲜海龟汤，稍等片刻..."
+	if topic != "" {
+		waitMsg = fmt.Sprintf("🍲 正在根据主题【%s】现场熬制一碗专属海龟汤，稍等片刻...", topic)
+	}
+	p.sendText(receiver, waitMsg)
+	go func() {
+		story, err := p.generateAIStory(45, topic)
+		if err != nil {
+			slog.Warn("[turtle_soup] AI出题超时或失败，降级使用本地经典题库", "topic", topic, "err", err)
+			_, welcome := p.manager.StartGame(sessionID)
+			out := "⚠️ 现场现熬海龟汤失败，先为你端上一碗经典名案：\n\n" + welcome
+			p.sendText(receiver, out)
+			p.recordToAI(sessionID, cleanText, speakerName, out)
+			return
+		}
+		_, welcome := p.manager.StartCustomStory(sessionID, story, topic)
+		p.sendText(receiver, welcome)
+		p.recordToAI(sessionID, cleanText, speakerName, welcome)
+	}()
+}
+
+func parseAIStoryCmd(text string) (bool, string) {
+	t := strings.TrimSpace(text)
+	prefixes := []string{
+		"私房海龟汤", "来碗私房海龟汤", "来碗私房汤", "私房汤", "独家海龟汤", "来碗独家汤", "来碗独家海龟汤",
+		"ai海龟汤", "来碗ai海龟汤", "开局ai海龟汤", "ai汤", "来碗ai汤",
+		"原创海龟汤", "来碗原创海龟汤", "来碗原创汤", "原创汤",
+		"新海龟汤", "来碗新海龟汤", "来碗新汤", "新汤",
+		"智能海龟汤", "生成海龟汤", "定制海龟汤",
+	}
+
+	lower := strings.ToLower(t)
+	for _, p := range prefixes {
+		if strings.HasPrefix(lower, p) {
+			rest := strings.TrimSpace(t[len(p):])
+			// 剥离可能的分隔符：冒号、逗号、空格、破折号等
+			rest = strings.TrimLeft(rest, " :：,，-—")
+			return true, strings.TrimSpace(rest)
+		}
+	}
+	return false, ""
 }
 
 func isLikelyQuestion(text string) bool {
@@ -177,6 +226,24 @@ func (p *TurtleSoupPlugin) resolveReceiver(e *plugin.Event, msg *message.Message
 		}
 	}
 	return receiver
+}
+
+func (p *TurtleSoupPlugin) recordToAI(session, userText, speakerName, assistantText string) {
+	if p.caller == nil || strings.TrimSpace(session) == "" {
+		return
+	}
+	args := map[string]string{
+		"session":        session,
+		"user_text":      userText,
+		"speaker_name":   speakerName,
+		"assistant_text": assistantText,
+	}
+	_, _, err := p.caller.CallPlugin("ai.record_interaction", args)
+	if err != nil {
+		slog.Warn("[turtle_soup] 同步海龟汤记忆到 ai 插件失败", "err", err, "session", session)
+	} else {
+		slog.Info("[turtle_soup] 成功同步海龟汤记忆到 ai 插件", "session", session)
+	}
 }
 
 func (p *TurtleSoupPlugin) sendText(receiver *contact.Contact, text string) {

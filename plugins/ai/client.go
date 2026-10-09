@@ -122,8 +122,14 @@ func (p *AiPlugin) resolveFallbackProvider(sessionKey string) (*Provider, error)
 	return prov, nil
 }
 
-// resolveProvidersInOrder 解析调用链中按优先级排序的 provider 列表
-func (p *AiPlugin) resolveProvidersInOrder(sessionKey string) []*Provider {
+// NamedProvider 附带提供商配置名称的 Provider 实例
+type NamedProvider struct {
+	Name string
+	*Provider
+}
+
+// resolveNamedProvidersInOrder 解析调用链中按优先级排序的附带名称 provider 列表
+func (p *AiPlugin) resolveNamedProvidersInOrder(sessionKey string) []NamedProvider {
 	config := p.configSnapshot()
 	var order []string
 
@@ -151,7 +157,7 @@ func (p *AiPlugin) resolveProvidersInOrder(sessionKey string) []*Provider {
 		order = filtered
 	}
 
-	var result []*Provider
+	var result []NamedProvider
 	seen := make(map[string]bool)
 	for _, name := range order {
 		name = strings.TrimSpace(name)
@@ -161,34 +167,74 @@ func (p *AiPlugin) resolveProvidersInOrder(sessionKey string) []*Provider {
 		seen[name] = true
 		if prov, ok := config.Providers[name]; ok && prov != nil {
 			if strings.TrimSpace(prov.BaseURL) != "" && strings.TrimSpace(prov.APIKey) != "" && strings.TrimSpace(prov.Model) != "" {
-				result = append(result, prov)
+				result = append(result, NamedProvider{Name: name, Provider: prov})
 			}
 		}
 	}
 	return result
 }
 
+// resolveProvidersInOrder 解析调用链中按优先级排序的 provider 列表
+func (p *AiPlugin) resolveProvidersInOrder(sessionKey string) []*Provider {
+	named := p.resolveNamedProvidersInOrder(sessionKey)
+	res := make([]*Provider, len(named))
+	for i, np := range named {
+		res[i] = np.Provider
+	}
+	return res
+}
+
 func (p *AiPlugin) chat(sessionKey string) (string, error) {
-	providers := p.resolveProvidersInOrder(sessionKey)
-	if len(providers) == 0 {
+	namedProviders := p.resolveNamedProvidersInOrder(sessionKey)
+	if len(namedProviders) == 0 {
 		prov, err := p.resolveProvider(sessionKey)
 		if err != nil {
 			return "", err
 		}
-		providers = []*Provider{prov}
+		activeName := p.getActiveProvider(sessionKey)
+		if activeName == "" {
+			activeName = p.configSnapshot().ActiveProvider
+		}
+		if activeName == "" {
+			activeName = "default"
+		}
+		namedProviders = []NamedProvider{{Name: activeName, Provider: prov}}
 	}
 
 	var lastErr error
-	for idx, prov := range providers {
+	var failedHistory []string
+
+	for idx, np := range namedProviders {
+		prov := np.Provider
+		provName := np.Name
+
 		if idx > 0 {
-			slog.Info("[ai] 前序通道不可用或触发风控，自动顺位降级切换模型", "rank", idx+1, "model", prov.Model, "session", sessionKey)
+			slog.Warn("[ai] 🔄 前序通道不可用或触发风控，顺位降级切换通道",
+				"rank", fmt.Sprintf("%d/%d", idx+1, len(namedProviders)),
+				"provider", provName,
+				"model", prov.Model,
+				"session", sessionKey,
+				"previous_failures", strings.Join(failedHistory, "; "),
+			)
 		}
-		reply, err := p.chatWithProvider(sessionKey, prov)
+
+		reply, usedModel, err := p.chatWithProviderInternal(sessionKey, provName, prov, failedHistory)
 		if err == nil && reply != "" && !isLeakedReasoningOrRefusal(reply) {
 			return strings.TrimSpace(reply), nil
 		}
 		if err != nil {
 			lastErr = err
+			failSummary := fmt.Sprintf("[%s/%s: %v]", provName, prov.Model, err)
+			failedHistory = append(failedHistory, failSummary)
+		} else if isLeakedReasoningOrRefusal(reply) {
+			lastErr = errors.New("模型回复触发风控合规拦截或包含拒绝回答")
+			failSummary := fmt.Sprintf("[%s/%s: 内容安全拦截]", provName, usedModel)
+			failedHistory = append(failedHistory, failSummary)
+			slog.Warn("[ai] ⚠️ 模型输出触发内容安全或包含拒绝回答，准备降级到备用通道",
+				"provider", provName,
+				"model", usedModel,
+				"session", sessionKey,
+			)
 		}
 	}
 
@@ -212,7 +258,13 @@ func (p *AiPlugin) chat(sessionKey string) (string, error) {
 					}
 				}
 			}
-			slog.Warn("[ai] 候选模型均不可用或触发风控，使用拟人化智能兜底", "err", lastErr, "is_image", isImg, "text", lastText)
+			slog.Warn("[ai] 🚨 候选模型均不可用或触发风控，使用拟人化智能接招兜底",
+				"session", sessionKey,
+				"attempted", strings.Join(failedHistory, "; "),
+				"err", lastErr,
+				"is_image", isImg,
+				"text", lastText,
+			)
 			return getFallbackReply(lastText, isImg), nil
 		}
 		return "", lastErr
@@ -221,7 +273,23 @@ func (p *AiPlugin) chat(sessionKey string) (string, error) {
 	return "", errors.New("所有配置模型均未返回有效回复")
 }
 
+// chatWithProvider 单个 Provider 调用入口（保持向后兼容）
 func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, error) {
+	name := ""
+	for k, v := range p.configSnapshot().Providers {
+		if v == prov {
+			name = k
+			break
+		}
+	}
+	if name == "" {
+		name = "custom"
+	}
+	reply, _, err := p.chatWithProviderInternal(sessionKey, name, prov, nil)
+	return reply, err
+}
+
+func (p *AiPlugin) chatWithProviderInternal(sessionKey, provName string, prov *Provider, priorFailures []string) (string, string, error) {
 	config := p.configSnapshot()
 	messages := make([]openAIMessage, 0, p.getMaxContextMessages(sessionKey)+1)
 	activePrompt := p.getActivePrompt(sessionKey)
@@ -235,10 +303,12 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 		if s, ok := m.Content.(string); ok {
 			m.Content = softenHighRiskTerms(s)
 		}
-		messages = append(messages, m)
+		cleanMsg := m
+		cleanMsg.MediaURL = ""
+		messages = append(messages, cleanMsg)
 	}
 	if len(messages) == 0 {
-		return "", errors.New("AI 上下文为空")
+		return "", "", errors.New("AI 上下文为空")
 	}
 
 	isOwnerPrivate := p.isOwnerPrivateSession(sessionKey)
@@ -278,9 +348,19 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 
 	var lastErr error
 	for idx, modelName := range candidateModels {
+		isFallbackModel := len(priorFailures) > 0 || idx > 0
+		slog.Info("[ai] 正在调用大模型",
+			"session", sessionKey,
+			"provider", provName,
+			"model", modelName,
+			"attempt", fmt.Sprintf("%d/%d", idx+1, len(candidateModels)),
+			"is_fallback", isFallbackModel,
+		)
+
 		currentMessages := append([]openAIMessage(nil), messages...)
 		var finalReply string
 		var runErr error
+		callStart := time.Now()
 
 		// 支持最多 3 轮工具调用闭环
 		for step := 0; step < 4; step++ {
@@ -327,7 +407,7 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 
 			// 如果模型发起了工具调用
 			if len(choiceMsg.ToolCalls) > 0 {
-				slog.Info("[ai] 模型发起管理员专属情报工具调用", "tools_count", len(choiceMsg.ToolCalls), "model", modelName, "session", sessionKey)
+				slog.Info("[ai] 模型发起管理员专属情报工具调用", "tools_count", len(choiceMsg.ToolCalls), "provider", provName, "model", modelName, "session", sessionKey)
 				currentMessages = append(currentMessages, openAIMessage{
 					Role:         "assistant",
 					Content:      choiceMsg.Content,
@@ -350,28 +430,52 @@ func (p *AiPlugin) chatWithProvider(sessionKey string, prov *Provider) (string, 
 			break
 		}
 
+		callDuration := time.Since(callStart).Round(time.Millisecond)
+
 		cleanCandidate := stripThinkingContent(finalReply)
 		if runErr == nil && strings.TrimSpace(cleanCandidate) != "" && !isLeakedReasoningOrRefusal(cleanCandidate) {
-			if idx > 0 {
-				slog.Info("[ai] 主模型超限或异常，备用模型调用成功", "primary_model", prov.Model, "used_model", modelName, "session", sessionKey)
+			if isFallbackModel {
+				var fallbackFrom string
+				if len(priorFailures) > 0 {
+					fallbackFrom = strings.Join(priorFailures, "; ")
+				} else {
+					fallbackFrom = prov.Model
+				}
+				slog.Info("[ai] ✅ 降级备用模型调用成功",
+					"session", sessionKey,
+					"provider", provName,
+					"used_model", modelName,
+					"duration", callDuration.String(),
+					"reply_length", len(cleanCandidate),
+					"fallback_from", fallbackFrom,
+				)
+			} else {
+				slog.Info("[ai] ✅ 大模型调用成功",
+					"session", sessionKey,
+					"provider", provName,
+					"model", modelName,
+					"duration", callDuration.String(),
+					"reply_length", len(cleanCandidate),
+				)
 			}
-			return finalReply, nil
+			return finalReply, modelName, nil
 		}
 
 		lastErr = runErr
 		if lastErr == nil {
 			lastErr = errors.New("模型返回内容异常或触发过滤")
 		}
-		slog.Warn("[ai] 模型调用失败或受限，尝试下一个候选模型",
-			"provider_model", modelName,
+		slog.Warn("[ai] ⚠️ 模型调用失败或受限，尝试下一个候选模型",
 			"session", sessionKey,
-			"attempt", idx+1,
-			"total", len(candidateModels),
+			"provider", provName,
+			"model", modelName,
+			"duration", callDuration.String(),
+			"attempt", fmt.Sprintf("%d/%d", idx+1, len(candidateModels)),
 			"err", lastErr,
 		)
 	}
 
-	return "", fmt.Errorf("Provider 所有候选模型均调用失败: %w", lastErr)
+	return "", prov.Model, fmt.Errorf("Provider %s 所有候选模型均调用失败: %w", provName, lastErr)
 }
 
 func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string, payload chatCompletionRequest) (*chatCompletionChoiceMessage, error) {

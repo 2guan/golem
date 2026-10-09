@@ -632,11 +632,21 @@ func (p *AiPlugin) sendSplitText(receiver *contact.Contact, content string) erro
 	return nil
 }
 
-// handleAIReply 综合处理文本与语音发送：发语音时不发相同文本，发文本时不发相同语音
-func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userText string, isVoiceInbound bool) error {
+// handleAIReply 综合处理文本、语音与生图发送：发语音时不发相同文本，发文本时不发相同语音，生图任务异步触发
+func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userText string, isVoiceInbound bool, sessionKey string) error {
 	reply = stripThinkingContent(reply)
 	if isLeakedReasoningOrRefusal(reply) || strings.TrimSpace(reply) == "" {
 		reply = getFallbackReply(userText, false)
+	}
+
+	// 提取并异步执行生图/自拍任务
+	imageTasks, textWithoutImage := extractImageTasks(reply)
+	if len(imageTasks) > 0 {
+		p.triggerImageTasks(receiver, sessionKey, imageTasks)
+		reply = textWithoutImage
+	}
+	if strings.TrimSpace(reply) == "" {
+		return nil
 	}
 
 	ttsCfg := p.configSnapshot().TTS

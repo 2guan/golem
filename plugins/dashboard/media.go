@@ -100,9 +100,41 @@ func (p *DashboardPlugin) handleChatMedia(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	cacheDir := filepath.Join("data", "cache", "media")
+	_ = os.MkdirAll(cacheDir, 0755)
+
+	// 支持直接按文件名访问已缓存或生成的媒体文件（如 /api/chats/media?file=generated_xxx.jpg）
+	fileParam := strings.TrimSpace(r.URL.Query().Get("file"))
+	if fileParam != "" {
+		cleanBase := filepath.Base(fileParam)
+		filePath := filepath.Join(cacheDir, cleanBase)
+		if fi, err := os.Stat(filePath); err == nil && !fi.IsDir() {
+			ext := strings.ToLower(filepath.Ext(cleanBase))
+			switch ext {
+			case ".jpg", ".jpeg":
+				w.Header().Set("Content-Type", "image/jpeg")
+			case ".png":
+				w.Header().Set("Content-Type", "image/png")
+			case ".webp":
+				w.Header().Set("Content-Type", "image/webp")
+			case ".wav":
+				w.Header().Set("Content-Type", "audio/wav")
+			case ".mp3":
+				w.Header().Set("Content-Type", "audio/mpeg")
+			default:
+				w.Header().Set("Content-Type", "application/octet-stream")
+			}
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+			http.ServeFile(w, r, filePath)
+			return
+		}
+		writeError(w, http.StatusNotFound, "媒体文件不存在")
+		return
+	}
+
 	idStr := r.URL.Query().Get("id")
 	if idStr == "" {
-		writeError(w, http.StatusBadRequest, "缺少 id 参数")
+		writeError(w, http.StatusBadRequest, "缺少 id 或 file 参数")
 		return
 	}
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -110,9 +142,6 @@ func (p *DashboardPlugin) handleChatMedia(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "无效的 id 参数")
 		return
 	}
-
-	cacheDir := filepath.Join("data", "cache", "media")
-	_ = os.MkdirAll(cacheDir, 0755)
 
 	jpgCache := filepath.Join(cacheDir, fmt.Sprintf("%d.jpg", id))
 	wavCache := filepath.Join(cacheDir, fmt.Sprintf("%d.wav", id))

@@ -41,6 +41,13 @@ func (p *AiPlugin) buildIncoming(msg *message.Message, self *contact.SelfInfo) (
 		speakerID = sender.GetUsername()
 	}
 
+	// 优先使用为联系人定制的专属称呼/备注名作为发言人名称（供大模型识别与称呼）
+	if speakerID != "" {
+		if customNick := p.resolveTargetCustomNickname("contact:"+speakerID, speakerID); customNick != "" {
+			speakerName = customNick
+		}
+	}
+
 	rawText := messageContent(msg)
 	text := strings.TrimSpace(rawText)
 
@@ -63,11 +70,22 @@ func (p *AiPlugin) buildIncoming(msg *message.Message, self *contact.SelfInfo) (
 		return incomingMessage{}, false
 	}
 
+	quote := extractQuote(msg)
+	quoteTargetID := quote.ChatUser
+	if quoteTargetID == "" || strings.HasSuffix(quoteTargetID, "@chatroom") {
+		quoteTargetID = quote.FromUser
+	}
+	if quoteTargetID != "" && !strings.HasSuffix(quoteTargetID, "@chatroom") {
+		if customNick := p.resolveTargetCustomNickname("contact:"+quoteTargetID, quoteTargetID); customNick != "" {
+			quote.DisplayName = customNick
+		}
+	}
+
 	in := incomingMessage{
 		Receiver:     sender,
 		Text:         text,
 		IsChatroom:   isChatroom,
-		Quote:        extractQuote(msg),
+		Quote:        quote,
 		RawMsg:       msg,
 		IsImage:      isImage,
 		IsVoice:      isVoice,

@@ -1300,6 +1300,12 @@
         <input type="hidden" id="modalTargetName">
         <input type="hidden" id="modalTargetRemark">
 
+        <div id="modalNicknameField">
+          <label id="modalNicknameLabel" class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">专属定制称呼 / 昵称 (Custom Nickname)</label>
+          <input type="text" id="modalCustomNickname" placeholder="例如：宝贝、学长、老王、小林（配置后AI与该好友交流称呼时将严格优先使用）" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <p id="modalNicknameHelp" class="text-[11px] text-slate-400 mt-1">【好友私聊】：设置后AI与该好友交流时将强制使用该称呼。留空时默认使用微信通讯录备注名。</p>
+        </div>
+
         <div>
           <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">专属提示词 (System Prompt)</label>
           <textarea id="modalPrompt" rows="5" placeholder="留空则使用全局 default 提示词。在此输入针对该联系人/群的特定人设，例如：'你是一个严谨的商务助手...' 或亲密提示词" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed font-mono"></textarea>
@@ -3801,9 +3807,10 @@
           <td class="px-6 py-4 flex items-center space-x-3">
             <img class="w-9 h-9 rounded-full object-cover bg-slate-200" src="${t.avatar_url || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%232563eb\' d=\'M12 2a5 5 0 0 1 5 5v1a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5zm0 13c4.418 0 8 2.239 8 5v2H4v-2c0-2.761 3.582-5 8-5z\'/%3E%3C/svg%3E'}">
             <div>
-              <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center space-x-1.5">
+              <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center space-x-1.5 flex-wrap gap-y-1">
                 <span>${escapeHtml(t.remark || t.name)}</span>
                 ${t.remark ? `<span class="text-xs text-slate-400 font-normal">(${escapeHtml(t.name)})</span>` : ''}
+                ${t.custom_nickname ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800" title="专属称呼">称呼: 「${escapeHtml(t.custom_nickname)}」</span>` : ''}
               </div>
               <div class="text-xs text-slate-500 font-mono">${t.target_id}</div>
             </div>
@@ -3863,6 +3870,23 @@
       document.getElementById('modalTargetRemark').value = t.remark || '';
 
       document.getElementById('modalTargetSubtitle').innerText = `${t.remark || t.name || t.target_id} (${t.target_id})`;
+      document.getElementById('modalCustomNickname').value = t.custom_nickname || '';
+
+      const isChatroom = (t.target_type === 'chatroom') || (t.target_id && t.target_id.endsWith('@chatroom'));
+      const nickField = document.getElementById('modalNicknameField');
+      const nickLabel = document.getElementById('modalNicknameLabel');
+      const nickInput = document.getElementById('modalCustomNickname');
+      const nickHelp = document.getElementById('modalNicknameHelp');
+      if (isChatroom) {
+        nickLabel.innerText = '群成员统称 / 专属群昵称 (可选)';
+        nickInput.placeholder = '例如：群友们、家人们、老铁们（留空则自然称呼各群成员）';
+        nickHelp.innerText = '💡【微信群聊场景】：本项为群整体称呼或群友泛称。若要为群内特定某位好友设置专属称呼，请在私聊或通讯录好友项中为其设置，系统在群聊中也会自动识别并使用该好友的称呼。';
+      } else {
+        nickLabel.innerText = '专属定制称呼 / 昵称 (Custom Nickname)';
+        nickInput.placeholder = '例如：宝贝、学长、老王、小林（配置后AI与该好友交流称呼时将严格优先使用）';
+        nickHelp.innerText = '💡【好友私聊场景】：设置后AI每次称呼对方时将强制且唯一使用该昵称。留空时默认自动继承微信通讯录备注名。';
+      }
+
       document.getElementById('modalPrompt').value = t.custom_prompt || '';
       updateTargetModalProviders();
       document.getElementById('modalProvider').value = t.provider || '';
@@ -3910,6 +3934,7 @@
       const target_type = document.getElementById('modalTargetType').value;
       const name = document.getElementById('modalTargetName').value;
       const remark = document.getElementById('modalTargetRemark').value;
+      const custom_nickname = document.getElementById('modalCustomNickname').value.trim();
       const custom_prompt = document.getElementById('modalPrompt').value.trim();
       const provider = document.getElementById('modalProvider').value;
       const rateVal = document.getElementById('modalReplyRate').value;
@@ -3921,6 +3946,7 @@
         target_type,
         name,
         remark,
+        custom_nickname,
         custom_prompt,
         provider,
         silence,
@@ -4000,6 +4026,17 @@
         return m.avatar_url;
       }
       if (isGroup) {
+        if (speakerName && speakerName !== '对方' && Array.isArray(allTargets) && allTargets.length > 0) {
+          const matchedTarget = allTargets.find(t =>
+            (t.custom_nickname && t.custom_nickname === speakerName) ||
+            (t.name && t.name === speakerName) ||
+            (t.remark && t.remark === speakerName) ||
+            (t.target_id && t.target_id === speakerName)
+          );
+          if (matchedTarget && matchedTarget.avatar_url) {
+            return matchedTarget.avatar_url;
+          }
+        }
         if (speakerName && speakerName !== '对方') {
           return generateLetterAvatar(speakerName);
         }
@@ -4305,9 +4342,30 @@
           cutoffDividerInserted = true;
         }
 
+        // 系统通知类消息（拍一拍、加入群聊、修改群名、撤回消息、好友添加等），居中轻量小药丸提示条展示
+        if (m.type === 'system') {
+          const sysRow = document.createElement('div');
+          sysRow.className = 'flex items-center justify-center my-3 select-text';
+          const timeStr = formatChatTimestamp(m.timestamp);
+          sysRow.innerHTML = `
+            <div class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800/80 border border-gray-200/50 dark:border-gray-700/50 text-[11px] text-gray-500 dark:text-gray-400 font-mono shadow-xs max-w-[85%] text-center leading-relaxed">
+              <span>${escapeHtml(m.content || '')}</span>
+              ${timeStr ? `<span class="text-gray-400 dark:text-gray-500 text-[10px] ml-1 select-none font-sans">· ${escapeHtml(timeStr)}</span>` : ''}
+            </div>
+          `;
+          stream.appendChild(sysRow);
+          return;
+        }
+
         const isMe = m.is_self || m.role === 'assistant';
         const msgRow = document.createElement('div');
         let speakerName = m.sender_name || (isMe ? getBotNickname() : (curSession ? (curSession.name || '对方') : '对方'));
+        if (!isMe && Array.isArray(allTargets) && allTargets.length > 0) {
+          const matchedTarget = allTargets.find(t => t.custom_nickname && t.custom_nickname === speakerName);
+          if (matchedTarget) {
+            speakerName = matchedTarget.remark || matchedTarget.name || speakerName;
+          }
+        }
 
         const timeStr = formatChatTimestamp(m.timestamp);
 
@@ -4318,7 +4376,7 @@
           mediaUrl += (mediaUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(curToken);
         }
 
-        const isImage = (m.type === 'image' || (m.content && m.content.includes('[图片]'))) && mediaUrl;
+        const isImage = (m.type === 'image' || (m.content && (m.content.includes('[图片]') || m.content.includes('自拍') || m.content.includes('绘制的图片')))) && mediaUrl;
         const isVoice = m.type === 'voice' || (m.content && m.content.includes('[语音]'));
         const dur = m.duration || 1;
         const voiceBubbleWidth = Math.min(240, Math.max(75, 65 + dur * 4.5));
@@ -4329,9 +4387,17 @@
           
           let bubbleHtml = '';
           if (isImage) {
+            let captionHtml = '';
+            const caption = (m.content || '').trim();
+            if (caption && caption !== '[图片]' && caption !== '[图片消息]') {
+              captionHtml = `<div class="mt-1.5 px-1 text-xs text-gray-700 dark:text-gray-300 max-w-[240px] break-words text-right">${escapeHtml(caption)}</div>`;
+            }
             bubbleHtml = `
-              <div class="relative rounded-[4px] overflow-hidden max-w-[240px] max-h-[280px] shadow-sm bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
-                <img src="${mediaUrl}" alt="图片" class="max-w-[240px] max-h-[280px] object-cover cursor-zoom-in hover:brightness-95 transition" onclick="previewChatImage(this.src)" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'p-3 text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded\'>[图片加载失败]</div>';">
+              <div class="flex flex-col items-end">
+                <div class="relative rounded-[4px] overflow-hidden max-w-[240px] max-h-[280px] shadow-sm bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                  <img src="${mediaUrl}" alt="图片" class="max-w-[240px] max-h-[280px] object-cover cursor-zoom-in hover:brightness-95 transition" onclick="previewChatImage(this.src)" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'p-3 text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded\'>[图片加载失败]</div>';">
+                </div>
+                ${captionHtml}
               </div>
             `;
           } else if (isVoice) {
@@ -4375,9 +4441,17 @@
 
           let bubbleHtml = '';
           if (isImage) {
+            let captionHtml = '';
+            const caption = (m.content || '').trim();
+            if (caption && caption !== '[图片]' && caption !== '[图片消息]') {
+              captionHtml = `<div class="mt-1.5 px-1 text-xs text-gray-700 dark:text-gray-300 max-w-[240px] break-words text-left">${escapeHtml(caption)}</div>`;
+            }
             bubbleHtml = `
-              <div class="relative rounded-[4px] overflow-hidden max-w-[240px] max-h-[280px] shadow-sm bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
-                <img src="${mediaUrl}" alt="图片" class="max-w-[240px] max-h-[280px] object-cover cursor-zoom-in hover:brightness-95 transition" onclick="previewChatImage(this.src)" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'p-3 text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded\'>[图片加载失败]</div>';">
+              <div class="flex flex-col items-start">
+                <div class="relative rounded-[4px] overflow-hidden max-w-[240px] max-h-[280px] shadow-sm bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                  <img src="${mediaUrl}" alt="图片" class="max-w-[240px] max-h-[280px] object-cover cursor-zoom-in hover:brightness-95 transition" onclick="previewChatImage(this.src)" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'p-3 text-xs text-gray-500 bg-gray-100 dark:bg-gray-800 rounded\'>[图片加载失败]</div>';">
+                </div>
+                ${captionHtml}
               </div>
             `;
           } else if (isVoice) {
@@ -4430,7 +4504,7 @@
       // 清除可能遗留的思维链标签
       content = content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
 
-      if (m.type === 'image' || content.includes('[图片]')) {
+      if (m.type === 'image' || content.includes('[图片]') || content.includes('生活自拍照') || content.includes('绘制的图片')) {
         return `<div class="flex items-center space-x-1.5 font-medium text-[#000000] dark:text-[#dfdfdf]"><span>🖼️</span> <span>[图片消息]</span></div><div class="mt-1 text-xs text-gray-500 dark:text-gray-400">${escapeHtml(content)}</div>`;
       }
       if (m.type === 'voice' || content.includes('[语音]')) {

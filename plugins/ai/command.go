@@ -42,14 +42,22 @@ type aiSessionGetCommand struct {
 }
 
 type aiSessionSetCommand struct {
-	_          struct{} `cmd:"ai session-set" help:"设置会话配置" usage:"/ai session-set [-t target] [-p provider] [--prompt name] [-r reply_rate] [-c max_context] [-s silence]" example:"/ai session-set -p deepseek -r 0.8\n/ai session-set -t chatroom:123@chatroom -s true"`
+	_          struct{} `cmd:"ai session-set" help:"设置会话配置" usage:"/ai session-set [-t target] [-n nickname] [-p provider] [--prompt name] [-r reply_rate] [-c max_context] [-s silence]" example:"/ai session-set -p deepseek -r 0.8\n/ai session-set -n 宝贝\n/ai session-set -t chatroom:123@chatroom -s true"`
 	Target     string   `flag:"t,target" help:"会话 key；不传则设置当前会话"`
+	Nickname   *string  `flag:"n,nickname" help:"对当前会话/好友的专属称呼/昵称"`
 	Provider   *string  `flag:"p,provider" help:"会话级 provider 名称"`
 	Prompt     *string  `flag:",prompt" help:"会话级提示词名称"`
 	ReplyRate  *float64 `flag:"r,reply-rate" help:"回复概率，取值 0~1"`
 	MaxContext *int     `flag:"c,max-context" help:"上下文消息数"`
 	Silence    *bool    `flag:"s,silence" help:"会话级静默模式，true 开启 / false 关闭"`
 	Command    *plugin.Command
+}
+
+type aiNickCommand struct {
+	_        struct{} `cmd:"ai nick" help:"为当前好友或指定会话定制专属称呼/昵称" usage:"/ai nick <nickname> [-t target]" example:"/ai nick 宝贝\n/ai nick 哥们 -t private:wxid_xxx"`
+	Nickname string   `arg:"nickname" help:"专属定制称呼" required:"true"`
+	Target   string   `flag:"t,target" help:"会话 key；不传则设置当前会话"`
+	Command  *plugin.Command
 }
 
 type aiSessionResetCommand struct {
@@ -92,6 +100,7 @@ func registerCommands(p *AiPlugin) error {
 		func() error { return plugin.RegisterCommand(p.handleClearContext) },
 		func() error { return plugin.RegisterCommand(p.handleSessionGet) },
 		func() error { return plugin.RegisterCommand(p.handleSessionSet) },
+		func() error { return plugin.RegisterCommand(p.handleNick) },
 		func() error { return plugin.RegisterCommand(p.handleSessionReset) },
 		func() error { return plugin.RegisterCommand(p.handleSessionList) },
 		func() error { return plugin.RegisterCommand(p.handleProviderAdd) },
@@ -271,6 +280,13 @@ func (p *AiPlugin) handleSessionGet(cmd aiSessionGetCommand) (string, error) {
 		lines = append(lines, fmt.Sprintf("active_provider=%s (全局)", emptyDash(config.ActiveProvider)))
 	}
 
+	// 专属称呼
+	if sessionCfg != nil && sessionCfg.CustomNickname != nil && *sessionCfg.CustomNickname != "" {
+		lines = append(lines, fmt.Sprintf("custom_nickname=%s (会话专属)", *sessionCfg.CustomNickname))
+	} else if nick := p.resolveTargetCustomNickname(key, ""); nick != "" {
+		lines = append(lines, fmt.Sprintf("custom_nickname=%s (微信备注/继承)", nick))
+	}
+
 	// 提示词
 	if sessionCfg != nil && sessionCfg.ActivePrompt != nil {
 		lines = append(lines, fmt.Sprintf("active_prompt=%s (会话)", *sessionCfg.ActivePrompt))
@@ -310,6 +326,38 @@ func (p *AiPlugin) handleSessionGet(cmd aiSessionGetCommand) (string, error) {
 	return strings.Join(lines, "\n"), nil
 }
 
+func (p *AiPlugin) handleNick(cmd aiNickCommand) (string, error) {
+	key := strings.TrimSpace(cmd.Target)
+	if key == "" {
+		key = commandSessionKey(cmd.Command)
+	}
+	if key == "" {
+		return "", fmt.Errorf("无法确定要设置的会话")
+	}
+
+	nick := strings.TrimSpace(cmd.Nickname)
+	if nick == "" {
+		return "", fmt.Errorf("称呼/昵称不能为空")
+	}
+
+	p.configMu.Lock()
+	defer p.configMu.Unlock()
+
+	sessionCfg := p.getSessionConfig(key)
+	if sessionCfg == nil {
+		sessionCfg = &SessionConfig{}
+	}
+
+	sessionCfg.CustomNickname = &nick
+	p.setSessionConfig(key, sessionCfg)
+
+	if err := p.SaveConfig(p); err != nil {
+		return "", fmt.Errorf("保存配置失败: %w", err)
+	}
+
+	return fmt.Sprintf("已成功为 %s 设置专属称呼：「%s」！后续对话中将使用该昵称称呼对方。", key, nick), nil
+}
+
 func (p *AiPlugin) handleSessionSet(cmd aiSessionSetCommand) (string, error) {
 	key := strings.TrimSpace(cmd.Target)
 	if key == "" {
@@ -319,7 +367,7 @@ func (p *AiPlugin) handleSessionSet(cmd aiSessionSetCommand) (string, error) {
 		return "", fmt.Errorf("无法确定要设置的会话")
 	}
 
-	if cmd.Provider == nil && cmd.Prompt == nil && cmd.ReplyRate == nil && cmd.MaxContext == nil && cmd.Silence == nil {
+	if cmd.Nickname == nil && cmd.Provider == nil && cmd.Prompt == nil && cmd.ReplyRate == nil && cmd.MaxContext == nil && cmd.Silence == nil {
 		return "", fmt.Errorf("未提供要更新的配置")
 	}
 
@@ -356,6 +404,10 @@ func (p *AiPlugin) handleSessionSet(cmd aiSessionSetCommand) (string, error) {
 	}
 
 	// 更新字段
+	if cmd.Nickname != nil {
+		nick := strings.TrimSpace(*cmd.Nickname)
+		sessionCfg.CustomNickname = &nick
+	}
 	if cmd.Provider != nil {
 		name := strings.TrimSpace(*cmd.Provider)
 		sessionCfg.ActiveProvider = &name
@@ -423,6 +475,9 @@ func (p *AiPlugin) handleSessionList(aiSessionListCommand) (string, error) {
 		}
 
 		parts := []string{key}
+		if cfg.CustomNickname != nil && *cfg.CustomNickname != "" {
+			parts = append(parts, fmt.Sprintf("nick=%s", *cfg.CustomNickname))
+		}
 		if cfg.ActiveProvider != nil {
 			parts = append(parts, fmt.Sprintf("provider=%s", *cfg.ActiveProvider))
 		}

@@ -161,3 +161,104 @@ func TestChatEngine_ClearSessionContext(t *testing.T) {
 		t.Error("expected sentMessages for user123 to be cleared")
 	}
 }
+
+func TestParseSystemNotice(t *testing.T) {
+	nameMap := map[string]string{
+		"wxid_111": "柒喜",
+		"wxid_222": "冯献",
+		"wxid_bot": "你",
+	}
+
+	// 1. 拍一拍
+	patXML := `<sysmsg type="pat">
+<pat>
+  <fromusername>wxid_111</fromusername>
+  <chatusername>51872154794@chatroom</chatusername>
+  <pattedusername>wxid_222</pattedusername>
+  <patsuffix><![CDATA[的^  ^ 👀"⚫️" 👅]]></patsuffix>
+  <template><![CDATA["${wxid_111}" 拍了拍 "${wxid_222}" 的^  ^ 👀"⚫️" 👅]]></template>
+</pat>
+</sysmsg>`
+	patRes := parseSystemNotice(patXML, "", "51872154794@chatroom", nil, "wxid_bot", nameMap)
+	expectedPat := `“柒喜” 拍了拍 “冯献” 的^  ^ 👀"⚫️" 👅`
+	if patRes != expectedPat {
+		t.Errorf("expected %q, got %q", expectedPat, patRes)
+	}
+
+	// 2. 扫码入群
+	joinXML := `<sysmsg type="sysmsgtemplate">
+	<sysmsgtemplate>
+		<content_template type="tmpl_type_profile">
+			<plain><![CDATA[]]></plain>
+			<template><![CDATA["$adder$"通过扫描"$from$"分享的二维码加入群聊]]></template>
+			<link_list>
+				<link name="adder" type="link_profile">
+					<memberlist>
+						<member>
+							<username><![CDATA[wxid_333]]></username>
+							<nickname><![CDATA[章向南.]]></nickname>
+						</member>
+					</memberlist>
+				</link>
+				<link name="from" type="link_profile">
+					<memberlist>
+						<member>
+							<username><![CDATA[wxid_111]]></username>
+							<nickname><![CDATA[柒喜]]></nickname>
+						</member>
+					</memberlist>
+				</link>
+			</link_list>
+		</content_template>
+	</sysmsgtemplate>
+</sysmsg>`
+	joinRes := parseSystemNotice(joinXML, "", "51872154794@chatroom", nil, "wxid_bot", nameMap)
+	expectedJoin := `“章向南.”通过扫描“柒喜”分享的二维码加入群聊`
+	if joinRes != expectedJoin {
+		t.Errorf("expected %q, got %q", expectedJoin, joinRes)
+	}
+
+	// 3. 修改群名
+	renameXML := `<sysmsg type="sysmsgtemplate">
+	<sysmsgtemplate>
+		<content_template type="tmpl_type_profile">
+			<plain><![CDATA[]]></plain>
+			<template><![CDATA["$username$"修改群名为“$remark$”]]></template>
+			<link_list>
+				<link name="username" type="link_profile">
+					<memberlist>
+						<member>
+							<username><![CDATA[wxid_222]]></username>
+							<nickname><![CDATA[冯献]]></nickname>
+						</member>
+					</memberlist>
+				</link>
+				<link name="remark" type="link_plain">
+					<plain><![CDATA[Chatjipiti]]></plain>
+				</link>
+			</link_list>
+		</content_template>
+	</sysmsgtemplate>
+</sysmsg>`
+	renameRes := parseSystemNotice(renameXML, "", "51872154794@chatroom", nil, "wxid_bot", nameMap)
+	expectedRename := `“冯献”修改群名为“Chatjipiti”`
+	if renameRes != expectedRename {
+		t.Errorf("expected %q, got %q", expectedRename, renameRes)
+	}
+
+	// 4. 撤回消息
+	revokeXML := `<sysmsg type="revokemsg"><revokemsg><session>51872154794@chatroom</session><replacemsg><![CDATA["有福" 撤回了一条消息]]></replacemsg></revokemsg></sysmsg>`
+	revokeRes := parseSystemNotice(revokeXML, "", "51872154794@chatroom", nil, "wxid_bot", nameMap)
+	expectedRevoke := `“有福” 撤回了一条消息`
+	if revokeRes != expectedRevoke {
+		t.Errorf("expected %q, got %q", expectedRevoke, revokeRes)
+	}
+
+	// 5. 噪声过滤
+	noiseXML := `<sysmsg type="dynacfg"><dynacfg><Item key="AVItemSightDisable">0</Item></dynacfg></sysmsg>`
+	noiseRes := parseSystemNotice(noiseXML, "", "51872154794@chatroom", nil, "wxid_bot", nameMap)
+	if noiseRes != "" {
+		t.Errorf("expected empty for noise XML, got %q", noiseRes)
+	}
+}
+

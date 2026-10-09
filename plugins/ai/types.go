@@ -29,6 +29,7 @@ type openAIMessage struct {
 	ToolCalls    []toolCall `json:"tool_calls,omitempty"`
 	ToolCallID   string     `json:"tool_call_id,omitempty"`
 	ExtraContent any        `json:"extra_content,omitempty"`
+	MediaURL     string     `json:"media_url,omitempty"`
 }
 
 type incomingMessage struct {
@@ -68,7 +69,9 @@ type SessionConfig struct {
 	MaxContextMessages *int     `toml:"max_context_messages,omitempty"`
 	ActiveProvider     *string  `toml:"active_provider,omitempty"`
 	Silence            *bool    `toml:"silence,omitempty"`
+	CustomNickname     *string  `toml:"custom_nickname,omitempty"` // 针对该好友的定制称呼/专属昵称
 }
+
 
 // Provider 预设的 OpenAI 兼容服务提供方配置
 type Provider struct {

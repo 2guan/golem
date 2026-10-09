@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
 )
@@ -23,6 +25,229 @@ func CleanThoughtTag(s string) string {
 		cleaned = cleaned[:idx]
 	}
 	return strings.TrimSpace(cleaned)
+}
+
+var (
+	patTemplateRegex   = regexp.MustCompile(`(?s)<template><!\[CDATA\[(.*?)\]\]></template>`)
+	patTemplateRegex2  = regexp.MustCompile(`(?s)<template>(.*?)</template>`)
+	revokeMsgRegex     = regexp.MustCompile(`(?s)<replacemsg><!\[CDATA\[(.*?)\]\]></replacemsg>`)
+	revokeMsgRegex2    = regexp.MustCompile(`(?s)<replacemsg>(.*?)</replacemsg>`)
+	announcementRegex  = regexp.MustCompile(`(?s)<content><!\[CDATA\[(.*?)\]\]></content>`)
+	announcementRegex2 = regexp.MustCompile(`(?s)<content>(.*?)</content>`)
+	linkRegex          = regexp.MustCompile(`(?s)<link\s+name="([^"]+)"[^>]*>(.*?)</link>`)
+	nicknameRegex      = regexp.MustCompile(`(?s)<nickname><!\[CDATA\[(.*?)\]\]></nickname>`)
+	nicknameRegex2     = regexp.MustCompile(`(?s)<nickname>(.*?)</nickname>`)
+	plainRegex         = regexp.MustCompile(`(?s)<plain><!\[CDATA\[(.*?)\]\]></plain>`)
+	plainRegex2        = regexp.MustCompile(`(?s)<plain>(.*?)</plain>`)
+	titleRegex         = regexp.MustCompile(`(?s)<title><!\[CDATA\[(.*?)\]\]></title>`)
+	titleRegex2        = regexp.MustCompile(`(?s)<title>(.*?)</title>`)
+	usernameRegex      = regexp.MustCompile(`(?s)<username><!\[CDATA\[(.*?)\]\]></username>`)
+	usernameRegex2     = regexp.MustCompile(`(?s)<username>(.*?)</username>`)
+	rePatQuotedVar     = regexp.MustCompile(`"\$\{([^}]+)\}"`)
+	rePatBareVar       = regexp.MustCompile(`\$\{([^}]+)\}`)
+	reAsciiQuote       = regexp.MustCompile(`"([^"]+)"`)
+	reNewlines         = regexp.MustCompile(`[\r\n]+`)
+)
+
+// parseSystemNotice 解析拍一拍、撤回消息、进群通知、改名通知、群公告等系统事件
+func parseSystemNotice(content, rawStr, chatroomID string, p *DashboardPlugin, botUsername string, memberNameMap map[string]string) string {
+	text := strings.TrimSpace(content)
+	raw := strings.TrimSpace(rawStr)
+
+	// 1. 若 content 和 rawStr 均不含 <sysmsg，则可能是纯文本系统通知（如好友打招呼、移出群聊等）
+	if !strings.Contains(text, "<sysmsg") && !strings.Contains(raw, "<sysmsg") {
+		if text != "" && !strings.HasPrefix(text, "<msg>") {
+			res := reAsciiQuote.ReplaceAllString(text, "“$1”")
+			return res
+		}
+		return ""
+	}
+
+	xmlStr := text
+	if !strings.Contains(xmlStr, "<sysmsg") {
+		xmlStr = raw
+	}
+	if idx := strings.Index(xmlStr, "<sysmsg"); idx >= 0 {
+		xmlStr = xmlStr[idx:]
+	}
+
+	resolveName := func(uid string) string {
+		uid = strings.TrimSpace(uid)
+		if uid == "" {
+			return ""
+		}
+		if botUsername != "" && uid == botUsername {
+			return "你"
+		}
+		if n, ok := memberNameMap[uid]; ok && n != "" {
+			return n
+		}
+		if p != nil && p.contact != nil {
+			if c := p.contact.Get(uid); c != nil {
+				if c.GetRemark() != "" {
+					return c.GetRemark()
+				}
+				if c.GetNickname() != "" {
+					return c.GetNickname()
+				}
+			}
+		}
+		return uid
+	}
+
+	// 2. 拍一拍消息
+	if strings.Contains(xmlStr, `type="pat"`) {
+		tmpl := ""
+		if m := patTemplateRegex.FindStringSubmatch(xmlStr); len(m) > 1 {
+			tmpl = m[1]
+		} else if m2 := patTemplateRegex2.FindStringSubmatch(xmlStr); len(m2) > 1 {
+			tmpl = m2[1]
+		}
+		if tmpl != "" {
+			res := rePatQuotedVar.ReplaceAllStringFunc(tmpl, func(matched string) string {
+				sub := rePatQuotedVar.FindStringSubmatch(matched)
+				if len(sub) > 1 {
+					return "“" + resolveName(sub[1]) + "”"
+				}
+				return matched
+			})
+			res = rePatBareVar.ReplaceAllStringFunc(res, func(matched string) string {
+				sub := rePatBareVar.FindStringSubmatch(matched)
+				if len(sub) > 1 {
+					return resolveName(sub[1])
+				}
+				return matched
+			})
+			res = reNewlines.ReplaceAllString(res, " ")
+			return strings.TrimSpace(res)
+		}
+		return ""
+	}
+
+	// 3. 撤回消息
+	if strings.Contains(xmlStr, `type="revokemsg"`) {
+		msg := ""
+		if m := revokeMsgRegex.FindStringSubmatch(xmlStr); len(m) > 1 {
+			msg = m[1]
+		} else if m2 := revokeMsgRegex2.FindStringSubmatch(xmlStr); len(m2) > 1 {
+			msg = m2[1]
+		}
+		if msg != "" {
+			res := reAsciiQuote.ReplaceAllString(msg, "“$1”")
+			return strings.TrimSpace(res)
+		}
+		return ""
+	}
+
+	// 4. 模板系统消息 (进群、修改群名、被移出群聊等)
+	if strings.Contains(xmlStr, `type="sysmsgtemplate"`) {
+		tmpl := ""
+		if m := patTemplateRegex.FindStringSubmatch(xmlStr); len(m) > 1 {
+			tmpl = m[1]
+		} else if m2 := patTemplateRegex2.FindStringSubmatch(xmlStr); len(m2) > 1 {
+			tmpl = m2[1]
+		}
+		if tmpl != "" {
+			tmpl = reNewlines.ReplaceAllString(tmpl, " ")
+
+			linkMatches := linkRegex.FindAllStringSubmatch(xmlStr, -1)
+			varMap := make(map[string]string)
+			for _, lm := range linkMatches {
+				if len(lm) < 3 {
+					continue
+				}
+				name := lm[1]
+				body := lm[2]
+
+				// 优先 nickname
+				var nicks []string
+				for _, nm := range nicknameRegex.FindAllStringSubmatch(body, -1) {
+					if len(nm) > 1 && strings.TrimSpace(nm[1]) != "" {
+						nicks = append(nicks, strings.TrimSpace(nm[1]))
+					}
+				}
+				if len(nicks) == 0 {
+					for _, nm := range nicknameRegex2.FindAllStringSubmatch(body, -1) {
+						if len(nm) > 1 && strings.TrimSpace(nm[1]) != "" {
+							nicks = append(nicks, strings.TrimSpace(nm[1]))
+						}
+					}
+				}
+				if len(nicks) > 0 {
+					varMap[name] = strings.Join(nicks, "、")
+					continue
+				}
+
+				// 其次 plain
+				var plains []string
+				for _, pm := range plainRegex.FindAllStringSubmatch(body, -1) {
+					if len(pm) > 1 && strings.TrimSpace(pm[1]) != "" {
+						plains = append(plains, strings.TrimSpace(pm[1]))
+					}
+				}
+				if len(plains) == 0 {
+					for _, pm := range plainRegex2.FindAllStringSubmatch(body, -1) {
+						if len(pm) > 1 && strings.TrimSpace(pm[1]) != "" {
+							plains = append(plains, strings.TrimSpace(pm[1]))
+						}
+					}
+				}
+				if len(plains) > 0 {
+					varMap[name] = strings.Join(plains, "、")
+					continue
+				}
+
+				// 其次 title
+				if tm := titleRegex.FindStringSubmatch(body); len(tm) > 1 && strings.TrimSpace(tm[1]) != "" {
+					varMap[name] = strings.TrimSpace(tm[1])
+					continue
+				} else if tm2 := titleRegex2.FindStringSubmatch(body); len(tm2) > 1 && strings.TrimSpace(tm2[1]) != "" {
+					varMap[name] = strings.TrimSpace(tm2[1])
+					continue
+				}
+
+				// 其次 username (通过 resolveName 换成群昵称/微信昵称)
+				var unames []string
+				for _, um := range usernameRegex.FindAllStringSubmatch(body, -1) {
+					if len(um) > 1 && strings.TrimSpace(um[1]) != "" {
+						unames = append(unames, resolveName(strings.TrimSpace(um[1])))
+					}
+				}
+				if len(unames) == 0 {
+					for _, um := range usernameRegex2.FindAllStringSubmatch(body, -1) {
+						if len(um) > 1 && strings.TrimSpace(um[1]) != "" {
+							unames = append(unames, resolveName(strings.TrimSpace(um[1])))
+						}
+					}
+				}
+				if len(unames) > 0 {
+					varMap[name] = strings.Join(unames, "、")
+					continue
+				}
+			}
+
+			// 替换 "$var$" 或 “$var$” 为 “val”
+			for k, v := range varMap {
+				tmpl = strings.ReplaceAll(tmpl, `"$`+k+`$"`, "“"+v+"”")
+				tmpl = strings.ReplaceAll(tmpl, `“$`+k+`$”`, "“"+v+"”")
+				tmpl = strings.ReplaceAll(tmpl, `$`+k+`$`, v)
+			}
+			return strings.TrimSpace(tmpl)
+		}
+		return ""
+	}
+
+	// 5. 群公告
+	if strings.Contains(xmlStr, `type="mmchatroombarannouncememt"`) {
+		if m := announcementRegex.FindStringSubmatch(xmlStr); len(m) > 1 && strings.TrimSpace(m[1]) != "" {
+			return "群公告：" + strings.TrimSpace(m[1])
+		} else if m2 := announcementRegex2.FindStringSubmatch(xmlStr); len(m2) > 1 && strings.TrimSpace(m2[1]) != "" {
+			return "群公告：" + strings.TrimSpace(m2[1])
+		}
+		return ""
+	}
+
+	return ""
 }
 
 func parseMsgTime(ts string) time.Time {
@@ -64,8 +289,9 @@ func parseMsgTime(ts string) time.Time {
 
 
 type AIHistoryMsg struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"` // 允许 string 或 []any 多模态数组
+	Role     string `json:"role"`
+	Content  any    `json:"content"` // 允许 string 或 []any 多模态数组
+	MediaURL string `json:"media_url,omitempty"`
 }
 
 type AIHistorySession struct {
@@ -87,7 +313,8 @@ func extractContent(raw any) (text string, msgType string, mediaURL string, dura
 		msgType = "text"
 		if strings.Contains(s, "[语音]") || strings.Contains(s, "发来了一条语音消息") {
 			msgType = "voice"
-		} else if strings.Contains(s, "[图片]") || strings.Contains(s, "发送了一张图片") {
+		} else if strings.Contains(s, "[图片]") || strings.Contains(s, "发送了一张图片") ||
+			strings.Contains(s, "生活自拍照") || strings.Contains(s, "绘制的图片") {
 			msgType = "image"
 		}
 		return s, msgType, "", 0
@@ -202,6 +429,60 @@ func (ce *ChatEngine) loadSentStore() {
 	if err := json.Unmarshal(data, &stored); err == nil && stored != nil {
 		ce.sentMessages = stored
 	}
+}
+
+// loadPluginSentRecords 动态读取所有插件通过 SDK 发送的出站消息记录 (data/plugin_sent.jsonl)
+func (ce *ChatEngine) loadPluginSentRecords(sessionID string) []SentRecord {
+	cleanID := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(sessionID, "chatroom:"), "private:"), "contact:")
+	var records []SentRecord
+
+	candPaths := []string{
+		filepath.Join("data", "plugin_sent.jsonl"),
+		"plugin_sent.jsonl",
+		filepath.Join("..", "..", "data", "plugin_sent.jsonl"),
+	}
+
+	for _, pth := range candPaths {
+		f, err := os.Open(pth)
+		if err != nil {
+			continue
+		}
+		defer f.Close()
+
+		decoder := json.NewDecoder(f)
+		for decoder.More() {
+			var item struct {
+				ID        int64  `json:"id"`
+				SessionID string `json:"session_id"`
+				Type      string `json:"type"`
+				Content   string `json:"content"`
+				Timestamp string `json:"timestamp"`
+			}
+			if err := decoder.Decode(&item); err == nil {
+				cID := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(item.SessionID, "chatroom:"), "private:"), "contact:")
+				if cID == cleanID {
+					pt := parseMsgTime(item.Timestamp)
+					if pt.IsZero() {
+						pt = time.Now()
+					}
+					st := item.Type
+					if st == "" {
+						st = "text"
+					}
+					records = append(records, SentRecord{
+						ID:        item.ID,
+						SessionID: cleanID,
+						Role:      "assistant",
+						Type:      st,
+						Content:   item.Content,
+						Timestamp: pt,
+					})
+				}
+			}
+		}
+		break
+	}
+	return records
 }
 
 func (ce *ChatEngine) saveSentStoreLocked() {
@@ -549,6 +830,197 @@ func (ce *ChatEngine) GetSessions(p *DashboardPlugin) ([]ChatSessionItem, error)
 		}
 	}
 
+	// 5. 补全所有会话的昵称、群名与头像（支持 chatroom.json / contact.json / 专属策略覆盖）
+	var fileChatrooms map[string]map[string]struct {
+		Username string `json:"username"`
+		Nickname string `json:"nickname"`
+		Remark   string `json:"remark"`
+		Avatar   string `json:"avatar"`
+	}
+	var fileContacts map[string]struct {
+		Username string `json:"username"`
+		Nickname string `json:"nickname"`
+		Remark   string `json:"remark"`
+		Avatar   string `json:"avatar"`
+	}
+
+	loadChatroomFile := func() {
+		if fileChatrooms != nil {
+			return
+		}
+		fileChatrooms = make(map[string]map[string]struct {
+			Username string `json:"username"`
+			Nickname string `json:"nickname"`
+			Remark   string `json:"remark"`
+			Avatar   string `json:"avatar"`
+		})
+		for _, pth := range []string{filepath.Join("data", "chatroom.json"), "chatroom.json"} {
+			if b, err := os.ReadFile(pth); err == nil {
+				_ = json.Unmarshal(b, &fileChatrooms)
+				if len(fileChatrooms) > 0 {
+					break
+				}
+			}
+		}
+	}
+
+	loadContactFile := func() {
+		if fileContacts != nil {
+			return
+		}
+		fileContacts = make(map[string]struct {
+			Username string `json:"username"`
+			Nickname string `json:"nickname"`
+			Remark   string `json:"remark"`
+			Avatar   string `json:"avatar"`
+		})
+		for _, pth := range []string{filepath.Join("data", "contact.json"), "contact.json"} {
+			if b, err := os.ReadFile(pth); err == nil {
+				_ = json.Unmarshal(b, &fileContacts)
+				if len(fileContacts) > 0 {
+					break
+				}
+			}
+		}
+	}
+
+	for _, s := range sessionMap {
+		cleanID := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(s.ID, "chatroom:"), "private:"), "contact:")
+		if s.Type == "chatroom" || strings.HasSuffix(cleanID, "@chatroom") {
+			s.Type = "chatroom"
+
+			// 优先从群聊能力与联系人能力中补充
+			if p != nil && p.chatroom != nil {
+				if info, err := p.chatroom.GetInfo(cleanID); err == nil && info != nil {
+					if s.AvatarURL == "" && info.GetAvatar() != "" {
+						s.AvatarURL = info.GetAvatar()
+					}
+					if (s.Name == "" || s.Name == s.ID) && info.GetNickname() != "" {
+						s.Name = info.GetNickname()
+					}
+				}
+			}
+			if p != nil && p.contact != nil {
+				if c := p.contact.Get(cleanID); c != nil {
+					if s.AvatarURL == "" && c.GetAvatar() != "" {
+						s.AvatarURL = c.GetAvatar()
+					}
+					if (s.Name == "" || s.Name == s.ID) {
+						if c.GetRemark() != "" {
+							s.Name = c.GetRemark()
+						} else if c.GetNickname() != "" {
+							s.Name = c.GetNickname()
+						}
+					}
+				}
+			}
+
+			// 从本地文件兜底补充群名或群头像
+			if s.AvatarURL == "" || s.Name == "" || s.Name == s.ID {
+				loadContactFile()
+				if fc, ok := fileContacts[cleanID]; ok {
+					if s.AvatarURL == "" && fc.Avatar != "" {
+						s.AvatarURL = fc.Avatar
+					}
+					if (s.Name == "" || s.Name == s.ID) {
+						if fc.Remark != "" {
+							s.Name = fc.Remark
+						} else if fc.Nickname != "" {
+							s.Name = fc.Nickname
+						}
+					}
+				}
+			}
+
+			// 如果群名依然是群 ID，尝试从群成员列表中组合前三位成员的名字作为默认群名
+			if s.Name == "" || s.Name == s.ID {
+				loadChatroomFile()
+				if members, ok := fileChatrooms[cleanID]; ok && len(members) > 0 {
+					var memberNames []string
+					for _, m := range members {
+						n := m.Remark
+						if n == "" {
+							n = m.Nickname
+						}
+						if n == "" {
+							n = m.Username
+						}
+						if n != "" {
+							memberNames = append(memberNames, n)
+						}
+						if len(memberNames) >= 3 {
+							break
+						}
+					}
+					if len(memberNames) > 0 {
+						s.Name = strings.Join(memberNames, "、")
+					}
+				}
+			}
+		} else {
+			// 单聊 / 好友
+			if p != nil && p.contact != nil {
+				if c := p.contact.Get(cleanID); c != nil {
+					if s.AvatarURL == "" && c.GetAvatar() != "" {
+						s.AvatarURL = c.GetAvatar()
+					}
+					if (s.Name == "" || s.Name == s.ID) {
+						if c.GetRemark() != "" {
+							s.Name = c.GetRemark()
+						} else if c.GetNickname() != "" {
+							s.Name = c.GetNickname()
+						}
+					}
+				}
+			}
+			if s.AvatarURL == "" || s.Name == "" || s.Name == s.ID {
+				loadContactFile()
+				if fc, ok := fileContacts[cleanID]; ok {
+					if s.AvatarURL == "" && fc.Avatar != "" {
+						s.AvatarURL = fc.Avatar
+					}
+					if (s.Name == "" || s.Name == s.ID) {
+						if fc.Remark != "" {
+							s.Name = fc.Remark
+						} else if fc.Nickname != "" {
+							s.Name = fc.Nickname
+						}
+					}
+				}
+			}
+		}
+
+		// 检查是否有配置覆盖的专属名称
+		if p != nil && p.store != nil {
+			if ov, ok := p.store.GetOverride(cleanID); ok && ov != nil {
+				if ov.Name != "" && (s.Name == "" || s.Name == s.ID) {
+					s.Name = ov.Name
+				}
+			}
+		}
+
+		// 确保会话最后一条消息中的发言人前缀使用微信真实昵称，而非给 AI 称呼用的定制称呼
+		if colon := strings.Index(s.LastMessage, ": "); colon > 0 && !strings.Contains(s.LastMessage[:colon], "\n") && utf8.RuneCountInString(s.LastMessage[:colon]) <= 40 {
+			prefix := s.LastMessage[:colon]
+			var allOv map[string]*TargetOverride
+			if p != nil && p.store != nil {
+				allOv = p.store.GetOverrides()
+			}
+			for _, ov := range allOv {
+				if ov != nil && ov.CustomNickname != "" && ov.CustomNickname == prefix {
+					realPrefix := ov.Remark
+					if realPrefix == "" {
+						realPrefix = ov.Name
+					}
+					if realPrefix != "" {
+						s.LastMessage = realPrefix + s.LastMessage[colon:]
+					}
+					break
+				}
+			}
+		}
+	}
+
 	// 转为列表并按最近发言时间倒序排序
 	result := make([]ChatSessionItem, 0, len(sessionMap))
 	for _, item := range sessionMap {
@@ -594,30 +1066,187 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 	}
 
 	memberAvatarMap := make(map[string]string)
-	if p != nil && p.chatroom != nil && isChatroom {
-		for _, m := range p.chatroom.ListMembers(cleanID) {
-			if m == nil {
-				continue
+	memberNameMap := make(map[string]string)
+
+	// 本地 contact.json 缓存读取
+	var fileContacts map[string]struct {
+		Username string `json:"username"`
+		Nickname string `json:"nickname"`
+		Remark   string `json:"remark"`
+		Avatar   string `json:"avatar"`
+	}
+	for _, pth := range []string{filepath.Join("data", "contact.json"), "contact.json"} {
+		if b, err := os.ReadFile(pth); err == nil {
+			if err := json.Unmarshal(b, &fileContacts); err == nil && len(fileContacts) > 0 {
+				break
 			}
-			av := m.GetAvatar()
-			if av == "" && p.contact != nil {
-				if c := p.contact.Get(m.GetUsername()); c != nil {
-					av = c.GetAvatar()
+		}
+	}
+
+	if isChatroom {
+		if p != nil && p.chatroom != nil {
+			for _, m := range p.chatroom.ListMembers(cleanID) {
+				if m == nil {
+					continue
+				}
+				name := m.GetDisplayName()
+				if name == "" {
+					name = m.GetRemark()
+				}
+				if name == "" {
+					name = m.GetNickname()
+				}
+				if name != "" && m.GetUsername() != "" {
+					memberNameMap[m.GetUsername()] = name
+				}
+				av := m.GetAvatar()
+				if av == "" && p.contact != nil {
+					if c := p.contact.Get(m.GetUsername()); c != nil {
+						av = c.GetAvatar()
+					}
+				}
+				if av == "" && fileContacts != nil {
+					if fc, ok := fileContacts[m.GetUsername()]; ok && fc.Avatar != "" {
+						av = fc.Avatar
+					}
+				}
+				if av != "" {
+					if m.GetUsername() != "" {
+						memberAvatarMap[m.GetUsername()] = av
+					}
+					if m.GetDisplayName() != "" {
+						memberAvatarMap[m.GetDisplayName()] = av
+					}
+					if m.GetNickname() != "" {
+						memberAvatarMap[m.GetNickname()] = av
+					}
+					if m.GetRemark() != "" {
+						memberAvatarMap[m.GetRemark()] = av
+					}
 				}
 			}
-			if av != "" {
-				if m.GetUsername() != "" {
-					memberAvatarMap[m.GetUsername()] = av
+		}
+
+		// 从本地 data/chatroom.json 兜底补充群成员头像（无论群聊接口返回多少人，均尝试查漏补缺）
+		var fileChatrooms map[string]map[string]struct {
+			Username    string `json:"username"`
+			Nickname    string `json:"nickname"`
+			Remark      string `json:"remark"`
+			DisplayName string `json:"display_name"`
+			Avatar      string `json:"avatar"`
+		}
+		for _, pth := range []string{filepath.Join("data", "chatroom.json"), "chatroom.json"} {
+			if b, err := os.ReadFile(pth); err == nil {
+				if err := json.Unmarshal(b, &fileChatrooms); err == nil && len(fileChatrooms) > 0 {
+					if crMembers, ok := fileChatrooms[cleanID]; ok {
+						for _, m := range crMembers {
+							name := m.DisplayName
+							if name == "" {
+								name = m.Remark
+							}
+							if name == "" {
+								name = m.Nickname
+							}
+							if name != "" && m.Username != "" && memberNameMap[m.Username] == "" {
+								memberNameMap[m.Username] = name
+							}
+							av := m.Avatar
+							if av == "" && fileContacts != nil {
+								if fc, ok := fileContacts[m.Username]; ok && fc.Avatar != "" {
+									av = fc.Avatar
+								}
+							}
+							if av != "" {
+								if m.Username != "" && memberAvatarMap[m.Username] == "" {
+									memberAvatarMap[m.Username] = av
+								}
+								if m.DisplayName != "" && memberAvatarMap[m.DisplayName] == "" {
+									memberAvatarMap[m.DisplayName] = av
+								}
+								if m.Nickname != "" && memberAvatarMap[m.Nickname] == "" {
+									memberAvatarMap[m.Nickname] = av
+								}
+								if m.Remark != "" && memberAvatarMap[m.Remark] == "" {
+									memberAvatarMap[m.Remark] = av
+								}
+							}
+						}
+					}
+					break
 				}
-				if m.GetDisplayName() != "" {
-					memberAvatarMap[m.GetDisplayName()] = av
+			}
+		}
+	}
+
+	if fileContacts != nil {
+		for u, fc := range fileContacts {
+			if _, ok := memberNameMap[u]; !ok {
+				name := fc.Remark
+				if name == "" {
+					name = fc.Nickname
 				}
-				if m.GetNickname() != "" {
-					memberAvatarMap[m.GetNickname()] = av
+				if name != "" {
+					memberNameMap[u] = name
 				}
-				if m.GetRemark() != "" {
-					memberAvatarMap[m.GetRemark()] = av
+			}
+		}
+	}
+	if botUsername != "" {
+		memberNameMap[botUsername] = "你"
+	}
+
+	// 载入专属配置，将设置了专属定制称呼(custom_nickname)或专属名称(name)的成员头像关联到对应称呼
+	var overrides map[string]*TargetOverride
+	if p != nil && p.store != nil {
+		overrides = p.store.GetOverrides()
+	} else {
+		for _, pth := range []string{filepath.Join("data", "dashboard.json"), "dashboard.json"} {
+			if b, err := os.ReadFile(pth); err == nil {
+				var dStore DashboardStore
+				if err := json.Unmarshal(b, &dStore); err == nil && len(dStore.Overrides) > 0 {
+					overrides = dStore.Overrides
+					break
 				}
+			}
+		}
+	}
+
+	for _, ov := range overrides {
+		if ov == nil {
+			continue
+		}
+		cleanTarget := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(ov.TargetID, "chatroom:"), "contact:"), "private:")
+		av := ""
+		if a, ok := memberAvatarMap[cleanTarget]; ok && a != "" {
+			av = a
+		} else if a, ok := memberAvatarMap[ov.TargetID]; ok && a != "" {
+			av = a
+		}
+		if av == "" && p != nil && p.contact != nil {
+			if c := p.contact.Get(cleanTarget); c != nil && c.GetAvatar() != "" {
+				av = c.GetAvatar()
+			} else if c := p.contact.Get(ov.TargetID); c != nil && c.GetAvatar() != "" {
+				av = c.GetAvatar()
+			}
+		}
+		if av == "" && fileContacts != nil {
+			if fc, ok := fileContacts[cleanTarget]; ok && fc.Avatar != "" {
+				av = fc.Avatar
+			} else if fc, ok := fileContacts[ov.TargetID]; ok && fc.Avatar != "" {
+				av = fc.Avatar
+			}
+		}
+		if av != "" {
+			memberAvatarMap[cleanTarget] = av
+			memberAvatarMap[ov.TargetID] = av
+			if ov.CustomNickname != "" {
+				memberAvatarMap[ov.CustomNickname] = av
+			}
+			if ov.Name != "" {
+				memberAvatarMap[ov.Name] = av
+			}
+			if ov.Remark != "" {
+				memberAvatarMap[ov.Remark] = av
 			}
 		}
 	}
@@ -641,6 +1270,38 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 				}
 			}
 		}
+
+		// 检查通过 overrides 寻找对应联系人的头像
+		for _, ov := range overrides {
+			if ov == nil {
+				continue
+			}
+			matched := false
+			if senderName != "" && (ov.CustomNickname == senderName || ov.Name == senderName || ov.Remark == senderName || ov.TargetID == senderName) {
+				matched = true
+			}
+			if senderID != "" && (ov.TargetID == senderID || ov.CustomNickname == senderID || ov.Name == senderID || ov.Remark == senderID) {
+				matched = true
+			}
+			if matched {
+				cleanTarget := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(ov.TargetID, "chatroom:"), "contact:"), "private:")
+				if av, ok := memberAvatarMap[cleanTarget]; ok && av != "" {
+					return av
+				}
+				if p != nil && p.contact != nil {
+					if c := p.contact.Get(cleanTarget); c != nil && c.GetAvatar() != "" {
+						return c.GetAvatar()
+					}
+				}
+				if fileContacts != nil {
+					if fc, ok := fileContacts[cleanTarget]; ok && fc.Avatar != "" {
+						return fc.Avatar
+					}
+				}
+			}
+		}
+
+		// 检查联系人插件
 		if p != nil && p.contact != nil {
 			if senderID != "" {
 				if c := p.contact.Get(senderID); c != nil && c.GetAvatar() != "" {
@@ -664,6 +1325,31 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 				}
 			}
 		}
+
+		// 检查本地 contact.json
+		if fileContacts != nil {
+			if senderID != "" {
+				if fc, ok := fileContacts[senderID]; ok && fc.Avatar != "" {
+					return fc.Avatar
+				}
+			}
+			if senderName != "" {
+				if fc, ok := fileContacts[senderName]; ok && fc.Avatar != "" {
+					return fc.Avatar
+				}
+				for _, fc := range fileContacts {
+					if (fc.Nickname == senderName || fc.Remark == senderName) && fc.Avatar != "" {
+						return fc.Avatar
+					}
+				}
+			}
+			if !isChatroom {
+				if fc, ok := fileContacts[cleanID]; ok && fc.Avatar != "" {
+					return fc.Avatar
+				}
+			}
+		}
+
 		return ""
 	}
 
@@ -769,10 +1455,23 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 						}
 
 						contentStr, msgType, mediaURL, duration := extractContent(m.Content)
+						if m.MediaURL != "" && mediaURL == "" {
+							mediaURL = m.MediaURL
+							msgType = "image"
+						}
 						if !isSelf {
-							if colon := strings.Index(contentStr, ": "); colon > 0 && colon < 25 {
-								speakerName = contentStr[:colon]
-								contentStr = contentStr[colon+2:]
+							if colon := strings.Index(contentStr, ": "); colon > 0 && !strings.Contains(contentStr[:colon], "\n") {
+								// 检查前缀字符数（微信昵称最长通常不超过 32 个字符）
+								prefix := contentStr[:colon]
+								if strings.HasPrefix(prefix, "[距离上一轮") || strings.HasPrefix(prefix, "[已隔夜") {
+									if closeBracket := strings.Index(prefix, "] "); closeBracket > 0 {
+										prefix = strings.TrimSpace(prefix[closeBracket+2:])
+									}
+								}
+								if utf8.RuneCountInString(prefix) <= 40 {
+									speakerName = prefix
+									contentStr = contentStr[colon+2:]
+								}
 							} else if !isChatroom {
 								speakerName = cleanID
 								if p != nil && p.contact != nil {
@@ -783,6 +1482,20 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 											speakerName = c.GetNickname()
 										}
 									}
+								}
+							}
+
+							// 实时对话页面统一显示微信原生昵称/备注名，而非给 AI 称呼用的定制称呼
+							for _, ov := range overrides {
+								if ov != nil && ov.CustomNickname != "" && ov.CustomNickname == speakerName {
+									realName := ov.Remark
+									if realName == "" {
+										realName = ov.Name
+									}
+									if realName != "" {
+										speakerName = realName
+									}
+									break
 								}
 							}
 						}
@@ -839,8 +1552,8 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 						lastAssignedTime = msgTime
 						ts := msgTime.In(time.Local).Format(time.RFC3339)
 
-						// 补充多媒体资源关联
-						if (msgType == "image" || msgType == "voice") && mediaURL == "" {
+						// 补充多媒体资源关联（仅针对接收到的对方消息，避免机器人自身消息误匹配到历史旧媒体）
+						if !isSelf && (msgType == "image" || msgType == "voice") && mediaURL == "" {
 							_, statMediaURL, statDur, statTS := matchStatMedia(msgType)
 							if statMediaURL != "" {
 								mediaURL = statMediaURL
@@ -850,6 +1563,18 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 								if statTS != "" {
 									if pt := parseMsgTime(statTS); !pt.IsZero() {
 										ts = pt.In(time.Local).Format(time.RFC3339)
+									}
+								}
+							}
+						}
+
+						// 兜底补全由插件生成的自拍/生图等本地媒体文件
+						if isSelf && (msgType == "image" || strings.Contains(contentStr, "生活自拍照") || strings.Contains(contentStr, "绘制的图片")) {
+							msgType = "image"
+							if mediaURL == "" {
+								if strings.Contains(contentStr, "什刹海") {
+									if _, err := os.Stat(filepath.Join("data", "cache", "media", "generated_shichahai_selfie.jpg")); err == nil {
+										mediaURL = "/api/chats/media?file=generated_shichahai_selfie.jpg"
 									}
 								}
 							}
@@ -883,8 +1608,8 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 	}
 }
 
-	// 2. 如果 ai_history.json 无此会话，则从 statistics.db 读取，过滤协议噪声
-	if len(messages) == 0 && ce.statisticsDBPath != "" {
+	// 2. 从 statistics.db 补充群聊/私聊中未被 ai 记录的真实上行消息（如被海龟汤等插件直接消费的消息）
+	if ce.statisticsDBPath != "" {
 		if _, err := os.Stat(ce.statisticsDBPath); err == nil {
 			db, err := sql.Open("sqlite", ce.statisticsDBPath)
 			if err == nil {
@@ -896,99 +1621,158 @@ func (ce *ChatEngine) GetMessages(p *DashboardPlugin, sessionID string, limit, o
 						(? LIKE '%@chatroom' AND (sender = ? OR receiver = ?)) OR
 						(? NOT LIKE '%@chatroom' AND ((sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)))
 					)
-					  AND type NOT IN ('状态通知', '系统提示', '系统') 
+					  AND type != '状态通知' 
 					  AND content NOT LIKE '<msg><op%' 
-					  AND content NOT LIKE '<sysmsg%'
 					ORDER BY id ASC
 				`
 				rows, err := db.Query(q, cleanID, cleanID, cleanID, cleanID, cleanID, botUsername, botUsername, cleanID)
-			if err == nil {
-				defer rows.Close()
-				for rows.Next() {
-					var id int64
-					var msgType, content, sender, receiver, member, rawStr, ts string
-					if err := rows.Scan(&id, &msgType, &content, &sender, &receiver, &member, &rawStr, &ts); err == nil {
-						senderName := member
-						if senderName == "" {
-							senderName = sender
-						}
-						role := "user"
-						isSelf := false
-						if botUsername != "" && sender == botUsername {
-							isSelf = true
-							role = "assistant"
-							senderName = botNickname
-						} else if !isChatroom {
-							isSelf = false
-							role = "user"
-							senderName = cleanID
-							if p != nil && p.contact != nil {
-								if c := p.contact.Get(cleanID); c != nil {
-									if c.GetRemark() != "" {
-										senderName = c.GetRemark()
-									} else if c.GetNickname() != "" {
-										senderName = c.GetNickname()
+				if err == nil {
+					defer rows.Close()
+					for rows.Next() {
+						var id int64
+						var msgType, content, sender, receiver, member, rawStr, ts string
+						if err := rows.Scan(&id, &msgType, &content, &sender, &receiver, &member, &rawStr, &ts); err == nil {
+							itemTS := ts
+							if pt := parseMsgTime(ts); !pt.IsZero() {
+								itemTS = pt.In(time.Local).Format(time.RFC3339)
+							}
+
+							// 判断是否为系统通知类消息（拍一拍、进群通知、改名、撤回、好友添加等）
+							isSysMsg := (msgType == "系统提示" || msgType == "系统" ||
+								strings.HasPrefix(strings.TrimSpace(content), "<sysmsg") ||
+								strings.Contains(content, "<sysmsg type=") ||
+								strings.Contains(rawStr, "<sysmsg type="))
+
+							if isSysMsg {
+								noticeText := parseSystemNotice(content, rawStr, cleanID, p, botUsername, memberNameMap)
+								if noticeText == "" {
+									// 属于协议状态/配置广播等内部无展示意义的噪声，直接跳过
+									continue
+								}
+								exists := false
+								for _, em := range messages {
+									if em.Type == "system" && em.Content == noticeText {
+										exists = true
+										break
+									}
+								}
+								if exists {
+									continue
+								}
+								messages = append(messages, ChatMessageItem{
+									ID:        id,
+									SessionID: cleanID,
+									Role:      "system",
+									Type:      "system",
+									Content:   noticeText,
+									Timestamp: itemTS,
+								})
+								continue
+							}
+
+							senderName := member
+							if senderName == "" {
+								senderName = sender
+							}
+							role := "user"
+							isSelf := false
+							if botUsername != "" && sender == botUsername {
+								isSelf = true
+								role = "assistant"
+								senderName = botNickname
+							} else if !isChatroom {
+								isSelf = false
+								role = "user"
+								senderName = cleanID
+								if p != nil && p.contact != nil {
+									if c := p.contact.Get(cleanID); c != nil {
+										if c.GetRemark() != "" {
+											senderName = c.GetRemark()
+										} else if c.GetNickname() != "" {
+											senderName = c.GetNickname()
+										}
 									}
 								}
 							}
+
+							// 去重检查：如果该消息已经存在于 messages 中，则跳过
+							exists := false
+							cTrim := strings.TrimSpace(content)
+							for _, em := range messages {
+								if em.Content == cTrim || (len(cTrim) > 10 && strings.Contains(em.Content, cTrim)) {
+									exists = true
+									break
+								}
+							}
+							if exists {
+								continue
+							}
+
+							av := resolveAvatar(sender, senderName, isSelf)
+							cleanType := "text"
+							mediaURL := ""
+							duration := 0
+
+							if msgType == "图片" || msgType == "image" {
+								cleanType = "image"
+								mediaURL = fmt.Sprintf("/api/chats/media?id=%d", id)
+							} else if msgType == "语音" || msgType == "voice" {
+								cleanType = "voice"
+								mediaURL = fmt.Sprintf("/api/chats/media?id=%d", id)
+								duration = parseVoiceDuration(content, rawStr)
+							} else if msgType == "文本" || msgType == "text" {
+								cleanType = "text"
+							} else {
+								cleanType = msgType
+							}
+
+							messages = append(messages, ChatMessageItem{
+								ID:         id,
+								SessionID:  cleanID,
+								SenderID:   sender,
+								SenderName: senderName,
+								AvatarURL:  av,
+								IsSelf:     isSelf,
+								Role:       role,
+								Type:       cleanType,
+								Content:    content,
+								MediaURL:   mediaURL,
+								Duration:   duration,
+								Timestamp:  itemTS,
+							})
 						}
-						av := resolveAvatar(cleanID, senderName, isSelf)
-
-						cleanType := "text"
-						mediaURL := ""
-						duration := 0
-
-						if msgType == "图片" || msgType == "image" {
-							cleanType = "image"
-							mediaURL = fmt.Sprintf("/api/chats/media?id=%d", id)
-						} else if msgType == "语音" || msgType == "voice" {
-							cleanType = "voice"
-							mediaURL = fmt.Sprintf("/api/chats/media?id=%d", id)
-							duration = parseVoiceDuration(content, rawStr)
-						} else if msgType == "文本" || msgType == "text" {
-							cleanType = "text"
-						} else {
-							cleanType = msgType
-						}
-
-						itemTS := ts
-						if pt := parseMsgTime(ts); !pt.IsZero() {
-							itemTS = pt.In(time.Local).Format(time.RFC3339)
-						}
-
-						messages = append(messages, ChatMessageItem{
-							ID:         id,
-							SessionID:  cleanID,
-							SenderID:   sender,
-							SenderName: senderName,
-							AvatarURL:  av,
-							IsSelf:     isSelf,
-							Role:       role,
-							Type:       cleanType,
-							Content:    content,
-							MediaURL:   mediaURL,
-							Duration:   duration,
-							Timestamp:  itemTS,
-						})
 					}
 				}
 			}
 		}
 	}
-}
 
-	// 3. 合并所有通过 Dashboard 发送的消息 (ce.sentMessages)，保证刷新不丢失
+	// 3. 合并所有通过 Dashboard 发送的消息 (ce.sentMessages) 以及所有插件出站回复 (plugin_sent.jsonl)
+	var allSent []SentRecord
 	if sentRecords, ok := ce.sentMessages[cleanID]; ok && len(sentRecords) > 0 {
+		allSent = append(allSent, sentRecords...)
+	}
+	allSent = append(allSent, ce.loadPluginSentRecords(cleanID)...)
+
+	if len(allSent) > 0 {
 		botAv := ""
 		if p != nil {
 			botAv = p.getBotAvatar()
 		}
-		for _, sr := range sentRecords {
+		for _, sr := range allSent {
+			srContentTrim := strings.TrimSpace(sr.Content)
 			exists := false
-			for _, em := range messages {
-				if em.IsSelf && em.Content == sr.Content && (sr.Type == "" || em.Type == sr.Type) {
-					exists = true
-					break
+			for i := range messages {
+				if messages[i].IsSelf {
+					mContentTrim := strings.TrimSpace(messages[i].Content)
+					if mContentTrim == srContentTrim || (len(srContentTrim) > 15 && strings.Contains(mContentTrim, srContentTrim)) {
+						exists = true
+						if messages[i].MediaURL == "" && sr.MediaURL != "" {
+							messages[i].MediaURL = sr.MediaURL
+							messages[i].Type = sr.Type
+						}
+						break
+					}
 				}
 			}
 			if !exists {

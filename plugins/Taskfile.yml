@@ -27,6 +27,7 @@ vars:
       robbery,
       hermes,
       hermes_bridge,
+      image_gen,
     ]
 
 tasks:

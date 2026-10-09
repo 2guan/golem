@@ -3,7 +3,12 @@ package message
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/sbgayhub/golem/sdk"
 	"google.golang.org/grpc"
@@ -30,7 +35,76 @@ func (c Client) Send(msg *Message) (*Send_Response, error) {
 
 	// TODO: 如果 Message 中携带了二进制数据，需要通过 stream 分块发送
 
-	return stream.CloseAndRecv()
+	resp, err := stream.CloseAndRecv()
+	if err == nil {
+		recordOutboundMessage(msg)
+	}
+	return resp, err
+}
+
+type OutboundLogRecord struct {
+	ID        int64  `json:"id"`
+	SessionID string `json:"session_id"`
+	Type      string `json:"type"`
+	Content   string `json:"content"`
+	Timestamp string `json:"timestamp"`
+}
+
+func recordOutboundMessage(msg *Message) {
+	if msg == nil || msg.GetReceiver() == nil {
+		return
+	}
+	receiver := strings.TrimSpace(msg.GetReceiver().GetUsername())
+	if receiver == "" {
+		return
+	}
+	cleanID := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(receiver, "chatroom:"), "private:"), "contact:")
+
+	content := msg.GetContent()
+	if content == "" && msg.GetText() != nil {
+		content = msg.GetText().GetContent()
+	}
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+
+	msgType := "text"
+	if msg.GetType() != nil {
+		switch msg.GetType().GetCode() {
+		case TypeImage.Code:
+			msgType = "image"
+		case TypeVoice.Code:
+			msgType = "voice"
+		}
+	}
+
+	record := OutboundLogRecord{
+		ID:        time.Now().UnixNano(),
+		SessionID: cleanID,
+		Type:      msgType,
+		Content:   content,
+		Timestamp: time.Now().In(time.Local).Format(time.RFC3339),
+	}
+
+	data, err := json.Marshal(record)
+	if err != nil {
+		return
+	}
+
+	dataDir := "data"
+	for _, cand := range []string{"data", filepath.Join("..", "..", "data"), filepath.Join("..", "data")} {
+		if fi, err := os.Stat(cand); err == nil && fi.IsDir() {
+			dataDir = cand
+			break
+		}
+	}
+
+	logPath := filepath.Join(dataDir, "plugin_sent.jsonl")
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		_, _ = f.Write(append(data, '\n'))
+		_ = f.Close()
+	}
 }
 
 // Forward 转发消息

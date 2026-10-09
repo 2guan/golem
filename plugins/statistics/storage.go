@@ -83,6 +83,10 @@ func (s *store) Init() error {
 		return err
 	}
 
+	// 开启 WAL 模式和 busy_timeout，防止并发读写造成 database is locked
+	_, _ = s.analysis.Exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000;`)
+	_, _ = s.statistics.Exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 10000;`)
+
 	if _, err := s.analysis.Exec(`CREATE TABLE IF NOT EXISTS analysis (
 		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		sender TEXT NOT NULL,
