@@ -153,3 +153,49 @@ func TestResolveDisplayNameWithContact(t *testing.T) {
 		t.Errorf("expected '12345@chatroom', true; got %q, %v", chatName, isChat)
 	}
 }
+
+func TestDescribeContactStatus_DistinguishesMemberAndFriend(t *testing.T) {
+	p := &AiPlugin{}
+	// 1. 普通好友（无群聊关联）
+	friendContact := &contact.Contact{
+		Username: "wxid_friend1",
+		Nickname: "张三",
+	}
+	desc := p.describeContactStatus(friendContact, "小助手")
+	if !strings.Contains(desc, "好友【张三】") {
+		t.Fatalf("expected friend description, got: %s", desc)
+	}
+	if strings.Contains(desc, "群成员") {
+		t.Fatalf("friend should not be described as 群成员: %s", desc)
+	}
+
+	// 2. 群成员（位于 data/chatroom.json）
+	memberContact := &contact.Contact{
+		Username: "chenfei186",
+		Nickname: "杏石口雷佳音",
+	}
+	descMember := p.describeContactStatus(memberContact, "肉丸")
+	if !strings.Contains(descMember, "群成员") || !strings.Contains(descMember, "并非私聊好友") {
+		t.Fatalf("expected member description, got: %s", descMember)
+	}
+
+	// 3. 好友兼群成员（例如丸纸 wanzhi440802，既在群聊中，又有私聊记录或会话）
+	friendMemberContact := &contact.Contact{
+		Username: "wanzhi440802",
+		Nickname: "丸纸",
+	}
+	p.sessions = map[string][]openAIMessage{
+		"private:wanzhi440802": {
+			{Role: "user", Content: "你好"},
+		},
+	}
+	descFriendMember := p.describeContactStatus(friendMemberContact, "肉丸")
+	if !strings.Contains(descFriendMember, "既是你的微信好友，也是微信群") {
+		t.Fatalf("expected friend and member description, got: %s", descFriendMember)
+	}
+	if strings.Contains(descFriendMember, "并非私聊好友") {
+		t.Fatalf("friend and member should NOT say '并非私聊好友', got: %s", descFriendMember)
+	}
+}
+
+

@@ -175,6 +175,11 @@ func (p *DashboardPlugin) handleOverview(w http.ResponseWriter, r *http.Request)
 		resp.Stats.TotalMessages += s.MsgCount
 	}
 
+	// 核心运营指标与 Token 消耗
+	if p.metricsMgr != nil {
+		resp.Metrics = p.metricsMgr.GetMetrics()
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -518,10 +523,122 @@ func (p *DashboardPlugin) handlePluginSave(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]string{"message": "插件配置更新成功，已立即生效"})
 }
 
+// getChatroomMembersMap 返回所有群成员的映射：memberUsername -> 所属群聊名称(多个群以顿号分隔)
+func (p *DashboardPlugin) getChatroomMembersMap() map[string]string {
+	memberMap := make(map[string]string)
+
+	renamedRooms := make(map[string]string)
+	if p.chatEngine != nil {
+		renamedRooms = p.chatEngine.GetRenamedChatroomNames()
+	}
+
+	var chatrooms []string
+	if p.contact != nil {
+		for _, c := range p.contact.List() {
+			if c != nil && (strings.HasSuffix(c.GetUsername(), "@chatroom") || c.GetType().String() == "CONTACT_TYPE_CHATROOM") {
+				chatrooms = append(chatrooms, c.GetUsername())
+			}
+		}
+	}
+
+	// 从本地 data/chatroom.json 兜底检查群聊列表与成员
+	for _, pth := range []string{filepath.Join("data", "chatroom.json"), "chatroom.json", filepath.Join("..", "..", "data", "chatroom.json"), filepath.Join("..", "data", "chatroom.json")} {
+		if data, err := os.ReadFile(pth); err == nil {
+			var raw map[string]map[string]any
+			if err := json.Unmarshal(data, &raw); err == nil {
+				for roomID, mems := range raw {
+					found := false
+					for _, cr := range chatrooms {
+						if cr == roomID {
+							found = true
+							break
+						}
+					}
+					if !found {
+						chatrooms = append(chatrooms, roomID)
+					}
+
+					roomName := roomID
+					if newName, ok := renamedRooms[roomID]; ok && newName != "" {
+						roomName = newName
+					} else if p.contact != nil {
+						if rc := p.contact.Get(roomID); rc != nil && rc.GetNickname() != "" {
+							roomName = rc.GetNickname()
+						}
+					}
+					for memID := range mems {
+						if prev, ok := memberMap[memID]; ok {
+							if !strings.Contains(prev, roomName) {
+								memberMap[memID] = prev + "、" + roomName
+							}
+						} else {
+							memberMap[memID] = roomName
+						}
+					}
+				}
+			}
+			break
+		}
+	}
+
+	// 结合 p.chatroom 动态接口
+	if p.chatroom != nil {
+		for _, roomID := range chatrooms {
+			roomName := roomID
+			if newName, ok := renamedRooms[roomID]; ok && newName != "" {
+				roomName = newName
+			} else if p.contact != nil {
+				if rc := p.contact.Get(roomID); rc != nil && rc.GetNickname() != "" {
+					roomName = rc.GetNickname()
+				}
+			}
+			for _, m := range p.chatroom.ListMembers(roomID) {
+				if m == nil || m.GetUsername() == "" {
+					continue
+				}
+				memID := m.GetUsername()
+				if prev, ok := memberMap[memID]; ok {
+					if !strings.Contains(prev, roomName) {
+						memberMap[memID] = prev + "、" + roomName
+					}
+				} else {
+					memberMap[memID] = roomName
+				}
+			}
+		}
+	}
+
+	return memberMap
+}
+
 // ----------------- Target Overrides Handlers -----------------
 
 func (p *DashboardPlugin) handleTargets(w http.ResponseWriter, r *http.Request) {
 	overrides := p.store.GetOverrides()
+	chatroomMembers := p.getChatroomMembersMap()
+
+	ownerID := ""
+	if p.contact != nil {
+		if o := p.contact.GetOwner(); o != nil {
+			ownerID = o.GetUsername()
+		}
+	}
+	botID := ""
+	if p.contact != nil {
+		if s := p.contact.GetSelf(); s != nil {
+			botID = s.GetUsername()
+		}
+	}
+
+	privatePeers := make(map[string]bool)
+	if p.chatEngine != nil {
+		privatePeers = p.chatEngine.GetPrivateChatPeers(botID)
+	}
+
+	renamedRooms := make(map[string]string)
+	if p.chatEngine != nil {
+		renamedRooms = p.chatEngine.GetRenamedChatroomNames()
+	}
 
 	targetMap := make(map[string]map[string]any)
 
@@ -533,11 +650,75 @@ func (p *DashboardPlugin) handleTargets(w http.ResponseWriter, r *http.Request) 
 				continue
 			}
 			tID := c.GetUsername()
-			tType := "friend"
+			if botID != "" && tID == botID {
+				continue
+			}
+
 			if strings.HasSuffix(tID, "@chatroom") || c.GetType().String() == "CONTACT_TYPE_CHATROOM" {
-				tType = "chatroom"
-			} else if c.GetType().String() == "CONTACT_TYPE_OFFICIAL" {
-				tType = "official"
+				name := c.GetNickname()
+				if newName, ok := renamedRooms[tID]; ok && newName != "" {
+					name = newName
+				}
+				if name == "" {
+					name = tID
+				}
+				targetMap[tID] = map[string]any{
+					"target_id":    tID,
+					"target_type":  "chatroom",
+					"is_friend":    false,
+					"is_member":    false,
+					"name":         name,
+					"remark":       c.GetRemark(),
+					"avatar_url":   c.GetAvatar(),
+					"has_override": false,
+					"chatroom":     "",
+				}
+				continue
+			}
+
+			if c.GetType().String() == "CONTACT_TYPE_OFFICIAL" || strings.HasPrefix(tID, "gh_") {
+				name := c.GetNickname()
+				if name == "" {
+					name = tID
+				}
+				targetMap[tID] = map[string]any{
+					"target_id":    tID,
+					"target_type":  "official",
+					"is_friend":    false,
+					"is_member":    false,
+					"name":         name,
+					"remark":       c.GetRemark(),
+					"avatar_url":   c.GetAvatar(),
+					"has_override": false,
+					"chatroom":     "",
+				}
+				continue
+			}
+
+			roomName, isMember := chatroomMembers[tID]
+			hasPrivateChat := privatePeers[tID]
+			hasOverride := false
+			if _, ok := overrides[tID]; ok {
+				hasOverride = true
+			}
+			hasRemark := c.GetRemark() != ""
+			isOwner := (ownerID != "" && tID == ownerID) || tID == "doubleguan"
+
+			// 判断是否为微信好友：
+			// 1. 存在私聊记录 (statistics.db / ai_history.json)
+			// 2. 或在微信中设置了备注 (Remark)
+			// 3. 或配置了专属策略 (Overrides)
+			// 4. 或为机器人所有者 (Owner)
+			// 5. 或不属于任何共同群聊（微信通讯录里的独立好友）
+			isFriend := hasPrivateChat || hasRemark || hasOverride || isOwner || !isMember
+
+			tType := "friend"
+			if isFriend && isMember {
+				tType = "friend_member"
+			} else if !isFriend && isMember {
+				tType = "member"
+			} else {
+				tType = "friend"
 			}
 
 			name := c.GetNickname()
@@ -548,10 +729,13 @@ func (p *DashboardPlugin) handleTargets(w http.ResponseWriter, r *http.Request) 
 			item := map[string]any{
 				"target_id":    tID,
 				"target_type":  tType,
+				"is_friend":    isFriend,
+				"is_member":    isMember,
 				"name":         name,
 				"remark":       c.GetRemark(),
 				"avatar_url":   c.GetAvatar(),
 				"has_override": false,
+				"chatroom":     roomName,
 			}
 			targetMap[tID] = item
 		}
@@ -561,25 +745,63 @@ func (p *DashboardPlugin) handleTargets(w http.ResponseWriter, r *http.Request) 
 	for tID, ov := range overrides {
 		if item, ok := targetMap[tID]; ok {
 			item["has_override"] = true
+			if strings.HasSuffix(tID, "@chatroom") {
+				if newName, ok := renamedRooms[tID]; ok && newName != "" {
+					item["name"] = newName
+				}
+			}
 			item["custom_nickname"] = ov.CustomNickname
 			item["custom_prompt"] = ov.CustomPrompt
 			item["provider"] = ov.Provider
 			item["reply_rate"] = ov.ReplyRate
 			item["silence"] = ov.Silence
+			item["max_context_messages"] = ov.MaxContextMessages
 			item["notes"] = ov.Notes
 		} else {
+			roomName, isMember := chatroomMembers[tID]
+			isChatroom := strings.HasSuffix(tID, "@chatroom") || ov.TargetType == "chatroom"
+			isOfficial := strings.HasPrefix(tID, "gh_") || ov.TargetType == "official"
+
+			isFriend := false
+			tType := ov.TargetType
+
+			if !isChatroom && !isOfficial {
+				hasPrivateChat := privatePeers[tID]
+				hasRemark := ov.Remark != ""
+				isOwner := (ownerID != "" && tID == ownerID) || tID == "doubleguan"
+				isFriend = hasPrivateChat || hasRemark || isOwner || !isMember || true
+				if isFriend && isMember {
+					tType = "friend_member"
+				} else if !isFriend && isMember {
+					tType = "member"
+				} else {
+					tType = "friend"
+				}
+			}
+
+			ovName := ov.Name
+			if isChatroom {
+				if newName, ok := renamedRooms[tID]; ok && newName != "" {
+					ovName = newName
+				}
+			}
+
 			targetMap[tID] = map[string]any{
-				"target_id":       tID,
-				"target_type":     ov.TargetType,
-				"name":            ov.Name,
-				"remark":          ov.Remark,
-				"has_override":    true,
-				"custom_nickname": ov.CustomNickname,
-				"custom_prompt":   ov.CustomPrompt,
-				"provider":        ov.Provider,
-				"reply_rate":      ov.ReplyRate,
-				"silence":         ov.Silence,
-				"notes":           ov.Notes,
+				"target_id":            tID,
+				"target_type":          tType,
+				"is_friend":            isFriend,
+				"is_member":            isMember,
+				"name":                 ovName,
+				"remark":               ov.Remark,
+				"has_override":         true,
+				"custom_nickname":      ov.CustomNickname,
+				"custom_prompt":        ov.CustomPrompt,
+				"provider":             ov.Provider,
+				"reply_rate":           ov.ReplyRate,
+				"silence":              ov.Silence,
+				"max_context_messages": ov.MaxContextMessages,
+				"notes":                ov.Notes,
+				"chatroom":             roomName,
 			}
 		}
 	}
@@ -616,7 +838,7 @@ func (p *DashboardPlugin) handleTargetSave(w http.ResponseWriter, r *http.Reques
 	}
 
 	// 同步写回 plugins/config.toml 的 [ai.config.session_configs]
-	if err := p.configMgr.SaveTargetOverrideToAIConfig(req.TargetID, req.CustomNickname, req.CustomPrompt, req.Provider, req.ReplyRate, req.Silence); err != nil {
+	if err := p.configMgr.SaveTargetOverrideToAIConfig(req.TargetID, req.CustomNickname, req.CustomPrompt, req.Provider, req.ReplyRate, req.Silence, req.MaxContextMessages); err != nil {
 		writeError(w, http.StatusInternalServerError, "同步至 AI 配置失败: "+err.Error())
 		return
 	}

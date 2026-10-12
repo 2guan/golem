@@ -11,9 +11,11 @@ import (
 )
 
 var (
-	imageTagRegex   = regexp.MustCompile(`(?is)<image\b([^>]*?)(?:/>|>([\s\S]*?)</image>)`)
-	attrRefRegex    = regexp.MustCompile(`(?i)\bref\s*=\s*["']?([^"'\s>]+)["']?`)
-	attrPromptRegex = regexp.MustCompile(`(?is)\bprompt\s*=\s*["']([^"']*)["']`)
+	imageTagRegex      = regexp.MustCompile(`(?is)<image\b([^>]*?)(?:/>|>([\s\S]*?)</image>)`)
+	attrRefRegex       = regexp.MustCompile(`(?i)\bref\s*=\s*["']?([^"'\s>]+)["']?`)
+	attrPromptRegex    = regexp.MustCompile(`(?is)\bprompt\s*=\s*["']([^"']*)["']`)
+	bracketSelfieRegex = regexp.MustCompile(`(?is)\[我发送了一张(?:生活)?自拍照[，,]场景在：([^\]]*)\]`)
+	bracketDrawRegex   = regexp.MustCompile(`(?is)\[我发送了一张绘制的图片[，,]画面内容是：([^\]]*)\]`)
 )
 
 type imageTask struct {
@@ -53,11 +55,38 @@ func extractImageTasks(text string) ([]imageTask, string) {
 		})
 		return ""
 	})
+
+	// 兼容处理模型直接输出上下文格式括号标记（如 [我发送了一张生活自拍照，场景在：...]）
+	clean = bracketSelfieRegex.ReplaceAllStringFunc(clean, func(match string) string {
+		m := bracketSelfieRegex.FindStringSubmatch(match)
+		if len(m) > 1 {
+			tasks = append(tasks, imageTask{
+				Ref:    "selfie",
+				Prompt: strings.TrimSpace(m[1]),
+			})
+		}
+		return ""
+	})
+
+	clean = bracketDrawRegex.ReplaceAllStringFunc(clean, func(match string) string {
+		m := bracketDrawRegex.FindStringSubmatch(match)
+		if len(m) > 1 {
+			tasks = append(tasks, imageTask{
+				Ref:    "",
+				Prompt: strings.TrimSpace(m[1]),
+			})
+		}
+		return ""
+	})
+
 	return tasks, strings.TrimSpace(clean)
 }
 
 func stripImageTags(s string) string {
-	return imageTagRegex.ReplaceAllString(s, "")
+	res := imageTagRegex.ReplaceAllString(s, "")
+	res = bracketSelfieRegex.ReplaceAllString(res, "")
+	res = bracketDrawRegex.ReplaceAllString(res, "")
+	return res
 }
 
 func (p *AiPlugin) triggerImageTasks(receiver *contact.Contact, sessionKey string, tasks []imageTask) {
@@ -67,6 +96,18 @@ func (p *AiPlugin) triggerImageTasks(receiver *contact.Contact, sessionKey strin
 
 	for _, task := range tasks {
 		t := task
+		promptTrimmed := strings.TrimSpace(t.Prompt)
+
+		// 生图前严格安全校验：检测 prompt 是否包含注入攻击或模型元信息泄漏
+		if isPromptInjection(promptTrimmed) || isLeakedReasoningOrRefusal(promptTrimmed) {
+			slog.Warn("[ai] 🚨 拦截到生图任务包含疑似注入攻击或元设定泄漏，取消生图",
+				"session", sessionKey,
+				"ref", t.Ref,
+				"prompt", promptTrimmed,
+			)
+			continue
+		}
+
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -39,7 +40,7 @@ type ImageGenerator struct {
 func newImageGenerator(cfg Config) *ImageGenerator {
 	timeout := cfg.TimeoutSeconds
 	if timeout <= 0 {
-		timeout = 90
+		timeout = 240
 	}
 	return &ImageGenerator{
 		cfg: cfg,
@@ -78,23 +79,61 @@ func (g *ImageGenerator) GenerateImage(prompt string, refImage string) ([]byte, 
 	}
 	apiURL := baseURL + "/v1/images/generations"
 
-	slog.Info("[image_gen] 发起生图请求", "model", model, "prompt", prompt, "has_ref_image", refImage != "")
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(g.cfg.TimeoutSeconds)*time.Second)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(jsonBytes))
-	if err != nil {
-		return nil, "", fmt.Errorf("创建 HTTP 请求失败: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if g.cfg.APIKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(g.cfg.APIKey))
+	timeout := g.cfg.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = 240
 	}
 
-	resp, err := g.client.Do(httpReq)
-	if err != nil {
-		return nil, "", fmt.Errorf("生图接口请求超时或失败: %w", err)
+	slog.Info("[image_gen] 发起生图请求", "model", model, "prompt", prompt, "has_ref_image", refImage != "", "timeout_sec", timeout)
+
+	const maxRetries = 2
+	var resp *http.Response
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		start := time.Now()
+		reqCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+
+		httpReq, reqErr := http.NewRequestWithContext(reqCtx, http.MethodPost, apiURL, bytes.NewReader(jsonBytes))
+		if reqErr != nil {
+			cancel()
+			return nil, "", fmt.Errorf("创建 HTTP 请求失败: %w", reqErr)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if g.cfg.APIKey != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(g.cfg.APIKey))
+		}
+
+		curResp, doErr := g.client.Do(httpReq)
+		if doErr != nil {
+			cancel()
+			lastErr = doErr
+			elapsed := time.Since(start)
+			// 若短时间内（<30s）因 EOF、连接重置等瞬时网络异常失败，且非超时，则自动重试一次
+			if attempt < maxRetries && elapsed < 30*time.Second && !errors.Is(reqCtx.Err(), context.DeadlineExceeded) {
+				slog.Warn("[image_gen] 生图请求瞬时异常，尝试重试", "attempt", attempt, "elapsed", elapsed, "err", doErr)
+				time.Sleep(1500 * time.Millisecond)
+				continue
+			}
+			return nil, "", fmt.Errorf("生图接口请求超时或失败: %w", doErr)
+		}
+
+		if curResp.StatusCode >= 500 && attempt < maxRetries {
+			body, _ := io.ReadAll(curResp.Body)
+			curResp.Body.Close()
+			cancel()
+			slog.Warn("[image_gen] 生图接口返回服务端临时错误，尝试重试", "status", curResp.StatusCode, "body", string(body))
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		resp = curResp
+		defer cancel()
+		break
+	}
+
+	if resp == nil {
+		return nil, "", fmt.Errorf("生图接口请求失败: %v", lastErr)
 	}
 	defer resp.Body.Close()
 

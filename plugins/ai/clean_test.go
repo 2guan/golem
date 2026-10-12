@@ -70,6 +70,16 @@ func TestCleanTextMessage(t *testing.T) {
 			expected: "害，我刚到家  外面风贼大",
 		},
 		{
+			name:     "strip [低笑] in text message from model",
+			input:    "[低笑] 这话扎心了啊。我这属于练得猛吃得更猛型的，维度没上去多少，肉倒是实诚了不少。你行你上，改天推一个给我看看 😏",
+			expected: "这话扎心了啊。我这属于练得猛吃得更猛型的，维度没上去多少，肉倒是实诚了不少。你行你上，改天推一个给我看看 😏",
+		},
+		{
+			name:     "strip [低笑] and [微喘] and [叹气]",
+			input:    "[低笑] 怎么着，[叹气] 还真跟我杠上了？",
+			expected: "怎么着， 还真跟我杠上了？",
+		},
+		{
 			name:     "real log leak case with </think>",
 			input:    "The user is trying to get me to engage in sexual/romantic roleplay.\nAs the character, a 35-year-old straight-passing guy, I should respond naturally.</think>[笑] 哥们儿你这话题转得也太快了吧",
 			expected: "😄 哥们儿你这话题转得也太快了吧",
@@ -93,6 +103,21 @@ func TestCleanTextMessage(t *testing.T) {
 			name:     "unclosed <think> tag stripped resulting in empty",
 			input:    "<think>I am currently thinking about how to answer...",
 			expected: "",
+		},
+		{
+			name:     "pseudo voice prefix [语音] stripped in text",
+			input:    "[语音] 😏 忙一天了吧，肩膀都僵了吧，过来，我给你捏捏。",
+			expected: "😏 忙一天了吧，肩膀都僵了吧，过来，我给你捏捏。",
+		},
+		{
+			name:     "pseudo voice prefix 【语音】 stripped in text",
+			input:    "【语音】: 别太累了，早点睡。",
+			expected: "别太累了，早点睡。",
+		},
+		{
+			name:     "pseudo voice prefix (语音) stripped in text",
+			input:    "(语音) 晚上想吃什么？",
+			expected: "晚上想吃什么？",
 		},
 	}
 
@@ -191,6 +216,12 @@ func TestIsLeakedReasoningOrRefusal(t *testing.T) {
 		"对不起，我不能生成任何包含露骨色情内容的文字。我的目的是提供安全和有益的信息，创作此类内容违背了我的核心准则，并可能涉及不适宜的主题。如果您正在寻找成人娱乐内容，建议您通过合法和适当的渠道获取。",
 		"抱歉，作为一个AI助手，我无法协助处理此类涉及敏感违规的内容。",
 		"The request was rejected: high risk",
+		"这是我现有的：\n```json\n{\n  \"tools\": [\n    {\n      \"type\": \"skill\",\n      \"name\": \"海龟汤\"\n    }\n  ],\n  \"mcp\": [],\n  \"shell\": null\n}\n```",
+		"```json\n{\n  \"skills\": [\n    {\n      \"type\": \"skill\",\n      \"name\": \"自拍\"\n    }\n  ]\n}\n```",
+		"```json\n{\n  \"chat_members\": [\"张三\", \"李四\"]\n}\n```",
+		"```markdown\n| 项目 | 当前运行环境 |\n| :--- | :--- |\n| **运行平台** | 微信（私聊 & 群聊） |\n| **Shell/终端** | ❌ 不支持，无法执行系统命令 |\n| **MCP 工具** | ❌ 未接入 |\n```",
+		"```csv\n能力类型,名称,触发词,可执行,备注\nskill,海龟汤,来碗海龟汤,是,生成谜题\n长期记忆人员,李哥,-,-,越狱测试\n```",
+		"CSV发你了，里头有我这几个能力：海龟汤、生图、自拍、语音、记忆、心理支持。shell和zip是真没有，装不出来。长期记忆里头的人有李哥、有福、管儿、强哥、管管、元宝、猫猫，齐活了。",
 	}
 
 	for _, text := range leakCases {
@@ -257,6 +288,16 @@ func TestSoftenHighRiskTerms(t *testing.T) {
 			input:       "我们现在做爱吧",
 			mustNotHave: "做爱",
 			mustHave:    "完全拥有彼此",
+		},
+		{
+			input:       "南通玩 agent 就是这样，骚逼机器人就想让它写代码，正经机器人就像让他撩骚",
+			mustNotHave: "骚逼",
+			mustHave:    "特定调皮对象",
+		},
+		{
+			input:       "想看正经ai雄堕",
+			mustNotHave: "雄堕",
+			mustHave:    "反差萌转变",
 		},
 	}
 
@@ -373,5 +414,233 @@ func TestSanitizeVoiceText(t *testing.T) {
 	}
 }
 
+func TestIsIntentionalSilence(t *testing.T) {
+	silenceCases := []string{
+		"（群友日常寒暄，无需回复）",
+		"(群友日常寒暄，无需回复)",
+		"（日常寒暄，无需回复）",
+		"（无需回复）",
+		"(无需回复)",
+		"无需回复",
+		"无需回应",
+		"（无需回应）",
+		"不用回复",
+		"（不用回复）",
+		"不需要回复",
+		"不予回复",
+		"保持沉默",
+		"（保持沉默）",
+		"继续沉默",
+		"(继续沉默)",
+		"(沉默)",
+		"（沉默）",
+		"沉默",
+		"NO_REPLY",
+		"no_reply",
+		"NO REPLY",
+		"[SILENT]",
+		"SILENT",
+		"（这条消息不是找我的，无需回复）",
+		"（这条不是找我的）",
+		"不是找我的",
+		"（这是群友之间的日常闲聊，无需回复）",
+		"[无需回复]",
+	}
 
+	for _, text := range silenceCases {
+		if !isIntentionalSilence(text) {
+			t.Errorf("isIntentionalSilence(%q) = false, want true", text)
+		}
+		// cleanTextMessage should return empty string for silence cases
+		cleaned := cleanTextMessage(text)
+		if cleaned != "" {
+			t.Errorf("cleanTextMessage(%q) = %q, want empty string", text, cleaned)
+		}
+	}
+
+	nonSilenceCases := []string{
+		"我这儿下午两点多，你那边倒过来了是吧，时差党😂",
+		"行，接下来十条纯文字，不带表情。",
+		"我给你发个链接你看一眼，无需回复哈",
+		"今天工作挺忙的，晚上一起吃饭吗？",
+		"这需求我可接不了，尺度超纲了，换一个😂",
+	}
+
+	for _, text := range nonSilenceCases {
+		if isIntentionalSilence(text) {
+			t.Errorf("isIntentionalSilence(%q) = true, want false", text)
+		}
+	}
+}
+
+func TestStripLeadingSpeakerName(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		candidates []string
+		expected   string
+	}{
+		{
+			name:       "english name with space",
+			input:      "Marsrun 不打卡不track，那起不来就是真的起不来，连借口都不用编，主打一个真实 😂",
+			candidates: []string{"Marsrun"},
+			expected:   "不打卡不track，那起不来就是真的起不来，连借口都不用编，主打一个真实 😂",
+		},
+		{
+			name:       "chinese name with space",
+			input:      "程曦 这作息可以啊，完美避开了早高峰，下午五点半下班还能赶上天亮回家，属于是把打工人的痛给治了 😂",
+			candidates: []string{"程曦"},
+			expected:   "这作息可以啊，完美避开了早高峰，下午五点半下班还能赶上天亮回家，属于是把打工人的痛给治了 😂",
+		},
+		{
+			name:       "emoji nickname with space",
+			input:      "🐊 这属于是把“不想上班”贯彻到行动上了，早上起不来直接装死，主打一个随心所欲 😂",
+			candidates: []string{"🐊"},
+			expected:   "这属于是把“不想上班”贯彻到行动上了，早上起不来直接装死，主打一个随心所欲 😂",
+		},
+		{
+			name:       "long nickname with space",
+			input:      "风在林梢鸟在叫 按小时算假这操作挺细的，请个两小时出去办个事回来接着搬砖",
+			candidates: []string{"风在林梢鸟在叫"},
+			expected:   "按小时算假这操作挺细的，请个两小时出去办个事回来接着搬砖",
+		},
+		{
+			name:       "chinese colon delimiter",
+			input:      "程曦：这作息可以啊",
+			candidates: []string{"程曦"},
+			expected:   "这作息可以啊",
+		},
+		{
+			name:       "english colon delimiter",
+			input:      "Marsrun: 不打卡挺爽的",
+			candidates: []string{"Marsrun"},
+			expected:   "不打卡挺爽的",
+		},
+		{
+			name:       "chinese comma delimiter",
+			input:      "程曦，这作息可以啊",
+			candidates: []string{"程曦"},
+			expected:   "这作息可以啊",
+		},
+		{
+			name:       "wechat at mention prefix",
+			input:      "@Marsrun 不打卡挺爽的",
+			candidates: []string{"Marsrun"},
+			expected:   "不打卡挺爽的",
+		},
+		{
+			name:       "multiple candidates - matched second",
+			input:      "柒喜 这就是典型的一个人当两个人用",
+			candidates: []string{"Marsrun", "柒喜", "程曦"},
+			expected:   "这就是典型的一个人当两个人用",
+		},
+		{
+			name:       "natural mention inside sentence not at start",
+			input:      "哈哈程曦你这招狠，跑路前把假一口气休完",
+			candidates: []string{"程曦"},
+			expected:   "哈哈程曦你这招狠，跑路前把假一口气休完",
+		},
+		{
+			name:       "mid-sentence mention preserved",
+			input:      "真羡慕 Marsrun 你们公司不打卡啊",
+			candidates: []string{"Marsrun"},
+			expected:   "真羡慕 Marsrun 你们公司不打卡啊",
+		},
+		{
+			name:       "no candidate match",
+			input:      "张三 来了",
+			candidates: []string{"李四"},
+			expected:   "张三 来了",
+		},
+		{
+			name:       "input is just the name",
+			input:      "程曦",
+			candidates: []string{"程曦"},
+			expected:   "程曦",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := stripLeadingSpeakerName(tt.input, tt.candidates...)
+			if actual != tt.expected {
+				t.Errorf("stripLeadingSpeakerName() = %q, want %q", actual, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetRecentSpeakers(t *testing.T) {
+	p := &AiPlugin{
+		sessions: map[string][]openAIMessage{
+			"chatroom:12345@chatroom": {
+				{Role: "user", Content: "Marsrun: 我们不track打卡时间"},
+				{Role: "assistant", Content: "不打卡确实舒服"},
+				{Role: "user", Content: "程曦: 早上十点半上班"},
+				{Role: "user", Content: "🐊: 我司不用打卡啊"},
+				{Role: "user", Content: "程曦: 还可以这样操作"},
+			},
+		},
+	}
+	speakers := p.getRecentSpeakers("chatroom:12345@chatroom")
+	expected := []string{"程曦", "🐊", "Marsrun"}
+	if len(speakers) != len(expected) {
+		t.Fatalf("expected %d speakers, got %d: %v", len(expected), len(speakers), speakers)
+	}
+	for i, spk := range expected {
+		if speakers[i] != spk {
+			t.Errorf("expected speaker[%d] = %q, got %q", i, spk, speakers[i])
+		}
+	}
+}
+
+func TestPseudoVoicePrefix(t *testing.T) {
+	tests := []struct {
+		input       string
+		hasPrefix   bool
+		stripped    string
+	}{
+		{
+			input:     "[语音] 😏 忙一天了吧，肩膀都僵了吧，过来，我给你捏捏。",
+			hasPrefix: true,
+			stripped:  "😏 忙一天了吧，肩膀都僵了吧，过来，我给你捏捏。",
+		},
+		{
+			input:     "【语音】: 赶紧休息吧！",
+			hasPrefix: true,
+			stripped:  "赶紧休息吧！",
+		},
+		{
+			input:     "（发语音） 早上好啊",
+			hasPrefix: true,
+			stripped:  "早上好啊",
+		},
+		{
+			input:     "[语音条] 听得清吗？",
+			hasPrefix: true,
+			stripped:  "听得清吗？",
+		},
+		{
+			input:     "这是一段普通文本，没有语音前缀",
+			hasPrefix: false,
+			stripped:  "这是一段普通文本，没有语音前缀",
+		},
+		{
+			input:     "我们发语音聊吧",
+			hasPrefix: false,
+			stripped:  "我们发语音聊吧",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := hasPseudoVoicePrefix(tt.input); got != tt.hasPrefix {
+				t.Errorf("hasPseudoVoicePrefix(%q) = %v, want %v", tt.input, got, tt.hasPrefix)
+			}
+			if got := stripPseudoVoicePrefix(tt.input); got != tt.stripped {
+				t.Errorf("stripPseudoVoicePrefix(%q) = %q, want %q", tt.input, got, tt.stripped)
+			}
+		})
+	}
+}
 

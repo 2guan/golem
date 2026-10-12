@@ -30,7 +30,7 @@ func (p *DemosPlugin) GetMetadata() *plugin.Metadata {
 		Name:        "demos",
 		Author:      "Golem Team",
 		Version:     "1.1.0",
-		Description: "Demos 娱乐功能插件",
+		Description: "Demos 演示功能合集插件（包含各种第三方公共 API 实验性多媒体能力）",
 		Priority:    0,
 		Next:        false,
 		AlwaysRun:   false,

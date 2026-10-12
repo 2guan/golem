@@ -53,7 +53,6 @@ func main() {
 		"谚语":     p.handleYanyu,
 		"抽签":     p.handleChouqian,
 		"答案之书":   p.handleBay,
-		"吃什么":    p.handleEat,
 		"保安日记":   p.handleRj,
 		"king台词": p.handleKingTc,
 		"l台词":    p.handleLolTc,

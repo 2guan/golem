@@ -40,6 +40,20 @@ func TestExtractImageTasks(t *testing.T) {
 			expectedPrm: "什刹海夕阳自拍",
 			cleanText:   "",
 		},
+		{
+			input:       "刚练完腿。<br/>[我发送了一张生活自拍照，场景在：健身房力量训练区，刚练完腿大汗淋漓，真实生活感手机自拍]",
+			expectedLen: 1,
+			expectedRef: "selfie",
+			expectedPrm: "健身房力量训练区，刚练完腿大汗淋漓，真实生活感手机自拍",
+			cleanText:   "刚练完腿。<br/>",
+		},
+		{
+			input:       "[我发送了一张绘制的图片，画面内容是：一只可爱的小猫咪在阳光下睡觉]",
+			expectedLen: 1,
+			expectedRef: "",
+			expectedPrm: "一只可爱的小猫咪在阳光下睡觉",
+			cleanText:   "",
+		},
 	}
 
 	for i, tt := range tests {

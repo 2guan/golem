@@ -7,7 +7,7 @@ type Config struct {
 	FFmpegPath       string   `toml:"ffmpeg_path" comment:"ffmpeg 路径，用于 webp 转码 jpeg"`
 	DefaultAvatarURL string   `toml:"default_avatar_url" comment:"肉丸默认微信头像参考图 URL"`
 	ScenicScenes     []string `toml:"scenic_scenes,omitempty" comment:"自定义自拍风景场景列表"`
-	TimeoutSeconds   int      `toml:"timeout_seconds,omitempty" comment:"生图请求超时秒数，默认 90"`
+	TimeoutSeconds   int      `toml:"timeout_seconds,omitempty" comment:"生图请求超时秒数，默认 240"`
 }
 
 func defaultConfig() Config {
@@ -17,6 +17,6 @@ func defaultConfig() Config {
 		Model:            "seedream-4.7",
 		FFmpegPath:       "/opt/homebrew/bin/ffmpeg",
 		DefaultAvatarURL: "https://wx.qlogo.cn/mmhead/ver_1/ia1JRyhA4QPRKbuKHBrTNmbaAj8S58icRr2jmjmwVY103ZSq7LDBFRZia0hCe4o2msLSePo9ON8Y3Nkv5V3qLtpjsdJUt3JRlhKLs7zKfAvBFuxoCpuvu1rLeUMtmFxDeBu/132",
-		TimeoutSeconds:   90,
+		TimeoutSeconds:   240,
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -168,5 +169,50 @@ func TestHistory_Expiration(t *testing.T) {
 	}
 	if len(p2.contextMessages(expiredSession)) != 0 {
 		t.Errorf("expiredSession should be pruned, got %d", len(p2.contextMessages(expiredSession)))
+	}
+}
+
+func TestSessionLock_Serialization(t *testing.T) {
+	p := &AiPlugin{}
+	sessionKey := "chatroom:12345@chatroom"
+
+	lock1 := p.getSessionLock(sessionKey)
+	lock2 := p.getSessionLock(sessionKey)
+	if lock1 != lock2 {
+		t.Fatalf("expected identical mutex instance for the same sessionKey")
+	}
+
+	otherLock := p.getSessionLock("chatroom:67890@chatroom")
+	if lock1 == otherLock {
+		t.Fatalf("expected different mutex instances for different sessionKeys")
+	}
+
+	// 验证锁能有效保证并发执行的串行化
+	var order []int
+	var mu sync.Mutex
+
+	lock1.Lock()
+	done := make(chan struct{})
+	go func() {
+		// 尝试获取相同 session 的锁，必须等待上面释放
+		l := p.getSessionLock(sessionKey)
+		l.Lock()
+		defer l.Unlock()
+		mu.Lock()
+		order = append(order, 2)
+		mu.Unlock()
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	order = append(order, 1)
+	mu.Unlock()
+	lock1.Unlock()
+
+	<-done
+
+	if len(order) != 2 || order[0] != 1 || order[1] != 2 {
+		t.Errorf("expected serialization order [1, 2], got %v", order)
 	}
 }

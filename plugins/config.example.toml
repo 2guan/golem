@@ -51,11 +51,27 @@ limits = []
 
 [auto_accept.config]
 auto_verify = true
+verify_delay_min_seconds = 10
+verify_delay_max_seconds = 15
 custom_greeting = ''
-greeting_delay_seconds = 2
+greeting_delay_seconds = 3
 greeting_enabled = true
 keyword_filter = ''
 notify_owner = true
+
+# add_friend 插件：主动添加微信好友（支持群内“加我好友”与“#加好友”，内置每日上限与 10~15 秒自然延迟防封保护）
+[add_friend]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[add_friend.config]
+daily_limit = 3
+add_delay_min_seconds = 10
+add_delay_max_seconds = 15
+default_greeting = '你好，我是{bot_name}'
+owner_only = false
+data_file = 'data/add_friend_stats.json'
 
 [avatar_review]
 enable = true
@@ -67,6 +83,7 @@ api_key = 'your_mimo_api_key_here'
 base_url = 'https://token-plan-cn.xiaomimimo.com/v1'
 model = 'mimo-v2.6-flash'
 
+# cron 插件：内置定时任务引擎（支持设定时间自动执行指令或广播）
 [cron]
 enable = true
 mode = 'blacklist'
@@ -75,11 +92,49 @@ limits = []
 [cron.config]
 jobs = []
 
+# daily_gossip 插件：每日八卦摸鱼新闻早报
 [daily_gossip]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# dashboard 插件：Golem Web 可视化管理控制台（默认访问 http://127.0.0.1:8899）
+[dashboard]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[dashboard.config]
+data_dir = 'data'
+host = '0.0.0.0'
+port = 8899
+
+# demos 插件：第三方公共 API 演示功能合集（搜短剧、猫狗图、小姐姐视频等测试功能，默认禁用）
+[demos]
+enable = false
+mode = 'blacklist'
+limits = []
+
+[demos.config]
+bdbk_url = ''
+max_list = 3
+silk_encoder_path = ''
+silk_max_bytes = 28000
+silk_sample_rate = 24000
+video_native = true
+
+# example 插件：官方 SDK 插件开发示例模板（默认禁用）
+[example]
+enable = false
+mode = 'blacklist'
+limits = []
+
+[example.config]
+echo_prefix = '[Echo] '
+max_length = 500
+reply_enabled = true
+
+# fake_forward 插件：合并转发聊天记录伪造器（支持“伪造转发”、“合并转发”指令）
 [fake_forward]
 enable = true
 mode = 'blacklist'
@@ -96,16 +151,43 @@ image_dir = '农场图片'
 initial_coins = 3000
 initial_fields = 1
 
+# gg 插件：群公告与群事件广播（支持“发布公告”、“查询公告”等）
 [gg]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# heartbeat_club 插件：心跳俱乐部文字交互养成/抽卡小游戏
 [heartbeat_club]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# hermes 插件：接入 Hermes Agent 多智能体系统（支持大模型自主调度）
+[hermes]
+enable = false
+mode = 'blacklist'
+limits = []
+
+[hermes.config]
+api_key = ''
+base_url = 'http://127.0.0.1:8642/v1'
+bubble_cooldown_minutes = 10
+bubble_rate = 0.0
+debounce_seconds = 3
+extra_prompt = ''
+fallback_reply = true
+http_timeout_seconds = 300
+max_context_messages = 40
+max_text_len = 2000
+mcp_listen = '0.0.0.0:8643'
+mcp_token = ''
+model = 'hermes-agent'
+send_rate_per_min = 10
+targets = []
+trigger_names = []
+
+# hermes_bridge 插件：Hermes 专属双向桥接服务与富媒体网关
 [hermes_bridge]
 enable = true
 mode = 'blacklist'
@@ -145,6 +227,21 @@ targets = []
 token = ''
 trigger_names = []
 
+# image_gen 插件：AI 图像生成与群头像合成（支持“画/生图”、“头像合影”等）
+[image_gen]
+enable = true
+mode = 'blacklist'
+limits = []
+
+[image_gen.config]
+api_key = 'your_api_key_here'
+base_url = 'https://api.example.com'
+default_avatar_url = ''
+ffmpeg_path = '/opt/homebrew/bin/ffmpeg'
+model = 'seedream-4.7'
+timeout_seconds = 90
+
+# infinite_adventure 插件：AI 驱动的无限地牢/文字跑团冒险游戏
 [infinite_adventure]
 enable = false
 mode = 'blacklist'
@@ -156,6 +253,7 @@ group_timeout_minutes = 10
 max_solo_turns = 30
 save_file = 'data/infinite_adventure.json'
 
+# meme 插件：群表情包制作与动态表情生成
 [meme]
 enable = true
 mode = 'blacklist'
@@ -164,6 +262,7 @@ limits = []
 [meme.config]
 Url = ''
 
+# moyu_daily 插件：摸鱼人日历生成与定时每日推送（支持“摸鱼日历”指令）
 [moyu_daily]
 enable = true
 mode = 'blacklist'
@@ -172,16 +271,33 @@ limits = []
 [moyu_daily.config]
 auto_push_chatrooms = []
 
+# music 插件：多平台音乐搜索与卡片点歌（支持“点歌/音乐”指令）
 [music]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# news 插件：每日 60s 早报/早间新闻推送与即时查询（支持“早报/新闻”指令）
 [news]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# pawzochat 插件：PawzoChat 外部聊天机器人网关对接
+[pawzochat]
+enable = false
+mode = 'blacklist'
+limits = []
+
+[pawzochat.config]
+base_url = 'http://127.0.0.1:62000'
+http_timeout_seconds = 50
+respond_to_all_group_messages = false
+token = ''
+
+[pawzochat.config.routes]
+
+# profile 插件：群友画像与聊天风格生成（支持“群友画像/群聊画像/我的画像”指令）
 [profile]
 enable = true
 mode = 'blacklist'
@@ -194,11 +310,13 @@ cold_start_max_messages = 2000
 max_single_msg_chars = 2000
 render_image = true
 
+# reread 插件：群聊人类本质复读机（支持概率自动跟风复读）
 [reread]
 enable = false
 mode = 'blacklist'
 limits = []
 
+# robbery 插件：打劫与打工文字策略小游戏（支持“打劫”、“打工”、“转职”、“救济金”等）
 [robbery]
 enable = true
 mode = 'blacklist'
@@ -213,6 +331,7 @@ job_refresh_hours = 24
 welfare_amount = 50
 welfare_cooldown = 24
 
+# setu 插件：二次元美图与短视频娱乐鉴赏（支持“黑丝/白丝/小姐姐/小哥哥”等娱乐指令）
 [setu]
 enable = true
 mode = 'blacklist'
@@ -230,21 +349,25 @@ img_video_url = 'https://api.yujn.cn/api/zzxjj.php'
 search_url = 'https://cn.apihz.cn/api/img/apihzbqbbaidu.php?id=88888888&key=88888888&limit=10&page=1&words='
 video_rate = 50
 
+# statistics 插件：群聊发言活跃度榜单与统计（支持“发言榜/活跃度”指令）
 [statistics]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# turtle_soup 插件：海龟汤推理益智解谜小游戏（支持出题、提问“是/否/无关”、猜汤底）
 [turtle_soup]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# undercover 插件：谁是卧底聚会文字推理小游戏（支持开房、发词、描述、投票）
 [undercover]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# universal 插件：通用 HTTP Webhook 转发与事件规则引擎
 [universal]
 enable = true
 mode = 'blacklist'
@@ -254,11 +377,13 @@ limits = []
 http_timeout_seconds = 15
 rules = []
 
+# video_parser 插件：主流短视频平台去水印解析（支持抖音/快手/B站等分享链接自动解析）
 [video_parser]
 enable = true
 mode = 'blacklist'
 limits = []
 
+# what_to_eat 插件：今天吃什么选择助手与 AI 美食推荐（支持“今天吃什么/中午吃什么/喝什么”等指令）
 [what_to_eat]
 enable = true
 mode = 'blacklist'
@@ -267,6 +392,7 @@ limits = []
 [what_to_eat.config]
 enable_ai = true
 
+# wordcloud 插件：群聊高频词云图生成（支持“群词云/今日词云”指令）
 [wordcloud]
 enable = true
 mode = 'blacklist'

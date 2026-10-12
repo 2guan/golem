@@ -17,12 +17,14 @@ import (
 
 // Config 自动通过好友与欢迎语配置
 type Config struct {
-	AutoVerify           bool   `toml:"auto_verify" comment:"是否自动通过好友申请"`
-	GreetingEnabled      bool   `toml:"greeting_enabled" comment:"通过后是否自动发送欢迎打招呼"`
-	GreetingDelaySeconds int    `toml:"greeting_delay_seconds" comment:"通过后延迟发送打招呼消息的秒数"`
-	NotifyOwner          bool   `toml:"notify_owner" comment:"通过后是否向主人发送通知"`
-	KeywordFilter        string `toml:"keyword_filter" comment:"好友申请附言过滤关键词，若非空则只通过包含该关键词的申请"`
-	CustomGreeting       string `toml:"custom_greeting" comment:"自定义打招呼欢迎语，留空则使用默认专属欢迎语"`
+	AutoVerify              bool   `toml:"auto_verify" comment:"是否自动通过好友申请"`
+	VerifyDelayMinSeconds   int    `toml:"verify_delay_min_seconds" comment:"收到好友申请后延迟通过的最小秒数（默认 10）"`
+	VerifyDelayMaxSeconds   int    `toml:"verify_delay_max_seconds" comment:"收到好友申请后延迟通过的最大秒数（默认 15）"`
+	GreetingEnabled         bool   `toml:"greeting_enabled" comment:"通过后是否自动发送欢迎打招呼"`
+	GreetingDelaySeconds    int    `toml:"greeting_delay_seconds" comment:"通过后延迟发送打招呼消息的秒数"`
+	NotifyOwner             bool   `toml:"notify_owner" comment:"通过后是否向主人发送通知"`
+	KeywordFilter           string `toml:"keyword_filter" comment:"好友申请附言过滤关键词，若非空则只通过包含该关键词的申请"`
+	CustomGreeting          string `toml:"custom_greeting" comment:"自定义打招呼欢迎语，留空则使用默认专属欢迎语"`
 }
 
 // VerifyMsgXML 好友验证消息 XML 结构体
@@ -161,58 +163,86 @@ func (p *AutoAcceptPlugin) OnEvent(e *plugin.Event) (bool, error) {
 		return false, nil
 	}
 
-	// 执行好友验证通过
-	err = p.contact.VerifyFriend(vMsg.EncryptUsername, vMsg.Ticket, vMsg.Scene)
-	if err != nil {
-		slog.Error("[auto_accept] 通过好友验证失败",
-			"err", err,
-			"username", vMsg.FromUsername,
-			"nickname", vMsg.FromNickname,
+	// 异步延迟通过好友验证（模拟真人反应时间 10-15 秒，避免被微信风控系统识别为自动化脚本）
+	go func(v *VerifyMsgXML) {
+		delaySec := p.getVerifyDelaySeconds()
+		slog.Info("[auto_accept] ⏳ 将在自然延迟后自动通过好友申请...",
+			"delay_seconds", delaySec,
+			"username", v.FromUsername,
+			"nickname", v.FromNickname,
 		)
-		return false, err
-	}
+		time.Sleep(time.Duration(delaySec) * time.Second)
 
-	slog.Info("[auto_accept] 🎉 成功通过好友验证！",
-		"username", vMsg.FromUsername,
-		"nickname", vMsg.FromNickname,
-	)
-
-	// 通知主人
-	if p.Config.NotifyOwner {
-		p.notifyOwnerNewFriend(vMsg)
-	}
-
-	// 发送欢迎打招呼
-	if p.Config.GreetingEnabled {
-		targetUser := vMsg.FromUsername
-		if targetUser == "" {
-			targetUser = vMsg.EncryptUsername
-		}
-		delaySec := p.Config.GreetingDelaySeconds
-		if delaySec <= 0 {
-			delaySec = 2
+		// 执行好友验证通过
+		err := p.contact.VerifyFriend(v.EncryptUsername, v.Ticket, v.Scene)
+		if err != nil {
+			slog.Error("[auto_accept] 通过好友验证失败",
+				"err", err,
+				"username", v.FromUsername,
+				"nickname", v.FromNickname,
+			)
+			return
 		}
 
-		go func(username, nickname, sourceNickname string, delay time.Duration) {
-			time.Sleep(delay)
-			greeting := p.buildGreeting(nickname, sourceNickname)
-			receiver := &contact.Contact{Username: username}
+		slog.Info("[auto_accept] 🎉 成功通过好友验证！",
+			"username", v.FromUsername,
+			"nickname", v.FromNickname,
+		)
+
+		// 通知主人
+		if p.Config.NotifyOwner {
+			p.notifyOwnerNewFriend(v)
+		}
+
+		// 发送欢迎打招呼
+		if p.Config.GreetingEnabled {
+			targetUser := v.FromUsername
+			if targetUser == "" {
+				targetUser = v.EncryptUsername
+			}
+			delaySec := p.Config.GreetingDelaySeconds
+			if delaySec <= 0 {
+				delaySec = 2
+			}
+
+			time.Sleep(time.Duration(delaySec) * time.Second)
+			greeting := p.buildGreeting(v.FromNickname, v.SourceNickname)
+			receiver := &contact.Contact{Username: targetUser}
 			if _, sendErr := p.sendText(receiver, greeting); sendErr != nil {
 				slog.Warn("[auto_accept] 发送欢迎打招呼失败",
-					"receiver", username,
-					"nickname", nickname,
+					"receiver", targetUser,
+					"nickname", v.FromNickname,
 					"err", sendErr,
 				)
 			} else {
 				slog.Info("[auto_accept] ✅ 已成功向新好友发送欢迎打招呼",
-					"receiver", username,
-					"nickname", nickname,
+					"receiver", targetUser,
+					"nickname", v.FromNickname,
 				)
 			}
-		}(targetUser, vMsg.FromNickname, vMsg.SourceNickname, time.Duration(delaySec)*time.Second)
-	}
+		}
+	}(vMsg)
 
 	return true, nil
+}
+
+func (p *AutoAcceptPlugin) getVerifyDelaySeconds() int {
+	minSec := p.Config.VerifyDelayMinSeconds
+	maxSec := p.Config.VerifyDelayMaxSeconds
+	if minSec <= 0 {
+		minSec = 10
+	}
+	if maxSec <= 0 {
+		maxSec = 15
+	}
+	if maxSec < minSec {
+		maxSec = minSec
+	}
+	delta := maxSec - minSec
+	if delta <= 0 {
+		return minSec
+	}
+	return minSec + int(time.Now().UnixNano()%int64(delta+1))
 }
 
 func (p *AutoAcceptPlugin) notifyOwnerNewFriend(v *VerifyMsgXML) {

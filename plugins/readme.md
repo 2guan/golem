@@ -650,25 +650,70 @@ cp my_plugin.exe ../
 
 ---
 
-## 🔌 现有插件
+## 🔌 现有插件全览
 
-以下是官方插件的简要说明，详细文档请查看各插件目录的 README.md。
+Golem 拥有丰富的官方与生态插件。详细用法与参数配置请点击各插件目录下的 `README.md` 查看：
 
-| 插件 | 说明 |
-|------|------|
-| **example** | 完整示例插件，展示所有插件功能 |
-| **ai** | OpenAI 兼容接口的 AI 对话插件 |
-| **cron** | 根据 cron 表达式定时执行任务 |
-| **meme** | 表情包生成插件，支持多种模板 |
-| **statistics** | 群聊消息统计和排行插件 |
-| **news** | 新闻推送插件 |
-| **reread** | 复读机插件 |
-| **universal** | 规则驱动的通用 API 请求插件 |
-| **video_parser** | 视频在线解析插件 |
-| **gg** | 图片生成插件，基于 gg 库 |
-| **wordcloud** | 词云插件，统计群聊发言生成词云图片 |
+### 🤖 1. AI 与智能体核心
+
+| 插件 | 目录 | 核心功能说明 | 触发方式 |
+| :--- | :--- | :--- | :--- |
+| **ai** | [plugins/ai](ai/readme.md) | 核心多模态大模型交互引擎，支持 Gemini 与小米 Mimo，具备长记忆、拟真语气与单人/单群人设支持 | 私聊 / @机器人 / 引用回复 |
+| **image_gen** | [plugins/image_gen](image_gen/readme.md) | 基于 Seedream 模型，支持自然语言生图、参考图垫图图生图与超拟真生活自拍 | `自拍`、`在[场景]拍张照`、`生图 [描述]` |
+| **profile** | [plugins/profile](profile/readme.md) | 深度分析群成员发言习惯，提炼性格标签与表达风格，生成精美图文画像卡片 | `查画像 [@群友]`、`我的画像` |
+| **avatar_review** | [plugins/avatar_review](avatar_review/readme.md) | 调用多模态 Vision 模型对好友头像进行幽默毒舌打分与全维度审美鉴赏 | `评测头像`、`锐评头像`、`头像打分` |
+| **hermes** | [plugins/hermes](hermes/readme.md) | 接入开源通用自主 Agent 框架 Hermes，支持 MCP 工具链与长链条复杂规划 | 智能体调度 / 系统调用 |
+| **hermes_bridge** | [plugins/hermes_bridge](hermes_bridge/readme.md) | Golem 与 Hermes 体系的双向通道、核心 API、会话隔离与 Web 运维诊断面板 | `/hermes` / Web 管理端口 |
+| **pawzochat** | [plugins/pawzochat](pawzochat/README.md) | 专为萌宠打造的宠物拟人化互动聊天插件，支持喵星人与汪星人口吻 | 私聊 / 群聊拟人互动 |
+
+### 🎮 2. 社交互动与聚会小游戏
+
+| 插件 | 目录 | 核心功能说明 | 触发方式 |
+| :--- | :--- | :--- | :--- |
+| **heartbeat_club** | [plugins/heartbeat_club](heartbeat_club/readme.md) | 心跳沉浸馆：铁馆更衣室/微醺酒馆/男生宿舍 1V1 沉浸剧情与群聊荷尔蒙对抗 | `心跳沉浸馆`、`@某人 掰手腕`、`宿管查寝` |
+| **infinite_adventure** | [plugins/infinite_adventure](infinite_adventure/readme.md) | 无限冒险谭：开放式文字 RPG，支持自由脑洞开局、私聊双男主沉浸与群聊小队共斗 | `开启冒险 [脑洞]`、`随机冒险`、`组建小队` |
+| **turtle_soup** | [plugins/turtle_soup](turtle_soup/readme.md) | 海龟汤情境推理：AI 现场熬制新汤与经典名案题库，主持提问判定与线索提示 | `来碗海龟汤`、`经典海龟汤`、`海龟汤提示` |
+| **undercover** | [plugins/undercover](undercover/readme.md) | 谁是卧底聚会桌游：全自动完成报名、私聊分发身份词、轮流发言与投票放逐 | `发起谁是卧底`、`+1`、`开始游戏`、`投X号` |
+| **robbery** | [plugins/robbery](robbery/readme.md) | 趣味群打劫小游戏，支持群成员间抢夺金币、职业装备、被反杀防守与黑吃黑 | `打劫 @某人`、`签到`、`我的资产` |
+| **farm** | [plugins/farm](farm/readme.md) | 欢乐虚拟小农场模拟：翻土、播种、施肥、成熟收获与好友互相偷菜 | `我的农场`、`播种`、`收获`、`偷菜` |
+
+### ☕ 3. 生活实用与娱乐工具
+
+| 插件 | 目录 | 核心功能说明 | 触发方式 |
+| :--- | :--- | :--- | :--- |
+| **what_to_eat** | [plugins/what_to_eat](what_to_eat/readme.md) | 今天吃什么美食盲盒：精准餐段感知、正负向口味过滤、快速换菜与复杂诉求 AI 定制 | `今天吃什么`、`换一个`、`吃什么 减脂` |
+| **moyu_daily** | [plugins/moyu_daily](moyu_daily/readme.md) | 打工人摸鱼办日报：周末/发薪/假期倒计时与防内卷摸鱼箴言，支持工作日定时推送 | `摸鱼办`、`摸鱼日报`、`摸鱼日历` |
+| **daily_gossip** | [plugins/daily_gossip](daily_gossip/readme.md) | 每日群聊八卦小报：自动监听提炼群内精彩吃瓜话题与水群榜，每晚定时晚报 | `今日八卦`、`群八卦`、`吃瓜日报` |
+| **news** | [plugins/news](news/readme.md) | 每日早报推送，根据关键词抓取全网新闻要闻与今日图卦长图 | `今日新闻`、`今日图卦`、`每日早报` |
+| **music** | [plugins/music](music/readme.md) | 网易云音乐点歌搜索，群内分享卡片与音乐试听 | `点歌 [歌名]`、`音乐 [歌名]` |
+| **video_parser** | [plugins/video_parser](video_parser/readme.md) | 识别抖音、快手、小红书、B站等短视频链接，秒级解析超清无水印直链视频 | 直接发送短视频分享链接 |
+| **setu** | [plugins/setu](setu/readme.md) | 二次元美图与精美插画检索下载，支持多种分类标签 | `美图`、`二次元壁纸` |
+| **meme** | [plugins/meme](meme/readme.md) | 流行表情包在线合成，根据文字动态渲染熊猫头等趣味表情图片 | 表情包制作指令 |
+| **reread** | [plugins/reread](reread/readme.md) | 人类本质复读机：智能检测群内多人连续发言并自动加入复读 | 连续多人发送相同内容 |
+| **fake_forward** | [plugins/fake_forward](fake_forward/readme.md) | 自定义生成逼真的多成员聊天记录合并转发卡片，用于段子与剧本创作 | `/fake [群聊] 名字1:内容1\|名字2:内容2` |
+
+### 🛠️ 4. 系统统计与基础设施
+
+| 插件 | 目录 | 核心功能说明 | 触发方式 |
+| :--- | :--- | :--- | :--- |
+| **dashboard** | [plugins/dashboard](dashboard/readme.md) | Golem 可视化 Web 控制台：参数配置、插件管理、AI 专属人设、审计与日志 | 浏览器访问 `http://127.0.0.1:8899` |
+| **auto_accept** | [plugins/auto_accept](auto_accept/readme.md) | 自动通过好友添加申请、延时拟人打招呼，并实时向所有者私聊推送通知 | 好友验证事件自动触发 |
+| **add_friend** | [plugins/add_friend](add_friend/readme.md) | 主动添加好友：群内“加我好友”快捷添加与精确搜索加好友，内置每日上限频控保护 | `加我好友`、`#加好友`、`#加好友统计` |
+| **statistics** | [plugins/statistics](statistics/readme.md) | 记录群发言数据，提供活跃度排行榜、水群榜并暴露跨插件历史查询能力 | `发言排行`、`今日龙王` |
+| **wordcloud** | [plugins/wordcloud](wordcloud/readme.md) | 统计群聊历史发言，自动分词生成高清群聊词云图 | `群词云`、`今日词云` |
+| **cron** | [plugins/cron](cron/readme.md) | 基于标准 Cron 表达式的定时任务调度引擎，定时执行指令或推送消息 | 定时自动调度 |
+| **universal** | [plugins/universal](universal/readme.md) | 规则驱动的通用正则匹配与外部 Webhook 转发网关 | 根据 rules 规则自定义触发 |
+| **gg** | [plugins/gg](gg/readme.md) | 高性能 Go 图形渲染引擎，为新闻、摸鱼、词云等插件提供文本与 Markdown 转图片底层支持 | 插件底层能力 |
+
+### 🧪 5. 示例与测试插件
+
+| 插件 | 目录 | 核心功能说明 | 状态 |
+| :--- | :--- | :--- | :--- |
+| **demos** | [plugins/demos](demos/readme.md) | 第三方公共多媒体 API 演示合集（搜短剧、猫狗图、趣味视频等） | 默认已禁用（示例参考） |
+| **example** | [plugins/example](example/readme.md) | 官方 SDK 插件开发样板，完整展示插件生命周期、事件订阅与命令分发 | 默认已禁用（开发样板） |
 
 ---
+
 
 
 ## 💡 最佳实践

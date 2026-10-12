@@ -23,10 +23,11 @@ type TargetOverride struct {
 	CustomPrompt string   `json:"custom_prompt,omitempty"`// 专属提示词
 	Provider    string    `json:"provider,omitempty"`     // 专属模型提供方 (如 "gemini", "xiaomi")
 	Model       string    `json:"model,omitempty"`        // 专属模型名
-	ReplyRate   *float64  `json:"reply_rate,omitempty"`   // 专属回复率 (0.0 - 1.0)
-	Silence     *bool     `json:"silence,omitempty"`      // 是否静默模式 (仅被@或私聊触发)
-	Notes       string    `json:"notes,omitempty"`        // 管理员备注
-	UpdatedAt   time.Time `json:"updated_at"`
+	ReplyRate          *float64  `json:"reply_rate,omitempty"`   // 专属回复率 (0.0 - 1.0)
+	Silence            *bool     `json:"silence,omitempty"`      // 是否静默模式 (仅被@或私聊触发)
+	MaxContextMessages *int      `json:"max_context_messages,omitempty"` // 专属上下文消息条数
+	Notes              string    `json:"notes,omitempty"`        // 管理员备注
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // DashboardStore 本地持久化数据存储结构 (data/dashboard.json)
@@ -68,6 +69,7 @@ type OverviewResponse struct {
 		ActiveSessions int `json:"active_sessions"`
 		PluginCount   int `json:"plugin_count"`
 	} `json:"stats"`
+	Metrics MetricsData `json:"metrics"`
 }
 
 type LogItem struct {
@@ -149,16 +151,26 @@ type ModelPreset struct {
 }
 
 type ModelsConfigResponse struct {
-	ActiveProvider   string                        `json:"active_provider"`
-	FallbackProvider string                        `json:"fallback_provider"`
-	ProviderOrder    []string                      `json:"provider_order"`
-	Providers        map[string]ProviderConfigItem `json:"providers"`
-	Presets          []ModelPreset                 `json:"presets"`
+	ActiveProvider     string                        `json:"active_provider"`
+	FallbackProvider   string                        `json:"fallback_provider"`
+	ProviderOrder      []string                      `json:"provider_order"`
+	Providers          map[string]ProviderConfigItem `json:"providers"`
+	Presets            []ModelPreset                 `json:"presets"`
+	MaxContextMessages int                           `json:"max_context_messages"`
+	ReplyRate          float64                       `json:"reply_rate"`
+	Silence            bool                          `json:"silence"`
+	HistoryExpireHours int                           `json:"history_expire_hours"`
+	HTTPTimeoutSeconds int                           `json:"http_timeout_seconds"`
 }
 
 type SaveModelsRequest struct {
-	ProviderOrder []string                      `json:"provider_order"`
-	Providers     map[string]ProviderConfigItem `json:"providers"`
+	ProviderOrder      []string                      `json:"provider_order"`
+	Providers          map[string]ProviderConfigItem `json:"providers"`
+	MaxContextMessages int                           `json:"max_context_messages,omitempty"`
+	ReplyRate          *float64                      `json:"reply_rate,omitempty"`
+	Silence            *bool                         `json:"silence,omitempty"`
+	HistoryExpireHours int                           `json:"history_expire_hours,omitempty"`
+	HTTPTimeoutSeconds int                           `json:"http_timeout_seconds,omitempty"`
 }
 
 type TestModelRequest struct {

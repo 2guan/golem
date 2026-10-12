@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <title>微信机器人操作指南（手机极速版）</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfdf5',
+              100: '#d1fae5',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* 严格禁止任何横向滚动 */
+    html, body {
+      overflow-x: hidden;
+      max-width: 100vw;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    /* 移动端轻量点击微动效 */
+    .tap-active:active { transform: scale(0.96); }
+    
+    .glass {
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+
+    /* 点击复制胶囊 */
+    .cmd-pill {
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.12s ease;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen antialiased transition-colors duration-200">
+
+  <!-- 浮动复制反馈 Toast -->
+  <div id="toast" class="fixed top-3 left-1/2 -translate-x-1/2 z-50 transform -translate-y-16 opacity-0 pointer-events-none transition-all duration-300 ease-out bg-slate-900/95 dark:bg-emerald-950/95 text-white border border-slate-700/50 dark:border-emerald-500/50 text-xs font-medium px-3.5 py-2 rounded-full shadow-2xl flex items-center gap-1.5">
+    <span class="text-emerald-400 font-bold">✓</span>
+    <span id="toast-text">已复制，粘贴发给机器人吧！</span>
+  </div>
+
+  <!-- 紧凑手机顶部导航 (Sticky Header) -->
+  <header class="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 glass border-b border-slate-200/80 dark:border-slate-800/80 shadow-xs transition-colors">
+    <div class="max-w-md sm:max-w-xl mx-auto px-3 py-2 space-y-2">
+      
+      <!-- 顶部标题与昼夜切换 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white text-base font-bold shadow-xs flex-shrink-0">
+            🤖
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h1 class="font-bold text-sm text-slate-900 dark:text-white leading-tight">微信机器人实战手册</h1>
+              <span class="text-[9px] font-semibold px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">已上线</span>
+            </div>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400">群聊桌游 · 娱乐摸鱼 · 指令点击复制</p>
+          </div>
+        </div>
+
+        <button id="themeToggleBtn" class="p-1.5 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs tap-active flex items-center gap-1 flex-shrink-0" title="切换白天/黑夜主题">
+          <span id="themeIcon">🌙</span>
+          <span id="themeText" class="text-[11px]">深色</span>
+        </button>
+      </div>
+
+      <!-- 搜索框 -->
+      <div class="relative">
+        <span class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400 text-xs">🔍</span>
+        <input 
+          id="guideSearch" 
+          type="text" 
+          placeholder="搜索功能（如：谁是卧底、海龟汤、偷菜、打劫、点歌、画像）..." 
+          class="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all"
+        />
+        <button id="clearGuideSearch" class="hidden absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-xs">✕</button>
+      </div>
+
+      <!-- 紧凑分类网格 (绝对无横向滑动，手机屏幕一览无余) -->
+      <div class="grid grid-cols-4 gap-1 text-[11px] font-medium pt-0.5">
+        <button class="filter-btn active py-1 rounded-md bg-emerald-600 text-white shadow-xs tap-active text-center" data-cat="all">
+          ✨ 全部
+        </button>
+        <button class="filter-btn py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 tap-active text-center" data-cat="chat">
+          💬 对话语音
+        </button>
+        <button class="filter-btn py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 tap-active text-center" data-cat="visual">
+          📸 自拍画图
+        </button>
+        <button class="filter-btn py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 tap-active text-center" data-cat="games">
+          🎮 聚会桌游
+        </button>
+        <button class="filter-btn py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 tap-active text-center" data-cat="social">
+          📊 数据词云
+        </button>
+        <button class="filter-btn py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 tap-active text-center" data-cat="daily">
+          🍱 摸鱼生活
+        </button>
+        <button class="filter-btn py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 tap-active text-center col-span-2" data-cat="owner">
+          👑 群主管理
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- 页面内容容器 (居中紧凑手机版) -->
+  <main class="max-w-md sm:max-w-xl mx-auto px-3 py-3 space-y-3">
+
+    <!-- 新手 20 秒速成卡片 -->
+    <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-2xl p-3 shadow-xs space-y-1.5">
+      <div class="flex items-center gap-1.5 text-xs font-bold">
+        <span>🌟</span>
+        <span>怎么跟机器人说话？</span>
+      </div>
+      <div class="text-[11px] text-emerald-50 leading-relaxed space-y-0.5">
+        <p>• <strong>私聊</strong>：直接发文字/语音/图片，秒回且有连续记忆。</p>
+        <p>• <strong>群聊</strong>：<strong>@机器人</strong> 必回；直接发特定关键词（如“<code>海龟汤</code>”、“<code>今日排行</code>”、“<code>点歌 晴天</code>”）<strong>无需@</strong> 即可直接触发！</p>
+      </div>
+    </div>
+
+    <!-- 无结果提示 -->
+    <div id="noResults" class="hidden py-12 text-center text-slate-400 dark:text-slate-500 space-y-1">
+      <div class="text-3xl">🔍</div>
+      <p class="text-xs">未找到匹配功能，试着换个词搜搜看</p>
+    </div>
+
+    <!-- 功能卡片列表 -->
+    <div id="cardsList" class="space-y-3">
+      <div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="chat" data-search="高情商闲聊与微信真人语音条 随性自然聊天，告别ai客服腔。支持微信原生语音条回复，自带口语起伏与轻笑微叹！ 今天降温好冷啊，陪我唠两句 @机器人 推荐两部下饭悬疑剧 /ai clear-context 若觉得机器人群里插嘴太频繁，群主可发送 &lt;code&gt;/ai session-set -r 0.05&lt;/code&gt; 降低频率，或 &lt;code&gt;-r 0&lt;/code&gt; 改为仅艾特时回复。">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">🎙️</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                对话与语音
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                高情商闲聊与微信真人语音条
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        随性自然聊天，告别AI客服腔。支持微信原生语音条回复，自带口语起伏与轻笑微叹！
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="今天降温好冷啊，陪我唠两句"><span class="text-slate-400 dark:text-slate-500">日常闲聊:</span><span class="font-bold">今天降温好冷啊，陪我唠两句</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="@机器人 推荐两部下饭悬疑剧"><span class="text-slate-400 dark:text-slate-500">群内艾特必回:</span><span class="font-bold">@机器人 推荐两部下饭悬疑剧</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="/ai clear-context"><span class="text-slate-400 dark:text-slate-500">清空记忆重新开始:</span><span class="font-bold">/ai clear-context</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">14:20</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">小明</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  @助手 今天降温冻死了，你那边冷吗？
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">智能助手</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  刚下楼买咖啡差点被吹懵！快把厚外套翻出来穿上，别扛着感冒了哈~
+                </div>
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">智能助手</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  <div class="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <span class="text-emerald-700 dark:text-emerald-400 font-bold text-xs">((•</span>
+                  <span class="font-mono text-[11px] font-semibold">4"</span>
+                  <span class="w-1.5 h-1.5 bg-red-500 rounded-full inline-block"></span>
+                </div>
+                <div class="text-[10px] text-gray-400 dark:text-gray-400 mt-1 pt-1 border-t border-black/5 dark:border-white/5">
+                  语音转文字: 多喝热水，晚上早点钻热被窝！
+                </div>
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>若觉得机器人群里插嘴太频繁，群主可发送 <code>/ai session-set -r 0.05</code> 降低频率，或 <code>-r 0</code> 改为仅艾特时回复。</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="visual" data-search="拟真生活自拍、ai画图与头像毒舌锐评 能看懂你的照片，能按人设发送逼真写实的生活自拍照，还能幽默点评群友的微信头像，自动提取去水印视频！ 来张自拍 在天安门拍张照 画一只戴墨镜在沙滩晒太阳的柯基 @机器人 锐评头像 改成赛博朋克风 直接发送抖音/快手分享链接 短视频去水印全自动运行：群里只要发抖音/快手分享链接，机器人就会秒发无水印视频与封面卡片。">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">📸</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                视觉与自拍
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                拟真生活自拍、AI画图与头像毒舌锐评
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        能看懂你的照片，能按人设发送逼真写实的生活自拍照，还能幽默点评群友的微信头像，自动提取去水印视频！
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="来张自拍"><span class="text-slate-400 dark:text-slate-500">生活自拍:</span><span class="font-bold">来张自拍</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="在天安门拍张照"><span class="text-slate-400 dark:text-slate-500">指定地点拍照:</span><span class="font-bold">在天安门拍张照</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="画一只戴墨镜在沙滩晒太阳的柯基"><span class="text-slate-400 dark:text-slate-500">创意生图:</span><span class="font-bold">画一只戴墨镜在沙滩晒太阳的柯基</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="@机器人 锐评头像"><span class="text-slate-400 dark:text-slate-500">头像打分:</span><span class="font-bold">@机器人 锐评头像</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="改成赛博朋克风"><span class="text-slate-400 dark:text-slate-500">引用照片风格迁移:</span><span class="font-bold">改成赛博朋克风</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="直接发送抖音/快手分享链接"><span class="text-slate-400 dark:text-slate-500">自动去水印:</span><span class="font-bold">直接发送抖音/快手分享链接</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">15:45</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">阿强</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  @助手 锐评头像
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">智能助手</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🔍【头像评测】
+评分：颜值85 | 逼格88 | 精神状态59
+点评：黑白胶片很文艺，但眼神透着周日晚上的深深绝望，建议换成大鱼大肉或者大自然！
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">小李</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  来张在海边散步的自拍
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">智能助手</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  <div class="space-y-1">
+                  <div class="w-32 h-24 bg-slate-200 dark:bg-slate-700 rounded flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 text-[11px] border border-black/5">
+                    <span class="text-xl">🖼️</span>
+                    <span class="text-[9px]">原图已送达</span>
+                  </div>
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400 block">🖼️ [发送了一张逼真的海边生活自拍照]</span>
+                </div>
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>短视频去水印全自动运行：群里只要发抖音/快手分享链接，机器人就会秒发无水印视频与封面卡片。</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="games" data-search="谁是卧底聚会桌游裁判 全自动聚会桌游法官！自动报名、私聊一对一保密发词、群内按座发言、投票统计与处决放逐。 发起谁是卧底 +1 开始谁是卧底 进入投票 投1号 放弃游戏 词语通过机器人私聊分发给每位玩家，群聊绝对不泄露底牌，完全杜绝偷看作弊。">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">🕵️</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                聚会桌游
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                谁是卧底聚会桌游裁判
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        全自动聚会桌游法官！自动报名、私聊一对一保密发词、群内按座发言、投票统计与处决放逐。
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="发起谁是卧底"><span class="text-slate-400 dark:text-slate-500">创建房间:</span><span class="font-bold">发起谁是卧底</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="+1"><span class="text-slate-400 dark:text-slate-500">报名加入:</span><span class="font-bold">+1</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="开始谁是卧底"><span class="text-slate-400 dark:text-slate-500">满人发词开局:</span><span class="font-bold">开始谁是卧底</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="进入投票"><span class="text-slate-400 dark:text-slate-500">开启投票轮:</span><span class="font-bold">进入投票</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="投1号"><span class="text-slate-400 dark:text-slate-500">投票处决:</span><span class="font-bold">投1号</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="放弃游戏"><span class="text-slate-400 dark:text-slate-500">强行重开:</span><span class="font-bold">放弃游戏</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">20:00</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">小张</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  发起谁是卧底
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">卧底法官</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  📢【谁是卧底·招募中】(1/6)
+1号: 小张
+群友发 +1 加入，满3人发 开始谁是卧底 开局！
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">小美</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  +1
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="text-center my-1.5">
+              <div class="text-[10px] text-gray-500 dark:text-gray-400 bg-black/5 dark:bg-white/5 px-2.5 py-1 rounded-md inline-block leading-snug">✅ 小美 已加入 (2号玩家)
+已通过私聊将词语悄悄发送给各位，群内请按座位顺序发言描述！</div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>词语通过机器人私聊分发给每位玩家，群聊绝对不泄露底牌，完全杜绝偷看作弊。</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="games" data-search="海龟汤推理派对：ai熬汤与侦探破案 经典情境推理桌游！ai现熬原创好汤或经典名题，群友自由提问，主持人判定【是/不是/无关/关键线索】，渐进提示还原真相。 来碗海龟汤 经典海龟汤 死者认识现场第二个人吗？ 海龟汤提示 看汤底 提问时无需艾特机器人，直接在群里像平常聊天一样提问即可！猜不出来发“看汤底”就能揭晓案件全貌。">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">🐢</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                情境推理
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                海龟汤推理派对：AI熬汤与侦探破案
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        经典情境推理桌游！AI现熬原创好汤或经典名题，群友自由提问，主持人判定【是/不是/无关/关键线索】，渐进提示还原真相。
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="来碗海龟汤"><span class="text-slate-400 dark:text-slate-500">开启AI新汤:</span><span class="font-bold">来碗海龟汤</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="经典海龟汤"><span class="text-slate-400 dark:text-slate-500">题库名案:</span><span class="font-bold">经典海龟汤</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="死者认识现场第二个人吗？"><span class="text-slate-400 dark:text-slate-500">自由提问:</span><span class="font-bold">死者认识现场第二个人吗？</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="海龟汤提示"><span class="text-slate-400 dark:text-slate-500">索取线索:</span><span class="font-bold">海龟汤提示</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="看汤底"><span class="text-slate-400 dark:text-slate-500">放弃看真相:</span><span class="font-bold">看汤底</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">21:15</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">玩家A</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  来碗海龟汤
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">海龟汤主持</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🍲【海龟汤·汤面】
+男子进餐厅喝了一口海龟汤，狂奔出餐厅自杀了。为什么？
+（大家直接打字提问，我会判定是/不是/无关/关键线索）
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">玩家B</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  他以前喝过海龟汤吗？
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">海龟汤主持</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🔔【关键线索！】没有！他以前以为喝过，但其实并不是海龟肉！
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>提问时无需艾特机器人，直接在群里像平常聊天一样提问即可！猜不出来发“看汤底”就能揭晓案件全貌。</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="games" data-search="qq 经典农场：开地、种菜与半夜偷菜 情怀满分的农庄模拟！开垦土地、种植水稻苹果向日葵、浇水施肥收割，还能半夜悄悄顺走邻居成熟的庄稼！ 开通农场 我的农场 农场商店 种植 苹果 收菜 偷菜 购买守卫 记得买只守卫狗狗看家！别人偷菜时有概率被狗狗咬伤并罚款纳税哦！">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">🌾</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                休闲小游戏
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                QQ 经典农场：开地、种菜与半夜偷菜
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        情怀满分的农庄模拟！开垦土地、种植水稻苹果向日葵、浇水施肥收割，还能半夜悄悄顺走邻居成熟的庄稼！
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="开通农场"><span class="text-slate-400 dark:text-slate-500">开荒建号:</span><span class="font-bold">开通农场</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="我的农场"><span class="text-slate-400 dark:text-slate-500">查看庄园:</span><span class="font-bold">我的农场</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="农场商店"><span class="text-slate-400 dark:text-slate-500">种子道具:</span><span class="font-bold">农场商店</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="种植 苹果"><span class="text-slate-400 dark:text-slate-500">播种农作物:</span><span class="font-bold">种植 苹果</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="收菜"><span class="text-slate-400 dark:text-slate-500">收获成熟果实:</span><span class="font-bold">收菜</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="偷菜"><span class="text-slate-400 dark:text-slate-500">趁人不备顺菜:</span><span class="font-bold">偷菜</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="购买守卫"><span class="text-slate-400 dark:text-slate-500">买看门狗:</span><span class="font-bold">购买守卫</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">08:30</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">阿强</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  我的农场
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">农场管家</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🏡【阿强的庄园】金币: 3,200
+🌱 1号地: 红富士苹果 (8分钟后成熟)
+🌿 2号地: 优质水稻 (可收割！🌾)
+🐕 守卫: 田园犬 (警戒中)
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">小明</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  偷菜
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">农场管家</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🚨 小明 溜进阿强的农场，顺走 2 捆成熟水稻，获得 90 金币！
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>记得买只守卫狗狗看家！别人偷菜时有概率被狗狗咬伤并罚款纳税哦！</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="games" data-search="江湖乱斗：打工、转职、买神装与打劫群友 群友轻策略文字大乱斗！打工赚启动资金，武器铺买精钢短刀，转职盗贼/刺客/战士，打劫群友金币！小心通缉入狱！ 我的资产 打工 转职 盗贼 商店 打劫 领救济金 排行榜 通缉度过高会被衙门抓捕入狱！入狱后无法行动，只能等刑期结束或群友花钱保释。">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">🗡️</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                群聊江湖
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                江湖乱斗：打工、转职、买神装与打劫群友
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        群友轻策略文字大乱斗！打工赚启动资金，武器铺买精钢短刀，转职盗贼/刺客/战士，打劫群友金币！小心通缉入狱！
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="我的资产"><span class="text-slate-400 dark:text-slate-500">查金币武力:</span><span class="font-bold">我的资产</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="打工"><span class="text-slate-400 dark:text-slate-500">搬砖赚钱:</span><span class="font-bold">打工</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="转职 盗贼"><span class="text-slate-400 dark:text-slate-500">选择职业:</span><span class="font-bold">转职 盗贼</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="商店"><span class="text-slate-400 dark:text-slate-500">购买装备:</span><span class="font-bold">商店</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="打劫"><span class="text-slate-400 dark:text-slate-500">抢劫群友:</span><span class="font-bold">打劫</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="领救济金"><span class="text-slate-400 dark:text-slate-500">领低保:</span><span class="font-bold">领救济金</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="排行榜"><span class="text-slate-400 dark:text-slate-500">群财富榜:</span><span class="font-bold">排行榜</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">12:10</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">小李</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  我的资产
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">江湖驿站</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  ⚔️【侠客档案】
+金币: 850 | 武力: 35 | 职业: 盗贼 (打劫成功率+15%)
+武器: 精钢短刀 (+10武力) | 通缉度: 5%
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">小李</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  打劫
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">江湖驿站</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  💥 你在巷口堵住群友 @老王！一刀挑翻包裹，抢走 210 金币！通缉度上升 15%！
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>通缉度过高会被衙门抓捕入狱！入狱后无法行动，只能等刑期结束或群友花钱保释。</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="games" data-search="无限冒险谭：开放式文字跑团 rpg 脑洞大开的跑团系统！支持现代悬疑、末世废土、修仙逆袭、赛博朋克等任意脑洞，双人搭档或群聊小队共斗推演。 开启冒险 赛博朋克调查 随机冒险 组建小队 查看状态 退出冒险 不限制固定选项！你可以像真实跑团一样自由打字输入任何策略，ai 会根据环境与骰娘检定继续演进！">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">🗺️</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                跑团冒险
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                无限冒险谭：开放式文字跑团 RPG
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        脑洞大开的跑团系统！支持现代悬疑、末世废土、修仙逆袭、赛博朋克等任意脑洞，双人搭档或群聊小队共斗推演。
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="开启冒险 赛博朋克调查"><span class="text-slate-400 dark:text-slate-500">自定义开局:</span><span class="font-bold">开启冒险 赛博朋克调查</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="随机冒险"><span class="text-slate-400 dark:text-slate-500">灵感盲盒:</span><span class="font-bold">随机冒险</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="组建小队"><span class="text-slate-400 dark:text-slate-500">多人群跑:</span><span class="font-bold">组建小队</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="查看状态"><span class="text-slate-400 dark:text-slate-500">血量与背包:</span><span class="font-bold">查看状态</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="退出冒险"><span class="text-slate-400 dark:text-slate-500">存档离开:</span><span class="font-bold">退出冒险</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">22:00</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">探险家</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  开启冒险 赛博朋克黑市调查
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">地下城主</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🌃【雨夜黑市】
+酸雨打在你的义眼HUD上，前方巡逻的重装警犬停下嗅了嗅...
+❤️ HP: 100/100 | 🎒 道具: EMP脉冲手雷
+👉 你打算怎么做？（自由打字输入你的行动）
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">探险家</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  黑掉右边广告牌吸引注意，趁机溜进通风口
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>不限制固定选项！你可以像真实跑团一样自由打字输入任何策略，AI 会根据环境与骰娘检定继续演进！</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="games" data-search="心跳沉浸馆：力量对决与身材比拼 群聊破冰神器！@群友发起掰手腕力量角逐、身材力量大对比、微醺摇骰大冒险，测算两人之间的张力契合度！ @某人 掰手腕 @某人 比拼身材 微醺大冒险 宿管查寝 契合度 @某人 私聊机器人还能进入铁馆更衣室、微醺小酒馆等专属场景开启 1 对 1 沉浸剧情！">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">💪</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                荷尔蒙互动
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                心跳沉浸馆：力量对决与身材比拼
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        群聊破冰神器！@群友发起掰手腕力量角逐、身材力量大对比、微醺摇骰大冒险，测算两人之间的张力契合度！
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="@某人 掰手腕"><span class="text-slate-400 dark:text-slate-500">力量较量:</span><span class="font-bold">@某人 掰手腕</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="@某人 比拼身材"><span class="text-slate-400 dark:text-slate-500">体态对比:</span><span class="font-bold">@某人 比拼身材</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="微醺大冒险"><span class="text-slate-400 dark:text-slate-500">酒吧摇骰:</span><span class="font-bold">微醺大冒险</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="宿管查寝"><span class="text-slate-400 dark:text-slate-500">查寝突袭:</span><span class="font-bold">宿管查寝</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="契合度 @某人"><span class="text-slate-400 dark:text-slate-500">张力契合:</span><span class="font-bold">契合度 @某人</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">22:40</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">阿豪</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  @大壮 掰手腕
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">裁判</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🔥【掰手腕力量决斗】
+阿豪 狠狠扣住 大壮 的右手！桌面发出咔咔声响！
+阿豪 发力判定: 92 (青筋暴起)！
+大壮 发力判定: 75 (力竭支吾)！
+🏆 砰！阿豪 压倒性战胜 大壮！
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>私聊机器人还能进入铁馆更衣室、微醺小酒馆等专属场景开启 1 对 1 沉浸剧情！</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="social" data-search="群发言龙王排行榜与全群热词云图 全天候静默统计全群发言，一键公布今日水群龙王榜，还能将本周讨论热词生成一张超有排面的词云长图！ 今日排行 昨日排行 本周排行 词云 词云 本周 词云 @张三 支持组合查询！例如发送“词云 本周 @张三”，就可以单独查看张三这周聊得最多的是什么词！">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">📈</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                数据统计
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                群发言龙王排行榜与全群热词云图
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        全天候静默统计全群发言，一键公布今日水群龙王榜，还能将本周讨论热词生成一张超有排面的词云长图！
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="今日排行"><span class="text-slate-400 dark:text-slate-500">今日水群榜:</span><span class="font-bold">今日排行</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="昨日排行"><span class="text-slate-400 dark:text-slate-500">昨天谁在聊:</span><span class="font-bold">昨日排行</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="本周排行"><span class="text-slate-400 dark:text-slate-500">本周总榜:</span><span class="font-bold">本周排行</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="词云"><span class="text-slate-400 dark:text-slate-500">近7天词云:</span><span class="font-bold">词云</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="词云 本周"><span class="text-slate-400 dark:text-slate-500">本周热词图:</span><span class="font-bold">词云 本周</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="词云 @张三"><span class="text-slate-400 dark:text-slate-500">指定人词云:</span><span class="font-bold">词云 @张三</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">18:00</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">群友</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  今日排行
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">数据中心</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🏆【今日群聊发言榜】
+🥇 1. @水群龙王 (380条 / 34%)
+🥈 2. @夜猫子 (190条 / 17%)
+🥉 3. @摸鱼大师 (145条 / 13%)
+📊 今日全群累计：1,120 条
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">群友</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  词云 本周
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">词云引擎</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🖼️ [生成并发送了本周词云长图：『火锅』『加班』『原神』『下班』『绝了』错落呈现]
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>支持组合查询！例如发送“词云 本周 @张三”，就可以单独查看张三这周聊得最多的是什么词！</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="social" data-search="群友 ai 性格画像与每日吃瓜小报 ai 深度提炼群友的性格标签、口头禅与社死属性；每晚 22:00 自动推送《吃瓜晚报》总结全天金句，还能伪造合并转发段子！ 人物画像 @小李 我的画像 今日八卦 吃瓜日报 /fake 老板:加班|小李:离职 伪造转发命令（/fake）会自动匹配群友名字并提取微信真实头像，是群内整活编段子的绝佳利器！">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">🎭</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                群友黑历史
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                群友 AI 性格画像与每日吃瓜小报
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        AI 深度提炼群友的性格标签、口头禅与社死属性；每晚 22:00 自动推送《吃瓜晚报》总结全天金句，还能伪造合并转发段子！
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="人物画像 @小李"><span class="text-slate-400 dark:text-slate-500">查群友画像:</span><span class="font-bold">人物画像 @小李</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="我的画像"><span class="text-slate-400 dark:text-slate-500">看自己的画像:</span><span class="font-bold">我的画像</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="今日八卦"><span class="text-slate-400 dark:text-slate-500">调阅今天吃瓜:</span><span class="font-bold">今日八卦</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="吃瓜日报"><span class="text-slate-400 dark:text-slate-500">群吃瓜晚报:</span><span class="font-bold">吃瓜日报</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="/fake 老板:加班|小李:离职"><span class="text-slate-400 dark:text-slate-500">伪造聊天记录:</span><span class="font-bold">/fake 老板:加班|小李:离职</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">22:05</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">群友</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  人物画像 @小李
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">智能助手</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🖼️【AI画像卡片】
+👤 目标: @小李
+🏷️ 标签:『带薪拉屎冠军』『深夜外卖狂魔』
+💬 口头禅:『急了急了』『绝了』
+⏰ 活跃时段: 11:30~12:30, 23:00~01:00
+💡 鉴定: 白天潜水摸鱼，一到干饭和深夜瞬间复活！
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">群友</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  今日八卦
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">八卦小报</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🍉【今日群聊吃瓜小报】
+🔥 头条: @阿强 表白发错群引发全员狂欢！
+💬 神评: @老王『只要我不买房，资本家就收割不到我』
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>伪造转发命令（/fake）会自动匹配群友名字并提取微信真实头像，是群内整活编段子的绝佳利器！</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="daily" data-search="今天吃什么、摸鱼办日历与卡片点歌 解决干饭难题、自动计算假期/发薪倒计时、全网点歌分享微信原生播放卡片、早晨 60 秒读懂世界早报！ 今天吃什么 吃什么 减脂 清淡 不想吃面 换一个 摸鱼日历 点歌 晴天 周杰伦 今日新闻 今日图卦 生病发烧或胃不舒服时，直接发“胃难受吃什么”，ai 营养师会自动根据你的身体状况搭配专属营养流食！">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">🍱</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                摸鱼生活
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                今天吃什么、摸鱼办日历与卡片点歌
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        解决干饭难题、自动计算假期/发薪倒计时、全网点歌分享微信原生播放卡片、早晨 60 秒读懂世界早报！
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="今天吃什么"><span class="text-slate-400 dark:text-slate-500">美食盲盒:</span><span class="font-bold">今天吃什么</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="吃什么 减脂 清淡"><span class="text-slate-400 dark:text-slate-500">偏好过滤:</span><span class="font-bold">吃什么 减脂 清淡</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="不想吃面 换一个"><span class="text-slate-400 dark:text-slate-500">避雷换菜:</span><span class="font-bold">不想吃面 换一个</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="摸鱼日历"><span class="text-slate-400 dark:text-slate-500">假期倒计时:</span><span class="font-bold">摸鱼日历</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="点歌 晴天 周杰伦"><span class="text-slate-400 dark:text-slate-500">微信卡片点歌:</span><span class="font-bold">点歌 晴天 周杰伦</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="今日新闻"><span class="text-slate-400 dark:text-slate-500">60秒早报长图:</span><span class="font-bold">今日新闻</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="今日图卦"><span class="text-slate-400 dark:text-slate-500">煎蛋网图卦:</span><span class="font-bold">今日图卦</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">11:45</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">干饭人</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  中午吃什么 减脂
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">美食助手</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🍱 今日减脂推荐：【香煎鸡胸肉配藜麦温沙拉】
+热量约 380 大卡，清爽无油！
+不满意请回：换一个
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">打工人</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  摸鱼日历
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">摸鱼办</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  🐟【打工人摸鱼办】今天是星期五！
+⏰ 距离周末下班: 5 小时
+💰 距离15号发工资: 4 天
+🎉 距离元旦假期: 81 天
+💡 箴言: 钱是老板的，命是自己的，起身接杯水吧！
+                </div>
+              </div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">乐迷</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  点歌 晴天
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">音乐助手</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  <div class="w-44 p-1.5 bg-white dark:bg-[#242424] rounded border border-black/5 dark:border-white/5 space-y-1">
+                  <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded bg-emerald-500 text-white flex items-center justify-center text-sm font-bold flex-shrink-0">🎵</div>
+                    <div class="overflow-hidden">
+                      <div class="font-bold text-[11px] truncate text-slate-900 dark:text-white">晴天</div>
+                      <div class="text-[9px] text-gray-400 truncate">周杰伦 - 叶惠美</div>
+                    </div>
+                  </div>
+                  <div class="text-[9px] text-emerald-600 dark:text-emerald-400 border-t border-black/5 dark:border-white/5 pt-0.5 flex items-center justify-between">
+                    <span>微信音乐播放卡片</span>
+                    <span>▶️</span>
+                  </div>
+                </div>
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>生病发烧或胃不舒服时，直接发“胃难受吃什么”，AI 营养师会自动根据你的身体状况搭配专属营养流食！</div>
+      </div>
+    </div>
+<div class="module-card bg-white dark:bg-slate-900 rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5" data-category="owner" data-search="群主与机器人主人控制权 群管理特权！微调机器人插嘴概率、浏览器 web 控制台拖拽大模型、主动加群友好友、120秒内消息一键撤回。 /ai session-set -r 0.05 /ai session-set -r 0 访问 http://127.0.0.1:8899 加我好友 /revoke 后台控制台（端口 8899，账号 admin / admin123）支持上传 10 秒音频复刻目标声音，还能自由拖拽小米与谷歌大模型的容灾顺位！">
+      <!-- 卡片头部 -->
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xl p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-800 flex-shrink-0">⚙️</span>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300">
+                管理控制
+              </span>
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">
+                群主与机器人主人控制权
+              </h3>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 简介 -->
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        群管理特权！微调机器人插嘴概率、浏览器 Web 控制台拖拽大模型、主动加群友好友、120秒内消息一键撤回。
+      </p>
+
+      <!-- 触发词 -->
+      <div class="space-y-1">
+        <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>🗣️ 群里发什么（点击复制）：</span>
+        </div>
+        <div class="flex flex-wrap gap-1">
+          <button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="/ai session-set -r 0.05"><span class="text-slate-400 dark:text-slate-500">设为5%低频插嘴:</span><span class="font-bold">/ai session-set -r 0.05</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="/ai session-set -r 0"><span class="text-slate-400 dark:text-slate-500">仅艾特时回复:</span><span class="font-bold">/ai session-set -r 0</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="访问 http://127.0.0.1:8899"><span class="text-slate-400 dark:text-slate-500">Web可视化后台:</span><span class="font-bold">访问 http://127.0.0.1:8899</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="加我好友"><span class="text-slate-400 dark:text-slate-500">群友申请好友:</span><span class="font-bold">加我好友</span><span class="text-[9px] opacity-70">📋</span></button><button class="cmd-pill inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800 text-[11px] leading-tight font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-all tap-active" data-cmd="/revoke"><span class="text-slate-400 dark:text-slate-500">120秒内消息撤回:</span><span class="font-bold">/revoke</span><span class="text-[9px] opacity-70">📋</span></button>
+        </div>
+      </div>
+
+      <!-- 拟真微信实景对话 -->
+      <div class="space-y-1 pt-0.5">
+        <div class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+          <span>💬</span> 微信实景效果演示
+        </div>
+        <div class="bg-[#ededed] dark:bg-[#181818] rounded-xl p-2.5 text-xs font-sans border border-black/5 dark:border-white/5 select-none">
+      <div class="text-center my-1.5">
+              <span class="text-[10px] text-gray-400 dark:text-gray-500 bg-black/5 dark:bg-white/5 px-2 py-0.5 rounded-full inline-block">16:20</span>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">群主</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  /ai session-set -r 0.05
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="text-center my-1.5">
+              <div class="text-[10px] text-gray-500 dark:text-gray-400 bg-black/5 dark:bg-white/5 px-2.5 py-1 rounded-md inline-block leading-snug">✅ 当前群聊回复率已调整为 5%（低调潜水模式，艾特必回）。</div>
+            </div><div class="flex items-start justify-end gap-1.5 my-1.5">
+              <div class="flex flex-col items-end max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pr-0.5">新群友</span>
+                <div class="bg-[#95ec69] dark:bg-[#2b7432] text-[#000] dark:text-[#fff] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  加我好友
+                </div>
+              </div>
+              <div class="w-7 h-7 rounded-[4px] bg-[#cbd5e1] dark:bg-[#475569] text-slate-700 dark:text-slate-200 flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                我
+              </div>
+            </div><div class="flex items-start justify-start gap-1.5 my-1.5">
+              <div class="w-7 h-7 rounded-[4px] bg-[#07c160] text-white flex-shrink-0 flex items-center justify-center text-xs font-bold mt-3 shadow-xs">
+                🤖
+              </div>
+              <div class="flex flex-col items-start max-w-[82%]">
+                <span class="text-[10px] text-gray-400 mb-0.5 pl-0.5">智能助手</span>
+                <div class="bg-white dark:bg-[#2c2c2c] text-[#191919] dark:text-[#dfdfdf] px-2.5 py-1.5 rounded-[4px] text-xs leading-relaxed break-words shadow-sm">
+                  收到你的申请啦！机器人稍后会向你主动发送微信朋友验证~
+                </div>
+              </div>
+            </div>
+    </div>
+      </div>
+
+      <!-- 实用小技巧 -->
+      <div class="p-2 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/60 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5 leading-snug">
+        <span class="flex-shrink-0">💡</span>
+        <div><strong>小贴士：</strong>后台控制台（端口 8899，账号 admin / admin123）支持上传 10 秒音频复刻目标声音，还能自由拖拽小米与谷歌大模型的容灾顺位！</div>
+      </div>
+    </div>
+    </div>
+
+    <!-- 底部温馨提示 -->
+    <footer class="text-center py-6 text-[11px] text-slate-400 dark:text-slate-500 space-y-1">
+      <p>Golem 微信机器人日常指南 · 点击指令即可一键复制</p>
+      <p>如需底层技术架构与开发者文档，请查看 <a href="manual.html" class="text-emerald-600 dark:text-emerald-400 underline">技术全景手册 (manual.html)</a></p>
+    </footer>
+
+  </main>
+
+  <!-- 浮动返回顶部按钮 -->
+  <button id="backToTopBtn" class="fixed bottom-4 right-4 z-40 p-2.5 rounded-full bg-emerald-600 text-white shadow-lg tap-active hidden transition-all" title="返回顶部">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+  </button>
+
+  <!-- 交互脚本 -->
+  <script>
+    // 点击复制与 Toast
+    function bindPillEvents() {
+      document.querySelectorAll('.cmd-pill').forEach(btn => {
+        btn.onclick = () => {
+          const cmd = btn.getAttribute('data-cmd');
+          navigator.clipboard.writeText(cmd).then(() => {
+            showToast('已复制: 「' + cmd + '」');
+          }).catch(() => {
+            showToast('已复制: ' + cmd);
+          });
+        };
+      });
+    }
+
+    function showToast(text) {
+      const toast = document.getElementById('toast');
+      const toastText = document.getElementById('toast-text');
+      toastText.innerText = text;
+      toast.classList.remove('opacity-0', '-translate-y-16', 'pointer-events-none');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-16', 'pointer-events-none');
+        toast.classList.remove('opacity-100', 'translate-y-0');
+      }, 2000);
+    }
+
+    // 主题切换
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const themeIcon = document.getElementById('themeIcon');
+    const themeText = document.getElementById('themeText');
+
+    function applyTheme(isDark) {
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+        themeIcon.innerText = '☀️';
+        themeText.innerText = '浅色';
+        localStorage.setItem('golem_guide_theme', 'dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        themeIcon.innerText = '🌙';
+        themeText.innerText = '深色';
+        localStorage.setItem('golem_guide_theme', 'light');
+      }
+    }
+
+    const savedTheme = localStorage.getItem('golem_guide_theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(savedTheme === 'dark' || (!savedTheme && prefersDark));
+
+    themeToggleBtn.onclick = () => {
+      const isDark = document.documentElement.classList.contains('dark');
+      applyTheme(!isDark);
+    };
+
+    // 分类与搜索过滤
+    let currentCategory = 'all';
+    let searchQuery = '';
+    const cards = Array.from(document.querySelectorAll('.module-card'));
+    const noResults = document.getElementById('noResults');
+
+    function filterCards() {
+      const q = searchQuery.toLowerCase().trim();
+      let visible = 0;
+
+      cards.forEach(c => {
+        const cat = c.getAttribute('data-category');
+        const sText = c.getAttribute('data-search') || '';
+        const matchCat = currentCategory === 'all' || cat === currentCategory;
+        const matchSearch = !q || sText.includes(q);
+
+        if (matchCat && matchSearch) {
+          c.style.display = 'block';
+          visible++;
+        } else {
+          c.style.display = 'none';
+        }
+      });
+
+      if (visible === 0) {
+        noResults.classList.remove('hidden');
+      } else {
+        noResults.classList.add('hidden');
+      }
+    }
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.filter-btn').forEach(b => {
+          b.classList.remove('active', 'bg-emerald-600', 'text-white', 'shadow-xs');
+          b.classList.add('bg-slate-100', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-300');
+        });
+        btn.classList.add('active', 'bg-emerald-600', 'text-white', 'shadow-xs');
+        btn.classList.remove('bg-slate-100', 'dark:bg-slate-800', 'text-slate-600', 'dark:text-slate-300');
+
+        currentCategory = btn.getAttribute('data-cat');
+        filterCards();
+      };
+    });
+
+    const searchInput = document.getElementById('guideSearch');
+    const clearBtn = document.getElementById('clearGuideSearch');
+
+    searchInput.oninput = (e) => {
+      searchQuery = e.target.value;
+      if (searchQuery) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+      filterCards();
+    };
+
+    clearBtn.onclick = () => {
+      searchInput.value = '';
+      searchQuery = '';
+      clearBtn.classList.add('hidden');
+      filterCards();
+    };
+
+    // 返回顶部
+    const backToTopBtn = document.getElementById('backToTopBtn');
+    window.onscroll = () => {
+      if (window.scrollY > 300) {
+        backToTopBtn.classList.remove('hidden');
+      } else {
+        backToTopBtn.classList.add('hidden');
+      }
+    };
+    backToTopBtn.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    bindPillEvents();
+  </script>
+
+</body>
+</html>

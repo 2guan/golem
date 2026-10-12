@@ -47,18 +47,29 @@ func (u usernameStrategy) find(cache map[string]*contact.Contact) *contact.Conta
 		}
 		return c
 	}
+	// 合法性校验：若 key 包含空白符、标点或特殊字符，非合法微信ID，避免发起 Detail 请求污染缓存
+	if strings.ContainsAny(u.key, " \t\r\n:[]()\"'，。！？") {
+		return nil
+	}
 	// 通过api获取联系人详情
 	res, err := contactapi.Get().Detail([]string{u.key})
 	if err != nil {
 		cache[u.key] = &def
 		return nil
 	}
+	if len(res.ContactList) == 0 || res.ContactList[0] == nil || res.ContactList[0].Username == nil || res.ContactList[0].Username.Value == "" {
+		cache[u.key] = &def
+		return nil
+	}
 	// 构建联系人并放入map
-	if build, err := Build(res.ContactList[0]); err != nil {
+	if build, err := Build(res.ContactList[0]); err != nil || build.Username == "" {
 		cache[u.key] = &def
 		return nil
 	} else {
-		cache[u.key] = build
+		cache[build.Username] = build
+		if build.Username != u.key {
+			cache[u.key] = build
+		}
 		return build
 	}
 }

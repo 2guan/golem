@@ -49,6 +49,7 @@ type DashboardPlugin struct {
 	chatEngine *ChatEngine
 	configMgr  *ConfigManager
 	aiService  *AIService
+	metricsMgr *MetricsManager
 	httpServer *http.Server
 	startTime  time.Time
 }
@@ -112,6 +113,9 @@ func (p *DashboardPlugin) startServer() error {
 	p.chatEngine = NewChatEngine(aiHistoryFile, statisticsDBFile, sentStoreFile)
 	p.configMgr = NewConfigManager(globalConfigTOML, pluginsConfigTOML)
 	p.aiService = NewAIService(p.caller, pluginsConfigTOML)
+	analysisDBFile := filepath.Join("plugins", "statistics", "analysis.db")
+	pluginSentFile := filepath.Join(dataDir, "plugin_sent.jsonl")
+	p.metricsMgr = NewMetricsManager(dataDir, analysisDBFile, pluginSentFile, aiHistoryFile)
 
 	// 配置监听端口
 	host := "0.0.0.0"

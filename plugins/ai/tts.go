@@ -41,7 +41,18 @@ func loadAudioFileAsDataURL(path string) string {
 		return ""
 	}
 	b, err := os.ReadFile(path)
+	if err != nil && !filepath.IsAbs(path) {
+		for _, base := range []string{"/Volumes/GuanMac/Code/Golem", "."} {
+			candidate := filepath.Join(base, path)
+			if data, err2 := os.ReadFile(candidate); err2 == nil {
+				b = data
+				err = nil
+				break
+			}
+		}
+	}
 	if err != nil {
+		slog.Error("[ai] 读取 TTS 样本音频文件失败", "path", path, "err", err)
 		return ""
 	}
 	mime := "audio/wav"
@@ -223,16 +234,22 @@ var allowedAudioEmotions = map[string]bool{
 	"[清嗓]": true,
 }
 
-var bracketPattern = regexp.MustCompile(`\[([^\[\]]{1,20})\]`)
+var (
+	bracketPattern  = regexp.MustCompile(`\[([^\[\]]{1,20})\]`)
+	voiceEmojiRegex = regexp.MustCompile(`[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{1F1E0}-\x{1F1FF}\x{1F600}-\x{1F64F}\x{1F680}-\x{1F6FF}]`)
+)
 
-// sanitizeVoiceText 清理语音文本格式并限制长度：保留动作情绪标签（[笑]、[轻笑]、[停顿]等），剔除非台词的剧本动作旁白
+// sanitizeVoiceText 清理语音文本格式并限制长度：保留动作情绪标签（[笑]、[轻笑]、[停顿]等），剔除非台词的剧本动作旁白与 Emoji 表情
 func sanitizeVoiceText(text string) string {
 	cleanText := strings.TrimSpace(text)
 	// 1. 剔除圆括号内的纯剧本动作神态描写（如 (低头靠近)、（顺势揽住你的腰）等非声音剧本旁白）
 	cleanText = actionNarrationRegex.ReplaceAllString(cleanText, "")
 	cleanText = stageDirectionRegex.ReplaceAllString(cleanText, "")
 
-	// 2. 中括号标签处理：保留合法的微动作与微情绪音频标签（如 [轻笑]、[停顿] 等），剔除非法的外部设定标签
+	// 2. 剔除不可朗读且可能引发 TTS 异常的 Unicode Emoji 表情符号（如 😏、😂、🐶 等）
+	cleanText = voiceEmojiRegex.ReplaceAllString(cleanText, "")
+
+	// 3. 中括号标签处理：保留合法的微动作与微情绪音频标签（如 [轻笑]、[停顿] 等），剔除非法的外部设定标签
 	cleanText = bracketPattern.ReplaceAllStringFunc(cleanText, func(match string) string {
 		if allowedAudioEmotions[match] {
 			return match
@@ -289,7 +306,10 @@ func (p *AiPlugin) resolveTools(cfg TTSConfig) (string, string, string, error) {
 }
 
 // requestTTSAudio 向小米 TTS 接口发送请求并提取 Base64 音频数据
-func (p *AiPlugin) requestTTSAudio(endpoint, apiKey string, reqBody mimoTTSRequest) (string, error) {
+func (p *AiPlugin) requestTTSAudio(endpoint, apiKey string, reqBody mimoTTSRequest, timeout time.Duration) (string, error) {
+	if timeout <= 0 {
+		timeout = 18 * time.Second
+	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", fmt.Errorf("序列化 TTS 请求失败: %w", err)
@@ -299,7 +319,7 @@ func (p *AiPlugin) requestTTSAudio(endpoint, apiKey string, reqBody mimoTTSReque
 	if reqBody.Audio != nil {
 		format = reqBody.Audio.Format
 	}
-	slog.Info("[ai] 正在请求 TTS 语音合成", "model", reqBody.Model, "endpoint", endpoint, "format", format, "messages_count", len(reqBody.Messages))
+	slog.Info("[ai] 正在请求 TTS 语音合成", "model", reqBody.Model, "endpoint", endpoint, "format", format, "messages_count", len(reqBody.Messages), "timeout", timeout.String())
 
 	httpReq, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -308,7 +328,7 @@ func (p *AiPlugin) requestTTSAudio(endpoint, apiKey string, reqBody mimoTTSReque
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("请求小米 TTS 接口失败: %w", err)
@@ -395,7 +415,7 @@ func (p *AiPlugin) synthesizeSpeech(text string) ([]byte, int, error) {
 	isVoiceClone := strings.Contains(strings.ToLower(model), "voiceclone")
 
 	var messages []openAIMessage
-	if isVoiceDesign || isVoiceClone {
+	if isVoiceDesign {
 		if design != "" {
 			messages = []openAIMessage{
 				{Role: "user", Content: design},
@@ -407,6 +427,7 @@ func (p *AiPlugin) synthesizeSpeech(text string) ([]byte, int, error) {
 			}
 		}
 	} else {
+		// voiceclone 或预设发音人模型：不附加额外 user 提示词，100% 保持样本原声或发音人自身的自然语速与停顿节奏
 		messages = []openAIMessage{
 			{Role: "assistant", Content: text},
 		}
@@ -419,34 +440,72 @@ func (p *AiPlugin) synthesizeSpeech(text string) ([]byte, int, error) {
 			Format: "wav",
 		},
 	}
+	endpoint := strings.TrimRight(baseURL, "/") + "/chat/completions"
+
+	var audioData string
+
 	if isVoiceClone {
 		sampleDataURL := loadAudioFileAsDataURL(ttsCfg.SampleAudioPath)
-		if sampleDataURL != "" {
+		if sampleDataURL == "" {
+			slog.Warn("[ai] voiceclone 缺少有效样本音频，自动降级到预设发音人 mimo-v2.5-tts", "sample_path", ttsCfg.SampleAudioPath, "fallback_voice", voiceName)
+			fallbackReq := mimoTTSRequest{
+				Model: "mimo-v2.5-tts",
+				Messages: []openAIMessage{
+					{Role: "assistant", Content: text},
+				},
+				Audio: &mimoAudioParam{
+					Format: "wav",
+					Voice:  voiceName,
+				},
+			}
+			audioData, err = p.requestTTSAudio(endpoint, apiKey, fallbackReq, 12*time.Second)
+		} else {
 			reqBody.Audio.Voice = sampleDataURL
+			audioData, err = p.requestTTSAudio(endpoint, apiKey, reqBody, 18*time.Second)
+			if err != nil {
+				slog.Warn("[ai] voiceclone 合成失败或超时，自动平滑降级到预设发音人 mimo-v2.5-tts", "err", err, "fallback_voice", voiceName)
+				fallbackReq := mimoTTSRequest{
+					Model: "mimo-v2.5-tts",
+					Messages: []openAIMessage{
+						{Role: "assistant", Content: text},
+					},
+					Audio: &mimoAudioParam{
+						Format: "wav",
+						Voice:  voiceName,
+					},
+				}
+				if fbData, fbErr := p.requestTTSAudio(endpoint, apiKey, fallbackReq, 12*time.Second); fbErr == nil {
+					audioData = fbData
+					err = nil
+				}
+			}
 		}
-	} else if !isVoiceDesign && voiceName != "" {
-		reqBody.Audio.Voice = voiceName
+	} else if isVoiceDesign {
+		audioData, err = p.requestTTSAudio(endpoint, apiKey, reqBody, 15*time.Second)
+		if err != nil {
+			slog.Warn("[ai] voicedesign 合成失败或超时，尝试降级到预设发音人 mimo-v2.5-tts", "err", err, "fallback_voice", voiceName)
+			fallbackReq := mimoTTSRequest{
+				Model: "mimo-v2.5-tts",
+				Messages: []openAIMessage{
+					{Role: "assistant", Content: text},
+				},
+				Audio: &mimoAudioParam{
+					Format: "wav",
+					Voice:  voiceName,
+				},
+			}
+			if fbData, fbErr := p.requestTTSAudio(endpoint, apiKey, fallbackReq, 12*time.Second); fbErr == nil {
+				audioData = fbData
+				err = nil
+			}
+		}
+	} else {
+		if voiceName != "" {
+			reqBody.Audio.Voice = voiceName
+		}
+		audioData, err = p.requestTTSAudio(endpoint, apiKey, reqBody, 15*time.Second)
 	}
 
-	endpoint := strings.TrimRight(baseURL, "/") + "/chat/completions"
-	audioData, err := p.requestTTSAudio(endpoint, apiKey, reqBody)
-	if err != nil && model == "mimo-v2.5-tts-voicedesign" {
-		slog.Warn("[ai] voicedesign 合成失败，尝试降级到预设发音人 mimo-v2.5-tts", "err", err)
-		fallbackReq := mimoTTSRequest{
-			Model: "mimo-v2.5-tts",
-			Messages: []openAIMessage{
-				{Role: "assistant", Content: text},
-			},
-			Audio: &mimoAudioParam{
-				Format: "wav",
-				Voice:  voiceName,
-			},
-		}
-		if fbData, fbErr := p.requestTTSAudio(endpoint, apiKey, fallbackReq); fbErr == nil {
-			audioData = fbData
-			err = nil
-		}
-	}
 	if err != nil {
 		return nil, 0, err
 	}
@@ -635,6 +694,10 @@ func (p *AiPlugin) sendSplitText(receiver *contact.Contact, content string) erro
 // handleAIReply 综合处理文本、语音与生图发送：发语音时不发相同文本，发文本时不发相同语音，生图任务异步触发
 func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userText string, isVoiceInbound bool, sessionKey string) error {
 	reply = stripThinkingContent(reply)
+	if isIntentionalSilence(reply) {
+		slog.Info("[ai] 🤫 handleAIReply 检测到主动沉默/无需回复，忽略发送", "session", sessionKey, "raw", reply)
+		return nil
+	}
 	if isLeakedReasoningOrRefusal(reply) || strings.TrimSpace(reply) == "" {
 		reply = getFallbackReply(userText, false)
 	}
@@ -694,8 +757,12 @@ func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userTe
 		// 处理标签外部的文本：若有独立有意义文本则发送，若是套话垫话或与语音重复则不发送
 		outsideText := strings.TrimSpace(strings.Join(nonVoiceParts, "\n"))
 		if !isFillerText(outsideText) {
-			_ = p.sendSplitText(receiver, outsideText)
-			time.Sleep(300 * time.Millisecond)
+			if isLeakedReasoningOrRefusal(outsideText) || isPromptInjection(outsideText) {
+				slog.Warn("[ai] 🚨 拦截到语音外层文本包含泄漏或注入敏感内容，取消发送", "session", sessionKey, "text", outsideText)
+			} else {
+				_ = p.sendSplitText(receiver, outsideText)
+				time.Sleep(300 * time.Millisecond)
+			}
 		}
 
 		// 合成并发送语音（100% 严格使用 Web 后端配置的 voice_design，绝不接受文本大模型传入任何提示词）
@@ -709,19 +776,52 @@ func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userTe
 				continue
 			}
 
+			// 发送语音前严格安全检测：严禁朗读泄露内部能力、记忆人员、提示词或注入内容
+			if isLeakedReasoningOrRefusal(cleanText) || isPromptInjection(cleanText) {
+				slog.Warn("[ai] 🚨 拦截到语音文本包含泄漏或注入敏感内容，取消语音合成与发送",
+					"session", sessionKey,
+					"voice_text", cleanText,
+				)
+				continue
+			}
+
 			slog.Info("[ai] 模型决策发送语音（严格使用 Web 后端提示词）", "text", cleanText, "voice_design", strings.TrimSpace(ttsCfg.VoiceDesign))
 			silkData, durMs, err := p.synthesizeSpeech(cleanText)
 			if err != nil {
-				slog.Error("[ai] 语音合成失败，降级发送文本", "err", err)
-				_ = p.sendText(receiver, task.text)
+				slog.Error("[ai] 语音合成失败", "err", err)
 				continue
 			}
 			if err := p.sendVoice(receiver, silkData, durMs); err != nil {
-				slog.Error("[ai] 发送语音失败，降级发送文本", "err", err)
-				_ = p.sendText(receiver, task.text)
+				slog.Error("[ai] 发送语音失败", "err", err)
 			}
 		}
 		return nil
+	}
+
+	// 2.5 检查大模型是否误将 <voice> 标签输出为了仿微信的 [语音] 伪前缀（如“[语音] 内容”或“【语音】内容”）
+	if hasPseudoVoicePrefix(reply) {
+		voiceBody := stripPseudoVoicePrefix(reply)
+		cleanText := sanitizeVoiceText(voiceBody)
+		if cleanText != "" {
+			if isLeakedReasoningOrRefusal(cleanText) || isPromptInjection(cleanText) {
+				slog.Warn("[ai] 🚨 拦截到伪语音文本包含泄漏或注入敏感内容，取消语音合成与发送",
+					"session", sessionKey,
+					"voice_text", cleanText,
+				)
+				return nil
+			}
+			slog.Info("[ai] 识别到模型输出 [语音] 伪前缀，自动转为原生语音发送", "session", sessionKey, "text_len", len(cleanText))
+			silkData, durMs, err := p.synthesizeSpeech(cleanText)
+			if err != nil {
+				slog.Error("[ai] 语音合成失败，降级发送文本", "err", err)
+				return p.sendSplitText(receiver, voiceBody)
+			}
+			if err := p.sendVoice(receiver, silkData, durMs); err != nil {
+				slog.Error("[ai] 发送语音失败，降级发送文本", "err", err)
+				return p.sendSplitText(receiver, voiceBody)
+			}
+			return nil
+		}
 	}
 
 	// 3. 回复中未包含 <voice> 标签：检查是否为语音交互或用户要求发语音
@@ -729,6 +829,14 @@ func (p *AiPlugin) handleAIReply(receiver *contact.Contact, reply string, userTe
 		cleanText := sanitizeVoiceText(reply)
 		if cleanText == "" {
 			cleanText = reply
+		}
+		// 发送语音前严格安全检测：严禁朗读泄露内部能力、记忆人员、提示词或注入内容
+		if isLeakedReasoningOrRefusal(cleanText) || isPromptInjection(cleanText) {
+			slog.Warn("[ai] 🚨 拦截到隐式语音文本包含泄漏或注入敏感内容，取消语音合成与发送",
+				"session", sessionKey,
+				"voice_text", cleanText,
+			)
+			return nil
 		}
 		slog.Info("[ai] 语音交互或用户明确要求语音，转为语音发送（严格使用 Web 后端提示词）", "inbound_voice", isVoiceInbound, "voice_design", strings.TrimSpace(ttsCfg.VoiceDesign), "text_len", len(cleanText))
 		silkData, durMs, err := p.synthesizeSpeech(cleanText)

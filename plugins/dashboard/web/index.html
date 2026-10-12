@@ -411,18 +411,150 @@
           </div>
         </div>
 
-        <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4">
-          <div class="flex items-center justify-between">
+        <!-- ================= AI 与 Token 运营核心指标 ================= -->
+        <div>
+          <div class="flex items-center justify-between mb-3">
             <div class="flex items-center space-x-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-              <h3 class="font-bold text-base">最近运行动态 (Live Output)</h3>
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+              <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200">AI 与 Token 核心指标</h4>
             </div>
-            <button onclick="switchTab('logs')" class="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
-              进入日志检索中心 &rarr;
-            </button>
+            <span class="text-[11px] text-slate-400">实时统计与对话分析</span>
           </div>
-          <div id="quickLogBox" class="h-64 p-4 rounded-xl bg-slate-900 text-slate-200 font-mono text-xs overflow-y-auto space-y-1 border border-slate-800">
-            <div class="text-slate-500">正在拉取最新控制台日志...</div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- 卡片 1: 本日 Token 消耗 -->
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-2 border-l-4 border-l-indigo-500 relative overflow-hidden group hover:shadow-md transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-slate-500">本日 Token 消耗</span>
+                <span class="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 text-xs">⚡ 今日</span>
+              </div>
+              <div id="metricTodayTokens" class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400 font-mono">0</div>
+              <div class="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                <span>今日 AI 对话: <b id="metricTodayAICalls" class="text-slate-700 dark:text-slate-300 font-mono">0</b> 次</span>
+                <span class="text-indigo-500 font-medium">持续监控</span>
+              </div>
+            </div>
+
+            <!-- 卡片 2: 本周 Token 消耗 -->
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-2 border-l-4 border-l-blue-500 relative overflow-hidden group hover:shadow-md transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-slate-500">本周 Token 消耗</span>
+                <span class="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 text-xs">📊 本周</span>
+              </div>
+              <div id="metricWeekTokens" class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 font-mono">0</div>
+              <div class="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                <span>本周 AI 对话: <b id="metricWeekAICalls" class="text-slate-700 dark:text-slate-300 font-mono">0</b> 次</span>
+                <span>本月: <b id="metricMonthTokens" class="font-mono text-slate-600 dark:text-slate-400">0</b></span>
+              </div>
+            </div>
+
+            <!-- 卡片 3: 今日处理消息 -->
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-2 border-l-4 border-l-emerald-500 relative overflow-hidden group hover:shadow-md transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-slate-500">今日消息吞吐</span>
+                <span class="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 text-xs">💬 接收</span>
+              </div>
+              <div id="metricTodayMsgs" class="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">0</div>
+              <div class="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                <span>机器人发出: <b id="metricTodaySentMsgs" class="text-emerald-700 dark:text-emerald-300 font-mono">0</b> 条</span>
+                <span id="metricYesterdayBadge" class="text-slate-400">昨日: <span id="metricYesterdayMsgs" class="font-mono">0</span></span>
+              </div>
+            </div>
+
+            <!-- 卡片 4: 本周消息总量 -->
+            <div class="glass-card p-5 rounded-2xl shadow-sm space-y-2 border-l-4 border-l-amber-500 relative overflow-hidden group hover:shadow-md transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-medium text-slate-500">本周处理消息</span>
+                <span class="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 text-xs">📈 累计</span>
+              </div>
+              <div id="metricWeekMsgs" class="text-2xl sm:text-3xl font-extrabold text-amber-600 dark:text-amber-400 font-mono">0</div>
+              <div class="text-[11px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                <span>本周发出: <b id="metricWeekSentMsgs" class="text-amber-700 dark:text-amber-300 font-mono">0</b> 条</span>
+                <span>今日活跃会话: <b id="metricActiveChats" class="font-mono text-slate-700 dark:text-slate-300">0</b></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= 近 7 日趋势深度图表面板 ================= -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- 面板 1: 近 7 日 Token 消耗趋势 -->
+          <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                <h3 class="font-bold text-sm text-slate-800 dark:text-slate-200">近 7 日 Token 消耗趋势</h3>
+              </div>
+              <div class="text-xs text-slate-500">
+                累计消耗: <span id="metricTotalTokens" class="font-bold font-mono text-indigo-600 dark:text-indigo-400">0</span> Tokens
+              </div>
+            </div>
+
+            <!-- 柱状图容器 -->
+            <div id="tokenChartContainer" class="h-48 pt-4 pb-1 flex items-end justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80">
+              <div class="w-full text-center text-xs text-slate-400 my-auto">正在加载 Token 趋势...</div>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+              <div class="flex items-center space-x-3">
+                <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded bg-indigo-500 inline-block"></span><span>日常消耗</span></span>
+                <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded bg-violet-400 inline-block"></span><span>峰值用量</span></span>
+              </div>
+              <div id="tokenDailyAvg" class="font-mono text-slate-400">日均: -</div>
+            </div>
+          </div>
+
+          <!-- 面板 2: 近 7 日消息流量吞吐 -->
+          <div class="glass-card p-6 rounded-2xl shadow-sm space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <h3 class="font-bold text-sm text-slate-800 dark:text-slate-200">近 7 日消息交互量趋势</h3>
+              </div>
+              <div class="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                群聊与私聊活跃度
+              </div>
+            </div>
+
+            <!-- 消息柱状图容器 -->
+            <div id="msgChartContainer" class="h-48 pt-4 pb-1 flex items-end justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80">
+              <div class="w-full text-center text-xs text-slate-400 my-auto">正在加载消息趋势...</div>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+              <div class="flex items-center space-x-3">
+                <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded bg-emerald-500 inline-block"></span><span>接收消息</span></span>
+                <span class="flex items-center space-x-1"><span class="w-2.5 h-2.5 rounded bg-sky-400 inline-block"></span><span>机器人回复</span></span>
+              </div>
+              <div id="msgDailyAvg" class="font-mono text-slate-400">日均: -</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= 快捷操作与状态入口 ================= -->
+        <div class="glass-card p-5 rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50/30 dark:from-slate-900 dark:to-blue-950/20">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 flex items-center justify-center text-lg font-bold">
+              ⚡
+            </div>
+            <div>
+              <div class="text-sm font-bold text-slate-800 dark:text-slate-200">智能机器人运营中心</div>
+              <p class="text-xs text-slate-500">随时查看互动记录、调整模型参数或管理会话人设</p>
+            </div>
+          </div>
+          <div class="flex items-center flex-wrap gap-2.5">
+            <button onclick="switchTab('chats')" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300 transition shadow-sm flex items-center space-x-1.5 cursor-pointer">
+              <span>💬 会话审计与聊天</span>
+            </button>
+            <button onclick="switchTab('models')" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300 transition shadow-sm flex items-center space-x-1.5 cursor-pointer">
+              <span>🤖 AI 模型配置</span>
+            </button>
+            <button onclick="switchTab('security')" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 text-slate-700 dark:text-slate-300 transition shadow-sm flex items-center space-x-1.5 cursor-pointer">
+              <span>🛡️ 安全风控拦截</span>
+            </button>
+            <button onclick="switchTab('logs')" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-xl transition cursor-pointer">
+              <span>进入日志检索中心 &rarr;</span>
+            </button>
           </div>
         </div>
       </section>
@@ -667,6 +799,76 @@
             </div>
             <div id="modelPipelineBar" class="flex flex-wrap items-center gap-2 p-3 bg-slate-50/70 dark:bg-slate-900/60 rounded-xl border border-slate-200/60 dark:border-slate-800/60 min-h-[48px]">
               <!-- 流水线节点动态填充 -->
+            </div>
+          </div>
+
+          <!-- 全局对话与上下文参数卡片 -->
+          <div class="glass-card p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+              <div class="flex items-center space-x-2">
+                <span class="text-base">⚙️</span>
+                <h4 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">全局对话与上下文参数 (Context & Chat Behavior)</h4>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span class="text-[11px] text-slate-400">控制上下文记忆条数、回复概率与静默模式</span>
+                <button type="button" onclick="saveModelsConfig()" class="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold transition cursor-pointer flex items-center space-x-1 shadow-sm shadow-blue-500/20">
+                  <span>💾 保存全局参数</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <!-- 上下文最大保留条数 -->
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-semibold text-slate-700 dark:text-slate-300">上下文最大保留条数</label>
+                  <span class="text-[10px] text-blue-500 font-mono">max_context_messages</span>
+                </div>
+                <input type="number" id="modelMaxContext" min="1" max="10000" step="10"
+                  class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="默认 200 (当前如 4000)">
+                <p class="text-[11px] text-slate-400 leading-tight">每会话保留的历史上下文消息条数上限，超出自动滚动淘汰</p>
+              </div>
+
+              <!-- 普通消息回复概率 -->
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-semibold text-slate-700 dark:text-slate-300">普通消息回复概率</label>
+                  <span class="text-[10px] text-blue-500 font-mono">reply_rate (0~1)</span>
+                </div>
+                <input type="number" id="modelReplyRate" min="0" max="1" step="0.05"
+                  class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="0.2 (20% 概率)">
+                <p class="text-[11px] text-slate-400 leading-tight">未被 @ 或引用时的随机插话回复概率（0 为仅在被@时回复）</p>
+              </div>
+
+              <!-- 会话保鲜时长 -->
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-semibold text-slate-700 dark:text-slate-300">会话保鲜时长 (小时)</label>
+                  <span class="text-[10px] text-blue-500 font-mono">history_expire_hours</span>
+                </div>
+                <input type="number" id="modelHistoryExpire" min="1" max="87600" step="1"
+                  class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="默认 72 小时">
+                <p class="text-[11px] text-slate-400 leading-tight">超过此时长无互动的旧会话自动淘汰清理释放内存与存储</p>
+              </div>
+
+              <!-- 全局静默模式 -->
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-semibold text-slate-700 dark:text-slate-300">全局静默模式</label>
+                  <span class="text-[10px] text-blue-500 font-mono">silence</span>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800 h-[38px]">
+                  <span id="modelSilenceLabel" class="text-xs text-slate-600 dark:text-slate-400">仅在被 @ 时回复</span>
+                  <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" id="modelSilenceSwitch" class="sr-only peer">
+                    <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <p class="text-[11px] text-slate-400 leading-tight">开启后全局静默，不再主动插话，仅在被 @ 或被引用时才回复</p>
+              </div>
             </div>
           </div>
 
@@ -997,6 +1199,7 @@
               <option value="all">全部对象</option>
               <option value="friend">仅好友</option>
               <option value="chatroom">仅群聊</option>
+              <option value="member">仅群成员</option>
               <option value="override">仅已定制</option>
             </select>
           </div>
@@ -1311,7 +1514,7 @@
           <textarea id="modalPrompt" rows="5" placeholder="留空则使用全局 default 提示词。在此输入针对该联系人/群的特定人设，例如：'你是一个严谨的商务助手...' 或亲密提示词" class="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed font-mono"></textarea>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">专属 AI 提供方</label>
             <select id="modalProvider" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs cursor-pointer">
@@ -1323,6 +1526,10 @@
           <div>
             <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">独立回复率 (0.0 ~ 1.0)</label>
             <input type="number" id="modalReplyRate" step="0.05" min="0" max="1" placeholder="留空为全局" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">独立上下文条数</label>
+            <input type="number" id="modalMaxContextOverride" min="1" max="10000" step="10" placeholder="留空为全局" class="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs">
           </div>
         </div>
 
@@ -1871,34 +2078,174 @@
           startTimestamp = Date.now() - (data.bot.uptime_seconds * 1000);
         }
         if (data.stats) {
-          document.getElementById('statContacts').innerText = data.stats.total_contacts || 0;
-          document.getElementById('statGroups').innerText = data.stats.total_groups || 0;
-          document.getElementById('statMessages').innerText = data.stats.total_messages || 0;
-          document.getElementById('statPlugins').innerText = data.stats.plugin_count || 0;
+          document.getElementById('statContacts').innerText = (data.stats.total_contacts || 0).toLocaleString();
+          document.getElementById('statGroups').innerText = (data.stats.total_groups || 0).toLocaleString();
+          document.getElementById('statMessages').innerText = (data.stats.total_messages || 0).toLocaleString();
+          document.getElementById('statPlugins').innerText = (data.stats.plugin_count || 0).toLocaleString();
         }
-        loadQuickLogs();
-      } catch (e) {}
+        if (data.metrics) {
+          renderMetrics(data.metrics);
+        }
+      } catch (e) {
+        console.error('loadOverview error:', e);
+      }
     }
 
-    async function loadQuickLogs() {
-      try {
-        const res = await apiFetch('/api/logs?limit=40&order=desc');
-        if (!res.ok) return;
-        const data = await res.json();
-        const box = document.getElementById('quickLogBox');
-        box.innerHTML = '';
-        if (data.items && data.items.length > 0) {
-          data.items.slice().reverse().forEach(item => {
-            const line = document.createElement('div');
-            line.className = 'leading-tight';
-            line.innerHTML = `<span class="text-slate-500">${item.timestamp}</span> <span class="${getLevelColor(item.level)} font-bold">[${item.level}]</span> <span class="text-blue-400">${item.tag ? '['+item.tag+']' : ''}</span> <span>${escapeHtml(item.message)}</span>`;
-            box.appendChild(line);
-          });
-          box.scrollTop = box.scrollHeight;
-        } else {
-          box.innerHTML = '<div class="text-slate-500">暂无日志记录</div>';
-        }
-      } catch (e) {}
+    function renderMetrics(m) {
+      if (!m) return;
+      // 1. 卡片数字填充
+      const todayTokEl = document.getElementById('metricTodayTokens');
+      if (todayTokEl) todayTokEl.innerText = (m.today_tokens || 0).toLocaleString();
+
+      const weekTokEl = document.getElementById('metricWeekTokens');
+      if (weekTokEl) {
+        const val = m.week_tokens > 0 ? m.week_tokens : (m.last_7days_tokens || 0);
+        weekTokEl.innerText = val.toLocaleString();
+      }
+
+      const todayAiEl = document.getElementById('metricTodayAICalls');
+      if (todayAiEl) todayAiEl.innerText = (m.today_ai_calls || 0).toLocaleString();
+
+      const weekAiEl = document.getElementById('metricWeekAICalls');
+      if (weekAiEl) {
+        const aiCalls = m.week_ai_calls > 0 ? m.week_ai_calls : (m.last_7days_ai_calls || 0);
+        weekAiEl.innerText = aiCalls.toLocaleString();
+      }
+
+      const monthTokEl = document.getElementById('metricMonthTokens');
+      if (monthTokEl) monthTokEl.innerText = (m.month_tokens || 0).toLocaleString();
+
+      const todayMsgEl = document.getElementById('metricTodayMsgs');
+      if (todayMsgEl) todayMsgEl.innerText = (m.today_messages || 0).toLocaleString();
+
+      const todaySentEl = document.getElementById('metricTodaySentMsgs');
+      if (todaySentEl) todaySentEl.innerText = (m.today_sent_messages || 0).toLocaleString();
+
+      const yestBadge = document.getElementById('metricYesterdayBadge');
+      if (yestBadge) {
+        const yest = m.yesterday_messages || 0;
+        const diff = (m.today_messages || 0) - yest;
+        let diffText = `昨日: ${yest.toLocaleString()}`;
+        if (diff > 0) diffText += ` (↑${diff.toLocaleString()})`;
+        else if (diff < 0) diffText += ` (↓${Math.abs(diff).toLocaleString()})`;
+        yestBadge.innerText = diffText;
+      }
+
+      const weekMsgEl = document.getElementById('metricWeekMsgs');
+      if (weekMsgEl) {
+        const weekMsgs = m.week_messages > 0 ? m.week_messages : (m.last_7days_messages || 0);
+        weekMsgEl.innerText = weekMsgs.toLocaleString();
+      }
+
+      const weekSentEl = document.getElementById('metricWeekSentMsgs');
+      if (weekSentEl) weekSentEl.innerText = (m.week_sent_messages || 0).toLocaleString();
+
+      const activeChatsEl = document.getElementById('metricActiveChats');
+      if (activeChatsEl) activeChatsEl.innerText = (m.today_active_chats || 0).toLocaleString();
+
+      const totalTokensEl = document.getElementById('metricTotalTokens');
+      if (totalTokensEl) totalTokensEl.innerText = (m.total_tokens || 0).toLocaleString();
+
+      // 2. 渲染近 7 日 Token 柱状图
+      renderTokenTrendChart(m.daily_trends || []);
+
+      // 3. 渲染近 7 日 消息柱状图
+      renderMsgTrendChart(m.daily_trends || []);
+    }
+
+    function renderTokenTrendChart(trends) {
+      const container = document.getElementById('tokenChartContainer');
+      if (!container) return;
+      if (!trends || trends.length === 0) {
+        container.innerHTML = '<div class="w-full text-center text-xs text-slate-400 my-auto">暂无趋势记录</div>';
+        return;
+      }
+
+      let maxTokens = 1000;
+      let total = 0;
+      trends.forEach(t => {
+        if (t.tokens > maxTokens) maxTokens = t.tokens;
+        total += t.tokens;
+      });
+
+      const avg = Math.round(total / trends.length);
+      const avgEl = document.getElementById('tokenDailyAvg');
+      if (avgEl) avgEl.innerText = `7日均: ${avg.toLocaleString()} Tokens/日`;
+
+      container.innerHTML = '';
+      trends.forEach(item => {
+        const heightPct = Math.max(8, Math.min(100, Math.round((item.tokens / maxTokens) * 100)));
+        const col = document.createElement('div');
+        col.className = 'flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer';
+
+        const isPeak = item.tokens === maxTokens && item.tokens > 0;
+        const barGradient = isPeak
+          ? 'bg-gradient-to-t from-violet-600 via-indigo-500 to-fuchsia-400 shadow-sm shadow-indigo-500/30'
+          : 'bg-gradient-to-t from-indigo-600 to-indigo-400 hover:from-indigo-500 hover:to-indigo-300';
+
+        col.innerHTML = `
+          <!-- 悬浮 Tooltip -->
+          <div class="absolute -top-12 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/95 text-white text-[11px] px-2.5 py-1.5 rounded-xl shadow-xl pointer-events-none whitespace-nowrap z-20 border border-slate-700/80 backdrop-blur-sm">
+            <div class="font-bold text-indigo-300">${item.full_date || item.date}</div>
+            <div>Token: <span class="font-mono text-amber-300 font-semibold">${item.tokens.toLocaleString()}</span></div>
+            <div>AI交互: <span class="font-mono">${item.ai_calls.toLocaleString()} 次</span></div>
+          </div>
+          <!-- 数值简标 -->
+          <div class="text-[10px] font-mono text-slate-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            ${item.tokens > 10000 ? Math.round(item.tokens / 1000) + 'k' : item.tokens.toLocaleString()}
+          </div>
+          <!-- 柱条 -->
+          <div class="w-full max-w-[28px] sm:max-w-[36px] rounded-t-lg ${barGradient} transition-all duration-300" style="height: ${heightPct}%;"></div>
+          <!-- 日期标签 -->
+          <span class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-mono">${item.date}</span>
+        `;
+        container.appendChild(col);
+      });
+    }
+
+    function renderMsgTrendChart(trends) {
+      const container = document.getElementById('msgChartContainer');
+      if (!container) return;
+      if (!trends || trends.length === 0) {
+        container.innerHTML = '<div class="w-full text-center text-xs text-slate-400 my-auto">暂无趋势记录</div>';
+        return;
+      }
+
+      let maxMsgs = 50;
+      let totalMsgs = 0;
+      trends.forEach(t => {
+        if (t.messages > maxMsgs) maxMsgs = t.messages;
+        totalMsgs += t.messages;
+      });
+
+      const avg = Math.round(totalMsgs / trends.length);
+      const avgEl = document.getElementById('msgDailyAvg');
+      if (avgEl) avgEl.innerText = `7日均: ${avg.toLocaleString()} 条/日`;
+
+      container.innerHTML = '';
+      trends.forEach(item => {
+        const heightPct = Math.max(8, Math.min(100, Math.round((item.messages / maxMsgs) * 100)));
+        const col = document.createElement('div');
+        col.className = 'flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer';
+
+        col.innerHTML = `
+          <!-- 悬浮 Tooltip -->
+          <div class="absolute -top-12 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/95 text-white text-[11px] px-2.5 py-1.5 rounded-xl shadow-xl pointer-events-none whitespace-nowrap z-20 border border-slate-700/80 backdrop-blur-sm">
+            <div class="font-bold text-emerald-300">${item.full_date || item.date}</div>
+            <div>处理消息: <span class="font-mono text-emerald-300 font-semibold">${item.messages.toLocaleString()}</span> 条</div>
+            <div>机器人回复: <span class="font-mono text-sky-300">${item.sent_msgs.toLocaleString()}</span> 条</div>
+          </div>
+          <!-- 数值简标 -->
+          <div class="text-[10px] font-mono text-slate-400 mb-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            ${item.messages.toLocaleString()}
+          </div>
+          <!-- 柱条 -->
+          <div class="w-full max-w-[28px] sm:max-w-[36px] rounded-t-lg bg-gradient-to-t from-emerald-600 to-teal-400 hover:from-emerald-500 hover:to-teal-300 transition-all duration-300" style="height: ${heightPct}%;"></div>
+          <!-- 日期标签 -->
+          <span class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-mono">${item.date}</span>
+        `;
+        container.appendChild(col);
+      });
     }
 
     function updateUptimeClock() {
@@ -2522,6 +2869,24 @@
     function renderModelsUI() {
       const order = modelsConfigData.provider_order || [];
       const providers = modelsConfigData.providers || {};
+
+      // 0. 填充全局对话与上下文参数
+      const ctxInput = document.getElementById('modelMaxContext');
+      if (ctxInput) {
+        ctxInput.value = modelsConfigData.max_context_messages !== undefined ? modelsConfigData.max_context_messages : 200;
+      }
+      const replyRateInput = document.getElementById('modelReplyRate');
+      if (replyRateInput) {
+        replyRateInput.value = modelsConfigData.reply_rate !== undefined ? modelsConfigData.reply_rate : 0.2;
+      }
+      const expireInput = document.getElementById('modelHistoryExpire');
+      if (expireInput) {
+        expireInput.value = modelsConfigData.history_expire_hours !== undefined ? modelsConfigData.history_expire_hours : 72;
+      }
+      const silenceSwitch = document.getElementById('modelSilenceSwitch');
+      if (silenceSwitch) {
+        silenceSwitch.checked = !!modelsConfigData.silence;
+      }
       
       // 1. 渲染调用流水线 (Pipeline)
       const pipelineBar = document.getElementById('modelPipelineBar');
@@ -2730,19 +3095,30 @@
 
     async function saveModelsConfig() {
       try {
+        const maxContextVal = parseInt(document.getElementById('modelMaxContext')?.value, 10);
+        const replyRateVal = parseFloat(document.getElementById('modelReplyRate')?.value);
+        const expireVal = parseInt(document.getElementById('modelHistoryExpire')?.value, 10);
+        const silenceVal = !!document.getElementById('modelSilenceSwitch')?.checked;
+
+        const payload = {
+          provider_order: modelsConfigData.provider_order,
+          providers: modelsConfigData.providers,
+          max_context_messages: isNaN(maxContextVal) ? undefined : maxContextVal,
+          reply_rate: isNaN(replyRateVal) ? undefined : replyRateVal,
+          history_expire_hours: isNaN(expireVal) ? undefined : expireVal,
+          silence: silenceVal
+        };
+
         const res = await apiFetch('/api/models/save', {
           method: 'POST',
-          body: JSON.stringify({
-            provider_order: modelsConfigData.provider_order,
-            providers: modelsConfigData.providers
-          })
+          body: JSON.stringify(payload)
         });
         if (!res.ok) {
           const err = await res.json();
           alert('保存失败: ' + (err.message || res.statusText));
           return;
         }
-        alert('✅ 模型配置与调用顺位已成功保存！');
+        alert('✅ 模型配置与对话参数已成功保存！');
         loadModelsConfig();
       } catch (e) {
         alert('保存异常: ' + e.message);
@@ -3784,8 +4160,9 @@
       let filtered = allTargets.filter(t => {
         const matchQ = !q || (t.name && t.name.toLowerCase().includes(q)) || (t.remark && t.remark.toLowerCase().includes(q)) || (t.target_id && t.target_id.toLowerCase().includes(q));
         if (!matchQ) return false;
-        if (type === 'friend') return t.target_type === 'friend';
+        if (type === 'friend') return t.is_friend === true || t.target_type === 'friend' || t.target_type === 'friend_member';
         if (type === 'chatroom') return t.target_type === 'chatroom';
+        if (type === 'member') return t.is_member === true || t.target_type === 'member' || t.target_type === 'friend_member';
         if (type === 'override') return t.has_override === true;
         return true;
       });
@@ -3803,6 +4180,23 @@
       targets.forEach(t => {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition';
+
+        let typeBadge = '';
+        if (t.target_type === 'chatroom') {
+          typeBadge = '<span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-sky-100 dark:bg-sky-950 text-sky-600">群聊</span>';
+        } else if (t.target_type === 'official') {
+          typeBadge = '<span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-100 dark:bg-amber-950 text-amber-600">公众号</span>';
+        } else if (t.target_type === 'friend_member' || (t.is_friend && t.is_member)) {
+          typeBadge = `<div class="flex items-center space-x-1.5 flex-wrap gap-y-1">
+            <span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">好友</span>
+            <span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400" title="${t.chatroom ? '来自群聊: ' + escapeHtml(t.chatroom) : '微信群成员'}">群成员</span>
+          </div>`;
+        } else if (t.target_type === 'member') {
+          typeBadge = `<span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400" title="${t.chatroom ? '来自群聊: ' + escapeHtml(t.chatroom) : '微信群成员'}">群成员</span>`;
+        } else {
+          typeBadge = '<span class="px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">好友</span>';
+        }
+
         tr.innerHTML = `
           <td class="px-6 py-4 flex items-center space-x-3">
             <img class="w-9 h-9 rounded-full object-cover bg-slate-200" src="${t.avatar_url || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'24\' height=\'24\' viewBox=\'0 0 24 24\'%3E%3Cpath fill=\'%232563eb\' d=\'M12 2a5 5 0 0 1 5 5v1a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5zm0 13c4.418 0 8 2.239 8 5v2H4v-2c0-2.761 3.582-5 8-5z\'/%3E%3C/svg%3E'}">
@@ -3810,13 +4204,15 @@
               <div class="font-bold text-slate-800 dark:text-slate-100 flex items-center space-x-1.5 flex-wrap gap-y-1">
                 <span>${escapeHtml(t.remark || t.name)}</span>
                 ${t.remark ? `<span class="text-xs text-slate-400 font-normal">(${escapeHtml(t.name)})</span>` : ''}
+                ${t.chatroom ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-normal bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50" title="所属群聊">来自群: ${escapeHtml(t.chatroom)}</span>` : ''}
                 ${t.custom_nickname ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800" title="专属称呼">称呼: 「${escapeHtml(t.custom_nickname)}」</span>` : ''}
+                ${t.max_context_messages ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800" title="专属上下文">上下文: ${t.max_context_messages}条</span>` : ''}
               </div>
               <div class="text-xs text-slate-500 font-mono">${t.target_id}</div>
             </div>
           </td>
           <td class="px-6 py-4">
-            <span class="px-2 py-0.5 rounded-md text-xs font-semibold ${t.target_type === 'chatroom' ? 'bg-sky-100 dark:bg-sky-950 text-sky-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}">${t.target_type === 'chatroom' ? '群聊' : '好友'}</span>
+            ${typeBadge}
           </td>
           <td class="px-6 py-4">
             ${t.has_override ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 text-xs font-semibold">✨ 专属定制生效</span>' : '<span class="text-xs text-slate-400">全局默认</span>'}
@@ -3869,10 +4265,13 @@
       document.getElementById('modalTargetName').value = t.name || t.target_id;
       document.getElementById('modalTargetRemark').value = t.remark || '';
 
-      document.getElementById('modalTargetSubtitle').innerText = `${t.remark || t.name || t.target_id} (${t.target_id})`;
+      const isChatroom = (t.target_type === 'chatroom') || (t.target_id && t.target_id.endsWith('@chatroom'));
+      const isFriendMember = t.target_type === 'friend_member' || (t.is_friend && t.is_member);
+      const isMember = t.target_type === 'member';
+      let typeLabel = isChatroom ? '群聊' : (isFriendMember ? '好友兼群成员' : (isMember ? '群成员' : (t.target_type === 'official' ? '公众号' : '好友')));
+      document.getElementById('modalTargetSubtitle').innerText = `${t.remark || t.name || t.target_id} (${t.target_id}) · [${typeLabel}]`;
       document.getElementById('modalCustomNickname').value = t.custom_nickname || '';
 
-      const isChatroom = (t.target_type === 'chatroom') || (t.target_id && t.target_id.endsWith('@chatroom'));
       const nickField = document.getElementById('modalNicknameField');
       const nickLabel = document.getElementById('modalNicknameLabel');
       const nickInput = document.getElementById('modalCustomNickname');
@@ -3880,17 +4279,18 @@
       if (isChatroom) {
         nickLabel.innerText = '群成员统称 / 专属群昵称 (可选)';
         nickInput.placeholder = '例如：群友们、家人们、老铁们（留空则自然称呼各群成员）';
-        nickHelp.innerText = '💡【微信群聊场景】：本项为群整体称呼或群友泛称。若要为群内特定某位好友设置专属称呼，请在私聊或通讯录好友项中为其设置，系统在群聊中也会自动识别并使用该好友的称呼。';
+        nickHelp.innerText = '💡【微信群聊场景】：本项为群整体称呼或群友泛称。若要为群内特定某位群友定制专属称呼，可在专属策略列表中找到该群成员单独设置。';
       } else {
-        nickLabel.innerText = '专属定制称呼 / 昵称 (Custom Nickname)';
-        nickInput.placeholder = '例如：宝贝、学长、老王、小林（配置后AI与该好友交流称呼时将严格优先使用）';
-        nickHelp.innerText = '💡【好友私聊场景】：设置后AI每次称呼对方时将强制且唯一使用该昵称。留空时默认自动继承微信通讯录备注名。';
+        nickLabel.innerText = isMember ? '对该群成员的专属称呼 / 昵称 (Custom Nickname)' : '专属定制称呼 / 昵称 (Custom Nickname)';
+        nickInput.placeholder = '例如：李哥、管儿、小王、宝贝等';
+        nickHelp.innerText = isMember ? '为该群成员定制专属称呼后，AI在群聊中回应或提及他时会优先使用此称呼。' : '💡【好友私聊场景】：设置后AI每次称呼对方时将优先使用该昵称。留空时默认使用微信通讯录备注名或昵称。';
       }
 
       document.getElementById('modalPrompt').value = t.custom_prompt || '';
       updateTargetModalProviders();
       document.getElementById('modalProvider').value = t.provider || '';
       document.getElementById('modalReplyRate').value = (t.reply_rate !== null && t.reply_rate !== undefined) ? t.reply_rate : '';
+      document.getElementById('modalMaxContextOverride').value = (t.max_context_messages !== null && t.max_context_messages !== undefined) ? t.max_context_messages : '';
       document.getElementById('modalSilence').checked = t.silence === true;
       document.getElementById('modalNotes').value = t.notes || '';
 
@@ -3938,6 +4338,7 @@
       const custom_prompt = document.getElementById('modalPrompt').value.trim();
       const provider = document.getElementById('modalProvider').value;
       const rateVal = document.getElementById('modalReplyRate').value;
+      const ctxVal = document.getElementById('modalMaxContextOverride').value.trim();
       const silence = document.getElementById('modalSilence').checked;
       const notes = document.getElementById('modalNotes').value.trim();
 
@@ -3954,6 +4355,9 @@
       };
       if (rateVal !== '') {
         payload.reply_rate = parseFloat(rateVal);
+      }
+      if (ctxVal !== '') {
+        payload.max_context_messages = parseInt(ctxVal, 10);
       }
 
       try {

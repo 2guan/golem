@@ -3,9 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/sbgayhub/golem/sdk/contact"
 )
 
 type chatTool struct {
@@ -42,7 +46,7 @@ func (p *AiPlugin) getOwnerTools() []chatTool {
 					"properties": map[string]any{
 						"target": map[string]any{
 							"type":        "string",
-							"description": "要查询的目标对象：可以是好友的微信昵称、备注名、微信号/wxid，或者微信群的名称",
+							"description": "要查询的目标对象：可以是好友/群成员的微信昵称、备注名、微信号/wxid，或者微信群的名称",
 						},
 						"limit": map[string]any{
 							"type":        "integer",
@@ -123,6 +127,8 @@ func (p *AiPlugin) findSessionKeyByTarget(target string) (string, string) {
 		return "", ""
 	}
 
+	p.ensureHistoryLoaded()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -139,7 +145,28 @@ func (p *AiPlugin) findSessionKeyByTarget(target string) (string, string) {
 		}
 	}
 
-	// 2. 模糊匹配好友昵称/备注/群名称
+	// 2. 尝试通过通讯录联系人（昵称/备注/ID）直接定位私聊会话
+	if p.contact != nil {
+		var c *contact.Contact
+		if !strings.ContainsAny(target, " \t\r\n:[]()\"'，。！？") {
+			c = p.contact.Get(target)
+		}
+		if c == nil {
+			c = p.contact.Get("nickname::" + target)
+		}
+		if c == nil {
+			c = p.contact.Get("remark::" + target)
+		}
+		if c != nil && c.Username != "" {
+			privKey := "private:" + c.Username
+			if _, ok := p.sessions[privKey]; ok {
+				dispName, _ := p.resolveDisplayName(privKey)
+				return privKey, "[私聊] " + dispName
+			}
+		}
+	}
+
+	// 3. 模糊匹配好友昵称/备注/群名称
 	type candidate struct {
 		key   string
 		name  string
@@ -212,7 +239,118 @@ func (p *AiPlugin) executeTool(name, argsJSON string) string {
 	}
 }
 
+// findChatroomForMember 检查用户是否属于某个已知微信群，若属于则返回群ID和群名称
+func (p *AiPlugin) findChatroomForMember(username string) (roomID, roomName string) {
+	if username == "" {
+		return "", ""
+	}
+	var chatrooms []string
+	if p.contact != nil {
+		for _, c := range p.contact.List() {
+			if c != nil && (strings.HasSuffix(c.Username, "@chatroom") || c.Type == contact.ContactType_CONTACT_TYPE_CHATROOM) {
+				chatrooms = append(chatrooms, c.Username)
+			}
+		}
+	}
+	// 补充从本地 data/chatroom.json 检查
+	for _, pth := range []string{filepath.Join("data", "chatroom.json"), "chatroom.json", filepath.Join("..", "..", "data", "chatroom.json"), filepath.Join("..", "data", "chatroom.json")} {
+		if data, err := os.ReadFile(pth); err == nil {
+			var raw map[string]map[string]any
+			if err := json.Unmarshal(data, &raw); err == nil {
+				for rID, mems := range raw {
+					found := false
+					for _, c := range chatrooms {
+						if c == rID {
+							found = true
+							break
+						}
+					}
+					if !found {
+						chatrooms = append(chatrooms, rID)
+					}
+					if _, ok := mems[username]; ok {
+						name := rID
+						if p.contact != nil {
+							if rc := p.contact.Get(rID); rc != nil && rc.Nickname != "" {
+								name = rc.Nickname
+							}
+						}
+						return rID, name
+					}
+				}
+			}
+			break
+		}
+	}
+	if p.chatroom != nil {
+		for _, rid := range chatrooms {
+			if m := p.chatroom.GetMember(rid, username); m != nil && m.Username != "" {
+				name := rid
+				if p.contact != nil {
+					if rc := p.contact.Get(rid); rc != nil && rc.Nickname != "" {
+						name = rc.Nickname
+					}
+				}
+				return rid, name
+			}
+		}
+	}
+	return "", ""
+}
+
+// describeContactStatus 根据联系人是群成员还是好友生成准确的描述说明
+func (p *AiPlugin) describeContactStatus(c *contact.Contact, botName string) string {
+	if c == nil || c.Username == "" {
+		return ""
+	}
+	name := c.Nickname
+	if name == "" {
+		name = c.Username
+	}
+	_, roomName := p.findChatroomForMember(c.Username)
+
+	p.selfMu.RLock()
+	ownerUsername := ""
+	if p.owner != nil {
+		ownerUsername = p.owner.Username
+	}
+	p.selfMu.RUnlock()
+
+	isFriend := false
+	if c.Remark != "" || (ownerUsername != "" && c.Username == ownerUsername) || c.Username == "doubleguan" || roomName == "" {
+		isFriend = true
+	} else {
+		p.mu.Lock()
+		if msgs, ok := p.sessions["private:"+c.Username]; ok && len(msgs) > 0 {
+			isFriend = true
+		}
+		p.mu.Unlock()
+
+		if !isFriend {
+			p.sessionConfigMu.RLock()
+			if p.Config.SessionConfigs != nil {
+				if _, ok := p.Config.SessionConfigs[c.Username]; ok {
+					isFriend = true
+				} else if _, ok := p.Config.SessionConfigs["private:"+c.Username]; ok {
+					isFriend = true
+				}
+			}
+			p.sessionConfigMu.RUnlock()
+		}
+	}
+
+	if isFriend && roomName != "" {
+		return fmt.Sprintf("【%s】(微信号: %s) 既是你的微信好友，也是微信群【%s】的群成员。但他近期尚未与%s产生过私聊对话，因此暂无私聊聊天记录。如需了解该群对话，请查询群聊【%s】的记录。", name, c.Username, roomName, botName, roomName)
+	} else if !isFriend && roomName != "" {
+		return fmt.Sprintf("【%s】(微信号: %s) 是微信群【%s】中的群成员，并非私聊好友。他近期尚未与%s产生过私聊对话，因此暂无私聊聊天记录。如需了解该群对话，请查询群聊【%s】的记录。", name, c.Username, roomName, botName, roomName)
+	}
+
+	return fmt.Sprintf("通讯录中存在好友【%s】(微信号: %s)，但他近期尚未与%s产生过私聊对话，因此暂无聊天记录。", name, c.Username, botName)
+}
+
 func (p *AiPlugin) toolGetChatHistory(target string, limit int) string {
+	p.ensureHistoryLoaded()
+
 	if limit <= 0 {
 		limit = 15
 	}
@@ -224,14 +362,18 @@ func (p *AiPlugin) toolGetChatHistory(target string, limit int) string {
 	sessionKey, displayName := p.findSessionKeyByTarget(target)
 	if sessionKey == "" {
 		if p.contact != nil {
-			if c := p.contact.Get(target); c != nil {
-				return fmt.Sprintf("通讯录中存在好友【%s】(微信号: %s)，但他近期尚未与%s产生过私聊对话，因此暂无聊天记录。", c.Nickname, c.Username, botName)
+			var c *contact.Contact
+			if !strings.ContainsAny(target, " \t\r\n:[]()\"'，。！？") {
+				c = p.contact.Get(target)
 			}
-			if c := p.contact.Get("nickname::" + target); c != nil {
-				return fmt.Sprintf("通讯录中存在好友【%s】(微信号: %s)，但他近期尚未与%s产生过私聊对话，因此暂无聊天记录。", c.Nickname, c.Username, botName)
+			if c == nil {
+				c = p.contact.Get("nickname::" + target)
 			}
-			if c := p.contact.Get("remark::" + target); c != nil {
-				return fmt.Sprintf("通讯录中存在好友【%s】(微信号: %s)，但他近期尚未与%s产生过私聊对话，因此暂无聊天记录。", c.Nickname, c.Username, botName)
+			if c == nil {
+				c = p.contact.Get("remark::" + target)
+			}
+			if c != nil && c.Username != "" {
+				return p.describeContactStatus(c, botName)
 			}
 		}
 		// 返回所有可用的会话名供参考
@@ -297,6 +439,8 @@ func (p *AiPlugin) toolGetChatHistory(target string, limit int) string {
 }
 
 func (p *AiPlugin) toolSearchChatMessages(keyword string, limit int) string {
+	p.ensureHistoryLoaded()
+
 	keyword = strings.TrimSpace(keyword)
 	if keyword == "" {
 		return "搜索关键词不能为空。"
@@ -362,14 +506,18 @@ func (p *AiPlugin) toolSearchChatMessages(keyword string, limit int) string {
 			return fmt.Sprintf("关键词“%s”匹配到联系人/群聊【%s】，已自动为你调取该会话记录：\n%s", keyword, disp, p.toolGetChatHistory(keyword, limit))
 		}
 		if p.contact != nil {
-			if c := p.contact.Get(keyword); c != nil {
-				return fmt.Sprintf("通讯录中存在好友【%s】(微信号: %s)，但他近期尚未与%s产生过私聊对话，因此暂无聊天记录。", c.Nickname, c.Username, botName)
+			var c *contact.Contact
+			if !strings.ContainsAny(keyword, " \t\r\n:[]()\"'，。！？") {
+				c = p.contact.Get(keyword)
 			}
-			if c := p.contact.Get("nickname::" + keyword); c != nil {
-				return fmt.Sprintf("通讯录中存在好友【%s】(微信号: %s)，但他近期尚未与%s产生过私聊对话，因此暂无聊天记录。", c.Nickname, c.Username, botName)
+			if c == nil {
+				c = p.contact.Get("nickname::" + keyword)
 			}
-			if c := p.contact.Get("remark::" + keyword); c != nil {
-				return fmt.Sprintf("通讯录中存在好友【%s】(微信号: %s)，但他近期尚未与%s产生过私聊对话，因此暂无聊天记录。", c.Nickname, c.Username, botName)
+			if c == nil {
+				c = p.contact.Get("remark::" + keyword)
+			}
+			if c != nil && c.Username != "" {
+				return p.describeContactStatus(c, botName)
 			}
 		}
 		return fmt.Sprintf("在所有会话记录中均未找到包含关键词“%s”的消息。", keyword)
@@ -389,6 +537,8 @@ func (p *AiPlugin) toolSearchChatMessages(keyword string, limit int) string {
 }
 
 func (p *AiPlugin) toolListAllChats() string {
+	p.ensureHistoryLoaded()
+
 	type chatSummary struct {
 		key        string
 		name       string

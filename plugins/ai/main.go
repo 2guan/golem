@@ -46,6 +46,8 @@ type AiPlugin struct {
 
 	imageMu      sync.Mutex
 	recentImages map[string]*cachedImage
+
+	sessionLocks sync.Map // map[string]*sync.Mutex
 }
 
 // Config 插件配置
@@ -104,6 +106,12 @@ func (p *AiPlugin) shouldReply(in incomingMessage) bool {
 		return true
 	}
 	return rand.Float64() < rate
+}
+
+// getSessionLock 获取指定会话的互斥锁，确保同一会话并发消息严格串行化处理
+func (p *AiPlugin) getSessionLock(sessionKey string) *sync.Mutex {
+	val, _ := p.sessionLocks.LoadOrStore(sessionKey, &sync.Mutex{})
+	return val.(*sync.Mutex)
 }
 
 // main 插件入口

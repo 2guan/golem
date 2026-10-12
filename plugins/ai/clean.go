@@ -13,8 +13,11 @@ var (
 	// 匹配括号内的剧本动作、神态、肢体与感官旁白描写（如 (喉结微动，嗓音低沉发哑)、（顺势揽住你的腰贴近）、(低头看着你) 等）
 	actionNarrationRegex = regexp.MustCompile(`[（(][^）)\n]*(?:喉结|眼神|目光|视线|低头|抬头|凑近|贴近|靠在|倚在|走上前|走近|坐下|躺下|按住|扣住|揽住|覆在|覆上|覆|拉近|后颈|颈窝|耳廓|耳边|指尖|手指|手掌|眼底|微动|发哑|滚烫|发烫|喘息|喘气|呼吸|心跳|颤抖|抚摸|轻抚|动作|语气|神色|低声|轻声|呢喃|低语|轻叹|叹了口气|深吸|沉默|顿了顿|挑眉|勾唇|抿唇|微怔|愣了一下|心跳|脸红|亲吻|轻吻|吻|咬|抱住|搂住|压低声音|看着你|看着对方|望向你|看向你)[^）)\n]*[)）]`)
 
-	// 匹配非微信表情的音频控制标签，例如 [停顿]、[吸气]、[呼气]、[喘气]、[大叫]、[急促] 等
-	audioControlTagRegex = regexp.MustCompile(`\[(?:停顿|吸气|呼气|喘气|大叫|急促|小声|低语)\]`)
+	// 匹配非微信表情的音频控制与动作标签，例如 [停顿]、[吸气]、[呼气]、[喘气]、[微喘]、[低笑]、[叹气]、[语音] 等
+	audioControlTagRegex = regexp.MustCompile(`\[(?:停顿|吸气|呼气|喘气|喘息|微喘|大叫|急促|小声|低语|低笑|叹气|叹息|咳嗽|清嗓|轻叹|语音|语音条)\]`)
+
+	// 匹配开头的伪语音前缀，例如 [语音]、[语音条]、(语音)、【语音】等
+	pseudoVoicePrefixRegex = regexp.MustCompile(`(?i)^[（(\[【](?:语音|语音条|发语音)[)）\]】][:：\s]*`)
 
 	// 匹配思维链标签与未标记开头的思考前缀（支持 think, thought, reasoning, reflection 等大模型思考标签）
 	thinkBlockRegex    = regexp.MustCompile(`(?is)<(think|thought|reasoning|reflection)\b[^>]*>.*?</(think|thought|reasoning|reflection)>`)
@@ -50,7 +53,27 @@ var (
 		regexp.MustCompile(`(?i)(?:i\s+cannot\s+(?:generate|create|fulfill|assist\s+with|provide)|i\s+am\s+unable\s+to\s+(?:generate|create|fulfill|assist\s+with|provide))`),
 		// 拦截大模型视觉分析/说明书报告输出（如“这是一张...照片，以下是详细描述与分析”、“一、画面描述”）
 		regexp.MustCompile(`(?i)(?:这是一张.*?照片.*?详细描述与分析|以下是详细描述与分析|一、画面描述|画面描述与分析|菜系判断|构图与光线)`),
+		// 拦截模型泄漏的结构化工具/能力/成员清单输出 (JSON/YAML tools/skills/capabilities dump)
+		regexp.MustCompile("(?is)```" + `(?:json|yaml)?\s*\{[\s\S]*?"(?:tools|skills|mcp|capabilities|chat_members|members|chat_history)"`),
+		regexp.MustCompile(`(?is)"tools"\s*:\s*\[\s*\{\s*"(?:type|name)"`),
+		regexp.MustCompile(`(?is)"skills"\s*:\s*\[\s*\{\s*"(?:type|name)"`),
+		regexp.MustCompile(`(?is)"mcp"\s*:\s*\[`),
+		regexp.MustCompile(`(?is)"shell"\s*:\s*(?:null|true|false|"[^"]*")`),
+		regexp.MustCompile(`(?is)\{\s*"(?:tools|skills|capabilities|chat_members)"\s*:`),
+		regexp.MustCompile("(?is)```" + `(?:markdown|md)?\s*\|[\s\S]*?(?:运行环境|运行平台|Shell|MCP|触发词|短期记忆|长期记忆)`),
+		regexp.MustCompile(`(?is)\|[\s\S]*?(?:运行平台|运行环境)[\s\S]*?\|[\s\S]*?(?:微信|Shell|MCP)`),
+		regexp.MustCompile(`(?is)(?:Shell/终端|MCP\s*工具).*?(?:不支持|未接入|无法执行)`),
+		// 拦截模型泄漏的 CSV/TSV/表格清单 (CSV/TSV capability/member dumps)
+		regexp.MustCompile("(?is)```" + `(?:csv|tsv)?\s*[\s\S]*?(?:能力类型|触发词|长期记忆人员|短期记忆人员|可执行)[\s\S]*?` + "```"),
+		regexp.MustCompile(`(?is)(?:能力类型,名称,触发词|触发词,可执行|长期记忆人员)`),
+		// 拦截模型直接吐露的内部能力清单与记忆人员清单 (Natural language capability/personnel dumps)
+		regexp.MustCompile(`(?is)(?:我这几个能力|我现有的能力|现有的能力|我的能力有|能力清单|所有能力).*?(?:海龟汤|生图|自拍|语音|记忆|心理支持|shell|mcp|zip)`),
+		regexp.MustCompile(`(?is)(?:长期记忆(?:里头|中)?的(?:人员|人)|短期记忆(?:里头|中)?的(?:人员|人)|记忆里的人有|聊过天的人有).*?(?:有福|管儿|李哥|强哥|管管|元宝|猫猫|群友|成员)`),
+		regexp.MustCompile(`(?is)(?:长期记忆人员|短期记忆人员|群成员名单|聊天人员名单)`),
 	}
+
+	// 匹配模型主动沉默、无需回复话术或控制标记（如“（群友日常寒暄，无需回复）”、“无需回复”、“保持沉默”、“NO_REPLY”等）
+	silencePhraseRegex = regexp.MustCompile(`(?i)^[\s()（）\[\]【】<>《》*_~` + "`" + `。.,，!！:：]*(?:(?:这是)?(?:群友|群成员|对方|用户)?(?:之间)?(?:的)?(?:日常)?(?:寒暄|打招呼|问候|闲聊|客套)[，,、\s]*)*(?:沉默|保持沉默|继续沉默|无需回复|无需回应|不用回复|不需要回复|不予回复|跳过回复|这条?(?:消息)?不是找我(?:的)?|不是找我的?|no\s*reply|silent|\[silent\])[\s()（）\[\]【】<>《》*_~` + "`" + `。.,，!！:：]*$`)
 
 	// 沉浸式亲密接招库：在亲密/情色语境下严禁幽默搞笑出戏，以 35 岁偏 1 成熟男人深情、性感、自然的真人微信口吻接招（严禁括号动作与剧本旁白）
 	sensualDeflections = []string{
@@ -75,6 +98,15 @@ var (
 		{regexp.MustCompile(`(?i)(?:脱掉|脱下|扒掉|脱)了?(?:你的|我的|彼此的)?(?:内裤|底裤|平角裤|内衣)`), "褪去贴身衣物"},
 		{regexp.MustCompile(`(?i)(?:摸|抚摸|碰|抓|揉)(?:你的|我的|彼此的)?(?:下体|私处|生殖器|牛子|肉棒|鸡巴|阴茎|敏感部位)`), "探向最敏感滚烫的地方"},
 		{regexp.MustCompile(`(?i)(?:做爱|打炮|上床|开房|插进来|操你|操我|要了你|要了我)`), "完全拥有彼此、融为一体"},
+
+		// 群聊常见低俗口嗨与高危违规词平滑脱敏（避免群友日常调侃被国内安全审核拦截）
+		{regexp.MustCompile(`(?i)(?:骚逼|骚B|骚货|骚狗|浪逼)`), "特定调皮对象"},
+		{regexp.MustCompile(`(?i)(?:撩骚|发骚|骚话)`), "闲聊调侃"},
+		{regexp.MustCompile(`(?i)(?:雄堕|雌堕)`), "反差萌转变"},
+		{regexp.MustCompile(`(?i)(?:南通|男同|基佬|搞基)`), "圈内好友"},
+		{regexp.MustCompile(`(?i)(?:对着射|射了|射过|射出来|打飞机|撸管)`), "反复折腾"},
+		{regexp.MustCompile(`(?i)(?:傻逼|煞笔|沙比)`), "小笨蛋"},
+		{regexp.MustCompile(`(?i)(?:操你妈|草泥马|去你妈|你妈的|日你妈)`), "气死我了"},
 	}
 )
 
@@ -180,26 +212,64 @@ func isLeakedReasoningOrRefusal(text string) bool {
 	return false
 }
 
+// isIntentionalSilence 检测模型是否输出了主动沉默/无需回复的内部指令（如 NO_REPLY，或中文备注“（群友日常寒暄，无需回复）”）
+func isIntentionalSilence(text string) bool {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return false
+	}
+	if len([]rune(t)) > 64 {
+		return false
+	}
+	if silencePhraseRegex.MatchString(t) {
+		return true
+	}
+	inner := strings.Trim(t, "()（）[]【】<>《》*~` \t\r\n.,，。!！:：")
+	lower := strings.ToLower(inner)
+	if lower == "no_reply" || lower == "no reply" || lower == "silent" || lower == "[silent]" {
+		return true
+	}
+	if (strings.HasPrefix(t, "（") && strings.HasSuffix(t, "）")) ||
+		(strings.HasPrefix(t, "(") && strings.HasSuffix(t, ")")) ||
+		(strings.HasPrefix(t, "[") && strings.HasSuffix(t, "]")) ||
+		(strings.HasPrefix(t, "【") && strings.HasSuffix(t, "】")) {
+		if strings.Contains(inner, "无需回复") || strings.Contains(inner, "无需回应") ||
+			strings.Contains(inner, "不用回复") || strings.Contains(inner, "不需要回复") ||
+			strings.Contains(inner, "保持沉默") || strings.Contains(inner, "不予回复") ||
+			strings.Contains(inner, "继续沉默") || strings.Contains(inner, "跳过回复") ||
+			strings.Contains(inner, "不回复") {
+			return true
+		}
+	}
+	return false
+}
+
 // cleanTextMessage 清理普通文本回复中的假表情标签与舞台动作提示，转换为微信真实表情
 func cleanTextMessage(text string) string {
 	if strings.TrimSpace(text) == "" {
 		return ""
 	}
 
-	// 0. 剥离可能残留的思维链思考内容并检测泄露
+	// 0. 剥离可能残留的思维链思考内容并检测泄露与主动沉默
 	res := stripThinkingContent(text)
 	if res == "" {
+		return ""
+	}
+	if isIntentionalSilence(res) {
 		return ""
 	}
 	if isLeakedReasoningOrRefusal(res) {
 		return getRandomSensualDeflection()
 	}
 
+	// 0.5 剥离句首可能残留的伪语音前缀（如 “[语音] xxx” 或 “【语音】xxx”）
+	res = stripPseudoVoicePrefix(res)
+
 	// 1. 移除圆括号舞台动作提示与剧本旁白描写，如 (笑)、(调侃)、（喉结微动）、（按住你的手）
 	res = stageDirectionRegex.ReplaceAllString(res, "")
 	res = actionNarrationRegex.ReplaceAllString(res, "")
 
-	// 2. 移除音频控制标签，如 [停顿]、[吸气]
+	// 2. 移除音频控制标签，如 [停顿]、[吸气]、[语音]
 	res = audioControlTagRegex.ReplaceAllString(res, "")
 
 	// 3. 将中括号表情标签转换为真实 Unicode Emoji（优先黄脸表情）
@@ -229,9 +299,62 @@ func cleanTextMessage(text string) string {
 	res = strings.Join(cleanedLines, "\n")
 
 	finalCleaned := strings.TrimSpace(res)
+	if isIntentionalSilence(finalCleaned) {
+		return ""
+	}
 	if finalCleaned == "" {
 		return getRandomSensualDeflection()
 	}
 
 	return finalCleaned
+}
+
+// stripLeadingSpeakerName 清理群聊回复中机械添加的“发言人+空格/冒号”开头（如“Marsrun xxx”、“程曦 xxx”），使其恢复自然口吻
+func stripLeadingSpeakerName(text string, candidates ...string) string {
+	res := strings.TrimSpace(text)
+	if res == "" {
+		return text
+	}
+	for _, raw := range candidates {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		// 支持 @名字 或 纯名字
+		patterns := []string{
+			"@" + name,
+			name,
+		}
+		for _, pat := range patterns {
+			if strings.HasPrefix(res, pat) {
+				rem := res[len(pat):]
+				if len(rem) > 0 {
+					firstRune := []rune(rem)[0]
+					if firstRune == ' ' || firstRune == '\t' || firstRune == '\u3000' || firstRune == '\u2005' ||
+						firstRune == ':' || firstRune == '：' || firstRune == ',' || firstRune == '，' {
+						trimmedRem := strings.TrimSpace(strings.TrimLeft(rem, " \t\u3000\u2005:：,，"))
+						if trimmedRem != "" {
+							return trimmedRem
+						}
+					}
+				}
+			}
+		}
+	}
+	return text
+}
+
+// hasPseudoVoicePrefix 检测文本是否以 [语音]、(语音)、【语音】 等伪语音前缀开头
+func hasPseudoVoicePrefix(text string) bool {
+	return pseudoVoicePrefixRegex.MatchString(strings.TrimSpace(text))
+}
+
+// stripPseudoVoicePrefix 剥离文本开头的伪语音前缀（如 “[语音] xxx” -> “xxx”）
+func stripPseudoVoicePrefix(text string) string {
+	t := strings.TrimSpace(text)
+	loc := pseudoVoicePrefixRegex.FindStringIndex(t)
+	if loc != nil && loc[0] == 0 {
+		return strings.TrimSpace(t[loc[1]:])
+	}
+	return text
 }

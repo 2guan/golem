@@ -47,6 +47,8 @@ var (
 	rePatBareVar       = regexp.MustCompile(`\$\{([^}]+)\}`)
 	reAsciiQuote       = regexp.MustCompile(`"([^"]+)"`)
 	reNewlines         = regexp.MustCompile(`[\r\n]+`)
+	reRenameXmlRemark  = regexp.MustCompile(`(?s)<link\s+name=["']remark["'][^>]*>.*?<plain><!\[CDATA\[(.*?)\]\]></plain>`)
+	reRenameTextRemark = regexp.MustCompile(`修改群名为[“"']([^”"']+)[”"']`)
 )
 
 // parseSystemNotice 解析拍一拍、撤回消息、进群通知、改名通知、群公告等系统事件
@@ -431,6 +433,127 @@ func (ce *ChatEngine) loadSentStore() {
 	}
 }
 
+// GetPrivateChatPeers 返回所有存在 1v1 私聊交互的联系人 ID 集合
+func (ce *ChatEngine) GetPrivateChatPeers(botID string) map[string]bool {
+	peers := make(map[string]bool)
+
+	// 1. 从 statistics.db 提取真实上行与下行私聊
+	if ce.statisticsDBPath != "" {
+		if _, err := os.Stat(ce.statisticsDBPath); err == nil {
+			if db, err := sql.Open("sqlite", ce.statisticsDBPath); err == nil {
+				defer db.Close()
+				rows, err := db.Query(`
+					SELECT DISTINCT sender, receiver 
+					FROM statistics 
+					WHERE sender NOT LIKE '%@chatroom' 
+					  AND receiver NOT LIKE '%@chatroom' 
+					  AND (member IS NULL OR member = '')
+				`)
+				if err == nil {
+					defer rows.Close()
+					for rows.Next() {
+						var s, r string
+						if err := rows.Scan(&s, &r); err == nil {
+							if s != "" && s != botID && !strings.HasSuffix(s, "@chatroom") && !strings.HasPrefix(s, "gh_") {
+								peers[s] = true
+							}
+							if r != "" && r != botID && !strings.HasSuffix(r, "@chatroom") && !strings.HasPrefix(r, "gh_") {
+								peers[r] = true
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 2. 从 ai_history.json 提取
+	candPaths := []string{
+		ce.aiHistoryPath,
+		filepath.Join("data", "ai_history.json"),
+		"ai_history.json",
+		filepath.Join("..", "..", "data", "ai_history.json"),
+		filepath.Join("..", "data", "ai_history.json"),
+	}
+	for _, pth := range candPaths {
+		if pth == "" {
+			continue
+		}
+		if data, err := os.ReadFile(pth); err == nil {
+			var h struct {
+				Sessions map[string]any `json:"sessions"`
+			}
+			if err := json.Unmarshal(data, &h); err == nil && h.Sessions != nil {
+				for sKey := range h.Sessions {
+					if strings.HasPrefix(sKey, "private:") {
+						uID := strings.TrimPrefix(sKey, "private:")
+						if uID != "" && uID != botID {
+							peers[uID] = true
+						}
+					}
+				}
+			}
+			break
+		}
+	}
+
+	// 3. 从内存 sentMessages 提取出站私聊对象
+	ce.mu.Lock()
+	for sKey := range ce.sentMessages {
+		cleanID := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(sKey, "chatroom:"), "contact:"), "private:")
+		if cleanID != "" && cleanID != botID && !strings.HasSuffix(cleanID, "@chatroom") && !strings.HasPrefix(cleanID, "gh_") {
+			peers[cleanID] = true
+		}
+	}
+	ce.mu.Unlock()
+
+	return peers
+}
+
+// GetRenamedChatroomNames 从 statistics.db 提取被群成员修改后的最新群名称映射 (chatroomID -> 最新群名)
+func (ce *ChatEngine) GetRenamedChatroomNames() map[string]string {
+	names := make(map[string]string)
+	if ce.statisticsDBPath == "" {
+		return names
+	}
+	if _, err := os.Stat(ce.statisticsDBPath); err != nil {
+		return names
+	}
+	db, err := sql.Open("sqlite", ce.statisticsDBPath)
+	if err != nil {
+		return names
+	}
+	defer db.Close()
+
+	rows, err := db.Query(`
+		SELECT sender, content 
+		FROM statistics 
+		WHERE sender LIKE '%@chatroom' 
+		  AND (content LIKE '%修改群名为%' OR content LIKE '%修改了群名%') 
+		ORDER BY id ASC
+	`)
+	if err != nil {
+		return names
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var sender, content string
+		if err := rows.Scan(&sender, &content); err == nil && sender != "" {
+			newName := ""
+			if m := reRenameXmlRemark.FindStringSubmatch(content); len(m) > 1 && strings.TrimSpace(m[1]) != "" {
+				newName = strings.TrimSpace(m[1])
+			} else if m2 := reRenameTextRemark.FindStringSubmatch(content); len(m2) > 1 && strings.TrimSpace(m2[1]) != "" {
+				newName = strings.TrimSpace(m2[1])
+			}
+			if newName != "" && !strings.Contains(newName, "$") {
+				names[sender] = newName
+			}
+		}
+	}
+	return names
+}
+
 // loadPluginSentRecords 动态读取所有插件通过 SDK 发送的出站消息记录 (data/plugin_sent.jsonl)
 func (ce *ChatEngine) loadPluginSentRecords(sessionID string) []SentRecord {
 	cleanID := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(sessionID, "chatroom:"), "private:"), "contact:")
@@ -609,7 +732,16 @@ func (ce *ChatEngine) GetSessions(p *DashboardPlugin) ([]ChatSessionItem, error)
 		botUsername = p.getBotUsername()
 	}
 
-	// 1. 从 contact 能力填充基础会话（好友与群聊，排除自身 bot）
+	var overrides map[string]*TargetOverride
+	if p != nil && p.store != nil {
+		overrides = p.store.GetOverrides()
+	}
+	var chatroomMembers map[string]string
+	if p != nil {
+		chatroomMembers = p.getChatroomMembersMap()
+	}
+
+	// 1. 从 contact 能力填充基础会话（好友与群聊，排除自身 bot，排除未定制策略的普通群成员）
 	if p != nil && p.contact != nil {
 		contacts := p.contact.List()
 		for _, c := range contacts {
@@ -633,6 +765,27 @@ func (ce *ChatEngine) GetSessions(p *DashboardPlugin) ([]ChatSessionItem, error)
 				sType = "chatroom"
 			} else if c.GetType().String() == "CONTACT_TYPE_OFFICIAL" {
 				sType = "official"
+			}
+
+			// 过滤：如果该联系人仅仅是群成员（非群聊自身、非公众号），且并未单独定制专属策略，
+			// 则不预先作为私聊会话塞入列表（避免数十个从未私聊过的群友堆满左侧会话栏）
+			// 后续步骤若在 statistics.db / plugin_sent.jsonl 中检索到实际私聊记录，仍会正常展示
+			if sType == "friend" && chatroomMembers != nil {
+				if _, isMember := chatroomMembers[sID]; isMember {
+					hasOverride := false
+					if overrides != nil {
+						if _, ok := overrides[sID]; ok {
+							hasOverride = true
+						} else if _, ok := overrides["private:"+sID]; ok {
+							hasOverride = true
+						} else if _, ok := overrides["contact:"+sID]; ok {
+							hasOverride = true
+						}
+					}
+					if !hasOverride {
+						continue
+					}
+				}
 			}
 
 			avatarURL := c.GetAvatar()
@@ -884,6 +1037,8 @@ func (ce *ChatEngine) GetSessions(p *DashboardPlugin) ([]ChatSessionItem, error)
 		}
 	}
 
+	renamedRooms := ce.GetRenamedChatroomNames()
+
 	for _, s := range sessionMap {
 		cleanID := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(s.ID, "chatroom:"), "private:"), "contact:")
 		if s.Type == "chatroom" || strings.HasSuffix(cleanID, "@chatroom") {
@@ -996,6 +1151,13 @@ func (ce *ChatEngine) GetSessions(p *DashboardPlugin) ([]ChatSessionItem, error)
 				if ov.Name != "" && (s.Name == "" || s.Name == s.ID) {
 					s.Name = ov.Name
 				}
+			}
+		}
+
+		// 如果是群聊且在 statistics.db 中检测到了最新修改群名通知，采用最新群名
+		if s.Type == "chatroom" || strings.HasSuffix(cleanID, "@chatroom") {
+			if newName, ok := renamedRooms[cleanID]; ok && newName != "" {
+				s.Name = newName
 			}
 		}
 

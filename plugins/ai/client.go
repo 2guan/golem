@@ -9,6 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -70,6 +72,11 @@ type chatCompletionResponse struct {
 		FinishReason string                      `json:"finish_reason"`
 		Message      chatCompletionChoiceMessage `json:"message"`
 	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
 	Error *struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
@@ -294,7 +301,7 @@ func (p *AiPlugin) chatWithProviderInternal(sessionKey, provName string, prov *P
 	messages := make([]openAIMessage, 0, p.getMaxContextMessages(sessionKey)+1)
 	activePrompt := p.getActivePrompt(sessionKey)
 	if prompt, ok := config.Prompts[activePrompt]; ok && strings.TrimSpace(prompt) != "" {
-		messages = append(messages, openAIMessage{Role: "system", Content: prompt + p.getPreMadePrompts(sessionKey)})
+		messages = append(messages, openAIMessage{Role: "system", Content: softenHighRiskTerms(prompt + p.getPreMadePrompts(sessionKey))})
 	}
 
 	rawContext := p.contextMessages(sessionKey)
@@ -302,6 +309,15 @@ func (p *AiPlugin) chatWithProviderInternal(sessionKey, provName string, prov *P
 	for _, m := range rawContext {
 		if s, ok := m.Content.(string); ok {
 			m.Content = softenHighRiskTerms(s)
+		} else if parts, ok := m.Content.([]contentPart); ok {
+			var newParts []contentPart
+			for _, part := range parts {
+				if part.Type == "text" {
+					part.Text = softenHighRiskTerms(part.Text)
+				}
+				newParts = append(newParts, part)
+			}
+			m.Content = newParts
 		}
 		cleanMsg := m
 		cleanMsg.MediaURL = ""
@@ -548,6 +564,7 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 
 	// 如果模型调用了工具，直接返回 choice.Message（可能此时 Content 为空）
 	if len(choice.Message.ToolCalls) > 0 {
+		recordTokenUsage(payload.Model, result.Usage, 50)
 		return &choice.Message, nil
 	}
 
@@ -565,7 +582,55 @@ func callOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey string
 	}
 
 	choice.Message.Content = content
+	recordTokenUsage(payload.Model, result.Usage, len(content))
 	return &choice.Message, nil
+}
+
+func recordTokenUsage(model string, usage *struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}, contentLen int) {
+	promptTokens := 1150
+	completionTokens := int(float64(contentLen) * 1.4)
+	if completionTokens < 15 {
+		completionTokens = 15
+	}
+	totalTokens := promptTokens + completionTokens
+
+	if usage != nil {
+		if usage.PromptTokens > 0 {
+			promptTokens = usage.PromptTokens
+		}
+		if usage.CompletionTokens > 0 {
+			completionTokens = usage.CompletionTokens
+		}
+		if usage.TotalTokens > 0 {
+			totalTokens = usage.TotalTokens
+		} else {
+			totalTokens = promptTokens + completionTokens
+		}
+	}
+
+	rec := map[string]any{
+		"timestamp":         time.Now().Format(time.RFC3339),
+		"provider":          "ai",
+		"model":             model,
+		"prompt_tokens":     promptTokens,
+		"completion_tokens": completionTokens,
+		"total_tokens":      totalTokens,
+	}
+	b, err := json.Marshal(rec)
+	if err != nil {
+		return
+	}
+
+	filePath := filepath.Join("data", "token_usage.jsonl")
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err == nil {
+		defer f.Close()
+		_, _ = f.WriteString(string(b) + "\n")
+	}
 }
 
 func chatCompletionURL(baseURL string) string {

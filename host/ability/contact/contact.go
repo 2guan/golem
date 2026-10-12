@@ -78,7 +78,14 @@ func GetSelf() *sdk.SelfInfo {
 }
 
 func Destroy() {
-	marshal, err := json.Marshal(instance.cache)
+	validCache := make(map[string]*sdk.Contact)
+	for k, c := range instance.cache {
+		if c == nil || c == &def || c.Username == "" || c.Username != k {
+			continue
+		}
+		validCache[k] = c
+	}
+	marshal, err := json.Marshal(validCache)
 	if err != nil {
 		slog.Warn("[contact ability] 序列化联系人信息失败", "err", err)
 		return
@@ -205,8 +212,17 @@ func (a *ability) SetRemark(username, remark string) error {
 	}
 }
 
+var searchTicketCache sync.Map // map[string]string: username/alias -> antispam_ticket
+
 // AddFriend 发送好友申请
 func (a *ability) AddFriend(v1, v2, content string, operate, scene int) error {
+	if strings.TrimSpace(v2) == "" {
+		if ticketVal, ok := searchTicketCache.Load(v1); ok {
+			if ticketStr, ok := ticketVal.(string); ok && ticketStr != "" {
+				v2 = ticketStr
+			}
+		}
+	}
 	_, err := a.api.Request(v1, v2, content, operate, scene)
 	if err != nil {
 		return err
@@ -252,10 +268,22 @@ func (a *ability) Search(keyword string, fromScene, searchScene uint32) *sdk.Con
 	if err != nil {
 		return nil
 	}
+	ticket := search.GetAntispamTicket()
+	if ticket != "" {
+		if search.Username != nil && search.Username.Value != "" {
+			searchTicketCache.Store(search.Username.Value, ticket)
+		}
+		if alias := search.GetAlias(); alias != "" {
+			searchTicketCache.Store(alias, ticket)
+		}
+		if strings.TrimSpace(keyword) != "" {
+			searchTicketCache.Store(keyword, ticket)
+		}
+	}
 	return &sdk.Contact{
 		Username: search.Username.Value,
 		Nickname: search.Nickname.Value,
-		Remark:   "",
+		Remark:   ticket,
 		Alias:    search.GetAlias(),
 		Avatar:   search.GetSmallAvatarUrl(),
 		Type:     sdk.ContactType_CONTACT_TYPE_FRIEND,

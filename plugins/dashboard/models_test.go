@@ -104,15 +104,22 @@ enable = true
 			Model:       "gemini-3.5-flash-lite",
 		},
 	}
+	newReplyRate := 0.35
+	newSilence := true
 	err = cm.SaveModelsConfig(SaveModelsRequest{
-		ProviderOrder: newOrder,
-		Providers:     newProviders,
+		ProviderOrder:      newOrder,
+		Providers:          newProviders,
+		MaxContextMessages: 500,
+		ReplyRate:          &newReplyRate,
+		Silence:            &newSilence,
+		HistoryExpireHours: 120,
+		HTTPTimeoutSeconds: 90,
 	})
 	if err != nil {
 		t.Fatalf("SaveModelsConfig 失败: %v", err)
 	}
 
-	// 4. 再次读取验证更新后排序与 active_provider
+	// 4. 再次读取验证更新后排序与 active_provider 及上下文与全局对话参数
 	updated, err := cm.ReadModelsConfig()
 	if err != nil {
 		t.Fatalf("重新读取模型配置失败: %v", err)
@@ -125,6 +132,21 @@ enable = true
 	}
 	if len(updated.ProviderOrder) != 3 || updated.ProviderOrder[0] != "deepseek" {
 		t.Errorf("期望首位调用顺位为 deepseek, 实际为 %v", updated.ProviderOrder)
+	}
+	if updated.MaxContextMessages != 500 {
+		t.Errorf("期望 MaxContextMessages 为 500, 实际为 %d", updated.MaxContextMessages)
+	}
+	if updated.ReplyRate != 0.35 {
+		t.Errorf("期望 ReplyRate 为 0.35, 实际为 %f", updated.ReplyRate)
+	}
+	if !updated.Silence {
+		t.Errorf("期望 Silence 为 true, 实际为 false")
+	}
+	if updated.HistoryExpireHours != 120 {
+		t.Errorf("期望 HistoryExpireHours 为 120, 实际为 %d", updated.HistoryExpireHours)
+	}
+	if updated.HTTPTimeoutSeconds != 90 {
+		t.Errorf("期望 HTTPTimeoutSeconds 为 90, 实际为 %d", updated.HTTPTimeoutSeconds)
 	}
 }
 
@@ -531,6 +553,77 @@ default = "默认提示词"
 		t.Errorf("期望新激活提示词匹配, 实际为 %s", resp2.Prompts["new_active"])
 	}
 }
+
+func TestTargetOverride_SaveTargetOverrideToAIConfig(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "override_test_*")
+	if err != nil {
+		t.Fatalf("创建临时目录失败: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	configPath := filepath.Join(tempDir, "config.toml")
+	initialTOML := `
+[ai]
+enable = true
+
+[ai.config]
+active_provider = 'xiaomi'
+max_context_messages = 200
+`
+	if err := os.WriteFile(configPath, []byte(initialTOML), 0644); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	cm := NewConfigManager(filepath.Join(tempDir, "global.toml"), configPath)
+	targetID := "test_friend@chatroom"
+	rate := 0.8
+	silence := false
+	maxCtx := 666
+	err = cm.SaveTargetOverrideToAIConfig(targetID, "群友", "测试专属提示词", "xiaomi", &rate, &silence, &maxCtx)
+	if err != nil {
+		t.Fatalf("SaveTargetOverrideToAIConfig 失败: %v", err)
+	}
+
+	// 验证写回的 TOML 内容
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("读取 config.toml 失败: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "max_context_messages = 666") {
+		t.Errorf("期望写入包含 max_context_messages = 666, 实际内容:\n%s", content)
+	}
+	if !strings.Contains(content, "chatroom:test_friend@chatroom") {
+		t.Errorf("期望写入包含会话 key chatroom:test_friend@chatroom, 实际内容:\n%s", content)
+	}
+}
+
+func TestTargetClassification_GetPrivateChatPeers(t *testing.T) {
+	tempDir := t.TempDir()
+	statDB := filepath.Join(tempDir, "stat.db")
+	aiHist := filepath.Join(tempDir, "ai_hist.json")
+	sentStore := filepath.Join(tempDir, "sent.json")
+
+	// 模拟写入 ai_history.json
+	histContent := `{
+		"version": 1,
+		"sessions": {
+			"private:wanzhi440802": {},
+			"chatroom:123@chatroom": {}
+		}
+	}`
+	_ = os.WriteFile(aiHist, []byte(histContent), 0644)
+
+	ce := NewChatEngine(aiHist, statDB, sentStore)
+	peers := ce.GetPrivateChatPeers("bot_user")
+	if !peers["wanzhi440802"] {
+		t.Errorf("expected wanzhi440802 to be in private peers")
+	}
+	if peers["123@chatroom"] {
+		t.Errorf("chatroom should NOT be in private peers")
+	}
+}
+
 
 
 

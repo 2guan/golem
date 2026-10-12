@@ -90,6 +90,24 @@ var PluginMetaMap = map[string]PluginMeta{
 			Tips:        "可在本后台「配置参数」中灵活修改欢迎语文本、通知开关以及验证关键词过滤规则。",
 		},
 	},
+	"add_friend": {
+		Title:       "主动添加好友",
+		Description: "支持通过微信号/手机号主动搜索添加好友或在群内快捷加人，内置每日添加上限频控保护，防范账号被风控。",
+		Icon:        "➕",
+		Category:    "好友管理",
+		Usage: PluginUsageInfo{
+			Triggers: []string{"加我好友", "机器人加我", "#加好友 <账号> [附言]", "#加好友统计", "#加好友额度", "#加好友重置"},
+			Scope:    "群聊 / 私聊",
+			Examples: []string{
+				"群友在群里发送：“加我好友” -> 机器人主动向该群友发起好友申请",
+				"主人发送：“#加好友 wxid_xxxx 你好我是小助手” -> 机器人自动搜索并发送添加申请",
+				"发送：“#加好友统计” -> 查看今日加好友上限、已用次数、剩余额度与明细",
+				"主人发送：“#加好友重置” -> 强制重置今日使用计数恢复满配额",
+			},
+			Description: "主动添加微信好友引擎。为保护账号安全，严格限制每日主动加人上限（默认每天 3 次，可自行调节），支持失败自动返还额度与跨天自动刷新。",
+			Tips:        "主动加好友受微信风控影响较大，建议 daily_limit 维持在每天 3~5 次以内；大批量好友引流建议使用被动同意的 auto_accept 插件。",
+		},
+	},
 	"avatar_review": {
 		Title:       "好友头像锐评",
 		Description: "调用多模态视觉大模型对微信好友头像进行幽默犀利、情商在线的多维度艺术构图与性格点评。",
@@ -490,6 +508,87 @@ var PluginMetaMap = map[string]PluginMeta{
 			Tips:        "无需用户手动触发，作为系统依赖能力在后台常驻运行。",
 		},
 	},
+	"image_gen": {
+		Title:       "AI 图像生成与自拍",
+		Description: "基于 Seedream 图像生成大模型，支持文字生成图片、参考图垫图以及逼真拟人写实自拍。",
+		Icon:        "🎨",
+		Category:    "AI 创意",
+		Usage: PluginUsageInfo{
+			Triggers: []string{"自拍", "来张自拍", "在[场景]拍张照", "生图 [提示词]", "画一个 [描述]", "帮我画 [描述]"},
+			Scope:    "群聊 / 私聊均支持",
+			Examples: []string{
+				"直接发送：“来张在海边吹风的自拍” -> AI 自动理解场景并生成生活质感自拍照",
+				"直接发送：“画一只戴墨镜在草地上奔跑的柴犬” -> 调用 Seedream 大模型生成高清插画",
+				"引用群内已有图片发送：“帮我画成赛博朋克风格” -> 自动垫图进行图生图风格迁移",
+			},
+			Description: "为微信机器人注入逼真的多模态视觉生成能力，不仅支持根据纯文本 Prompt 创作高质量绘画，还能根据人设生成不同场景的生活自拍，深度配合 AI 插件沉浸式聊天。",
+			Tips:        "建议在配置中填入 Seedream API Key，若未配置则会自动回退内置默认生成通道。",
+		},
+	},
+	"hermes": {
+		Title:       "Hermes 智能代理引擎",
+		Description: "接入开源通用自主 Agent 框架 Hermes，具备多工具链调度、复杂规划与长链条任务执行能力。",
+		Icon:        "🧠",
+		Category:    "高级智能体",
+		Usage: PluginUsageInfo{
+			Triggers: []string{"系统底层 Agent 能力，支持通过 Hermes 协议双向调用"},
+			Scope:    "全场景自主 Agent 代理",
+			Examples: []string{
+				"多步骤复杂问答与数据挖掘",
+				"自主调用系统工具与网络检索获取实时资讯",
+			},
+			Description: "集成 Hermes 智能体引擎，具备自我反思、任务拆解与 MCP 工具链协同执行能力。",
+			Tips:        "默认处于按需配置状态，可在 [hermes] 节点中配置相关模型端点与 API 凭据。",
+		},
+	},
+	"hermes_bridge": {
+		Title:       "Hermes 双向网桥与运维",
+		Description: "连接 Golem 与 Hermes 体系的双向通道与 Web 管理运维面板，支持核心 API、会话隔离与媒体转发。",
+		Icon:        "🌉",
+		Category:    "高级智能体",
+		Usage: PluginUsageInfo{
+			Triggers: []string{"/hermes 指令", "浏览器访问网桥内置 Web 监控面板"},
+			Scope:    "运维管理与智能体网桥",
+			Examples: []string{
+				"发送：“/hermes status” -> 查询外部 Agent 网桥连接状态",
+				"通过内置独立 Web 面板查看会话追踪与全链路会话记录",
+			},
+			Description: "提供 Golem 与外部 Agent 之间的可靠双向 RPC / HTTP 管道，支持入站消息过滤、出站主动静默以及多端调试。",
+			Tips:        "支持独立 Web 监控端点，适合高级开发者与 Agent 架构调试运维。",
+		},
+	},
+	"demos": {
+		Title:       "Demos 演示功能合集",
+		Description: "集合了数十种第三方公共娱乐 API 的展示插件（搜短剧、猫狗图、趣味短视频等，适合作为功能参考）。",
+		Icon:        "🎪",
+		Category:    "示例与开发",
+		Usage: PluginUsageInfo{
+			Triggers: []string{"demos", "demos帮助", "撸猫", "旺财", "看星空", "小姐姐视频", "百度百科 [词条]"},
+			Scope:    "群聊 / 私聊（默认建议关闭）",
+			Examples: []string{
+				"发送：“demos” -> 获取全量演示指令列表",
+				"发送：“撸猫” -> 获取一张随机猫猫照片",
+				"发送：“看星空” -> 获取 NASA 每日天文图及科普说明",
+			},
+			Description: "展示 Golem 插件如何快速封装各种公共 HTTP API、音视频转码及 CDN 上传能力的合集演示样例。由于包含部分第三方公网接口，生产环境默认建议保持禁用状态，防止与核心业务冲突。",
+			Tips:        "默认已禁用，如需体验可在后台「插件管理」中开启开关；如需定制推荐直接编写专属业务插件。",
+		},
+	},
+	"example": {
+		Title:       "插件开发示例模板",
+		Description: "官方 SDK 插件开发样板，完整展示插件生命周期、事件订阅、命令分发与配置注入的标准规范。",
+		Icon:        "💡",
+		Category:    "示例与开发",
+		Usage: PluginUsageInfo{
+			Triggers: []string{"/example echo [内容]"},
+			Scope:    "开发者参考模板",
+			Examples: []string{
+				"发送：“/example echo 你好” -> 原样回显测试文本",
+			},
+			Description: "供开发者学习和克隆的基础模板代码。展示了 Command 定义、Event 消息拦截、Capability 能力导出与 Session 会话隔离的标准写法。",
+			Tips:        "生产环境保持禁用即可，仅供二次开发与编写新插件时参考其源码实现。",
+		},
+	},
 }
 
 type ConfigManager struct {
@@ -818,7 +917,7 @@ func (cm *ConfigManager) SavePluginRawToml(name string, rawToml string) error {
 }
 
 // SaveTargetOverrideToAIConfig 同步目标专属配置到 plugins/config.toml
-func (cm *ConfigManager) SaveTargetOverrideToAIConfig(targetID string, customNickname string, customPrompt string, provider string, replyRate *float64, silence *bool) error {
+func (cm *ConfigManager) SaveTargetOverrideToAIConfig(targetID string, customNickname string, customPrompt string, provider string, replyRate *float64, silence *bool, maxContextMessages *int) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
@@ -883,12 +982,28 @@ func (cm *ConfigManager) SaveTargetOverrideToAIConfig(targetID string, customNic
 
 	if provider != "" {
 		sessItem["active_provider"] = provider
+	} else {
+		delete(sessItem, "active_provider")
 	}
 	if replyRate != nil {
 		sessItem["reply_rate"] = *replyRate
+	} else {
+		delete(sessItem, "reply_rate")
 	}
 	if silence != nil {
 		sessItem["silence"] = *silence
+	} else {
+		delete(sessItem, "silence")
+	}
+	if maxContextMessages != nil && *maxContextMessages > 0 {
+		sessItem["max_context_messages"] = *maxContextMessages
+	} else {
+		delete(sessItem, "max_context_messages")
+	}
+
+	cleaned, ok := CleanJSONNumbers(root).(map[string]any)
+	if ok {
+		root = cleaned
 	}
 
 	newData, err := toml.Marshal(root)
@@ -1075,8 +1190,12 @@ func (cm *ConfigManager) ReadModelsConfig() (*ModelsConfigResponse, error) {
 	}
 
 	resp := &ModelsConfigResponse{
-		Providers: make(map[string]ProviderConfigItem),
-		Presets:   GetModelPresets(),
+		Providers:          make(map[string]ProviderConfigItem),
+		Presets:            GetModelPresets(),
+		MaxContextMessages: 200,
+		ReplyRate:          0.2,
+		HistoryExpireHours: 72,
+		HTTPTimeoutSeconds: 120,
 	}
 
 	aiSec, ok := root["ai"].(map[string]any)
@@ -1093,6 +1212,24 @@ func (cm *ConfigManager) ReadModelsConfig() (*ModelsConfigResponse, error) {
 	}
 	if fp, ok := aiCfg["fallback_provider"].(string); ok {
 		resp.FallbackProvider = fp
+	}
+
+	if mcm, ok := aiCfg["max_context_messages"].(int64); ok {
+		resp.MaxContextMessages = int(mcm)
+	}
+	if rr, ok := aiCfg["reply_rate"].(float64); ok {
+		resp.ReplyRate = rr
+	} else if rr, ok := aiCfg["reply_rate"].(int64); ok {
+		resp.ReplyRate = float64(rr)
+	}
+	if sil, ok := aiCfg["silence"].(bool); ok {
+		resp.Silence = sil
+	}
+	if heh, ok := aiCfg["history_expire_hours"].(int64); ok {
+		resp.HistoryExpireHours = int(heh)
+	}
+	if to, ok := aiCfg["http_timeout_seconds"].(int64); ok {
+		resp.HTTPTimeoutSeconds = int(to)
 	}
 
 	// 读取 provider_order
@@ -1233,6 +1370,27 @@ func (cm *ConfigManager) SaveModelsConfig(req SaveModelsRequest) error {
 		} else {
 			aiCfg["fallback_provider"] = ""
 		}
+	}
+
+	if req.MaxContextMessages > 0 {
+		aiCfg["max_context_messages"] = req.MaxContextMessages
+	}
+	if req.ReplyRate != nil {
+		aiCfg["reply_rate"] = *req.ReplyRate
+	}
+	if req.Silence != nil {
+		aiCfg["silence"] = *req.Silence
+	}
+	if req.HistoryExpireHours > 0 {
+		aiCfg["history_expire_hours"] = req.HistoryExpireHours
+	}
+	if req.HTTPTimeoutSeconds > 0 {
+		aiCfg["http_timeout_seconds"] = req.HTTPTimeoutSeconds
+	}
+
+	cleaned, ok := CleanJSONNumbers(root).(map[string]any)
+	if ok {
+		root = cleaned
 	}
 
 	newData, err := toml.Marshal(root)
