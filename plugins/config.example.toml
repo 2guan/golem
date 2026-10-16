@@ -19,6 +19,11 @@ history_expire_hours = 72            # 会话保鲜时长（小时），超过�
 default = '你是一个随和、幽默、生活气息浓厚的个人助手。聊天时就像微信上的真实好友，大白话随性聊天，语气自然松弛，彻底摒弃AI客服腔、说教感与剧本括号描写（严禁在括号里写动作或旁白），纯文本微信聊天。'
 
 [ai.config.providers]
+[ai.config.providers.grok]
+api_key = 'your_grok_api_key_here'
+base_url = 'http://127.0.0.1:8000/'
+model = 'grok-4.7'
+
 [ai.config.providers.gemini]
 api_key = 'your_gemini_api_key_here'
 base_url = 'https://generativelanguage.googleapis.com/v1beta/openai'

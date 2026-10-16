@@ -1067,6 +1067,13 @@ func (cm *ConfigManager) RemoveTargetOverrideFromAIConfig(targetID string) error
 func GetModelPresets() []ModelPreset {
 	return []ModelPreset{
 		{
+			ID:           "grok",
+			Name:         "xAI (Grok)",
+			BaseURL:      "http://127.0.0.1:8000/",
+			DefaultModel: "grok-4.7",
+			Models:       []string{"grok-4.7", "grok-composer-2.5-fast"},
+		},
+		{
 			ID:           "xiaomi",
 			Name:         "小米 (Xiaomi MiMo)",
 			BaseURL:      "https://token-plan-cn.xiaomimimo.com/v1",
@@ -1144,6 +1151,9 @@ func guessDisplayName(key, baseURL, model string) string {
 	lowerURL := strings.ToLower(baseURL)
 	lowerModel := strings.ToLower(model)
 
+	if strings.Contains(lowerKey, "grok") || strings.Contains(lowerURL, "x.ai") || strings.Contains(lowerURL, "grok") || strings.Contains(lowerModel, "grok") {
+		return "xAI (Grok)"
+	}
 	if strings.Contains(lowerKey, "xiaomi") || strings.Contains(lowerURL, "xiaomimimo") || strings.Contains(lowerModel, "mimo") {
 		return "小米 (Xiaomi MiMo)"
 	}

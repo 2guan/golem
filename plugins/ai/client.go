@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -637,6 +638,10 @@ func chatCompletionURL(baseURL string) string {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if strings.HasSuffix(baseURL, "/chat/completions") {
 		return baseURL
+	}
+	u, err := url.Parse(baseURL)
+	if err == nil && (u.Path == "" || u.Path == "/") {
+		return baseURL + "/v1/chat/completions"
 	}
 	return baseURL + "/chat/completions"
 }
